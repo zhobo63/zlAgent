@@ -11,6 +11,9 @@ endif()
 
 # Core source files
 set(CORE_SOURCES
+    src/config.cpp
+    src/system_prompt.cpp
+    src/language_detector.cpp
     src/llm_client.cpp
     src/tool.cpp
     src/memory.cpp

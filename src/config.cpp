@@ -1,0 +1,138 @@
+﻿#include "config.h"
+#include <fstream>
+#include <iostream>
+#include <algorithm>
+#include <cctype>
+
+namespace agent {
+
+// ── IniParser ──────────────────────────────────────────────
+
+std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const std::string& path) {
+    std::map<std::string, std::map<std::string, std::string>> result;
+    std::ifstream file(path);
+
+    if (!file.is_open()) {
+        return result; // empty = no config found
+    }
+
+    std::string current_section = "";
+    std::string line;
+
+    while (std::getline(file, line)) {
+        // Trim whitespace.
+        auto ltrim  = [](std::string& s) { s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); })); };
+        auto rtrim  = [](std::string& s) { s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end()); };
+
+        ltrim(line);
+        rtrim(line);
+
+        // Skip empty lines and comments.
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+
+        // Section header: [section].
+        if (line.front() == '[' && line.back() == ']') {
+            current_section = line.substr(1, line.size() - 2);
+            ltrim(current_section);
+            rtrim(current_section);
+            result[current_section]; // ensure section exists even with no keys.
+            continue;
+        }
+
+        // Key = value or key=value.
+        auto eq_pos = line.find('=');
+        if (eq_pos != std::string::npos) {
+            std::string key   = line.substr(0, eq_pos);
+            std::string value = line.substr(eq_pos + 1);
+
+            ltrim(key);
+            rtrim(key);
+            ltrim(value);
+            rtrim(value);
+
+            result[current_section][key] = value;
+        }
+    }
+
+    return result;
+}
+
+// ── Config helpers ─────────────────────────────────────────
+
+bool Config::parse_bool(const std::string& s, bool default_val) {
+    std::string lower = s;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    if (lower == "true" || lower == "1" || lower == "yes") return true;
+    if (lower == "false" || lower == "0" || lower == "no") return false;
+    return default_val;
+}
+
+Config Config::load(const std::string& ini_path) {
+    Config cfg; // all defaults.
+
+    auto data = IniParser::parse(ini_path);
+    if (data.empty()) {
+        std::cout << "[Config] No INI file found at '" << ini_path << "', using defaults." << std::endl;
+        return cfg;
+    }
+
+    std::cout << "[Config] Loaded from: " << ini_path << std::endl;
+
+    // ── [llm] ──────────────────────────────────────────────
+    if (data.count("llm")) {
+        auto& s = data["llm"];
+        if (s.count("url"))         cfg.llm.url = s["url"];
+        if (s.count("temperature")) cfg.llm.temperature = std::stod(s["temperature"]);
+        if (s.count("max_tokens"))  cfg.llm.max_tokens = std::stoi(s["max_tokens"]);
+    }
+
+    // ── [memory] ───────────────────────────────────────────
+    if (data.count("memory")) {
+        auto& s = data["memory"];
+        if (s.count("max_messages")) cfg.memory.max_messages = std::stoi(s["max_messages"]);
+    }
+
+    // ── [agent] ────────────────────────────────────────────
+    if (data.count("agent")) {
+        auto& s = data["agent"];
+        if (s.count("max_iterations")) cfg.agent_.max_iterations = std::stoi(s["max_iterations"]);
+        if (s.count("language"))             cfg.agent_.language = s["language"];
+        if (s.count("auto_detect_language")) cfg.agent_.auto_detect_language = parse_bool(s["auto_detect_language"], true);
+        if (s.count("prompt_file"))          cfg.agent_.prompt_file = s["prompt_file"];
+    }
+
+    // ── [features] ─────────────────────────────────────────
+    if (data.count("features")) {
+        auto& s = data["features"];
+        if (s.count("task_planning"))          cfg.features.task_planning = parse_bool(s["task_planning"], true);
+        if (s.count("self_reflection"))        cfg.features.self_reflection = parse_bool(s["self_reflection"], true);
+        if (s.count("multi_agent"))            cfg.features.multi_agent = parse_bool(s["multi_agent"], false);
+        if (s.count("max_reflection_retries")) cfg.features.max_reflection_retries = std::stoi(s["max_reflection_retries"]);
+    }
+
+    // ── [plugins] ──────────────────────────────────────────
+    if (data.count("plugins")) {
+        auto& s = data["plugins"];
+        if (s.count("directory")) cfg.plugins.directory = s["directory"];
+    }
+
+    // ── [local_tools] ──────────────────────────────────────
+    if (data.count("local_tools")) {
+        auto& s = data["local_tools"];
+        if (s.count("enabled")) cfg.local_tools.enabled = parse_bool(s["enabled"], true);
+    }
+
+    // Print loaded values.
+    std::cout << "[Config] LLM URL: " << cfg.llm.url << std::endl;
+    std::cout << "[Config] Language: " << cfg.agent_.language
+              << (cfg.agent_.prompt_file.empty() ? "" : ", Prompt file: " + cfg.agent_.prompt_file)
+              << std::endl;
+    std::cout << "[Config] Features — task_planning=" << cfg.features.task_planning
+              << ", self_reflection=" << cfg.features.self_reflection
+              << ", multi_agent=" << cfg.features.multi_agent
+              << ", max_reflection_retries=" << cfg.features.max_reflection_retries << std::endl;
+
+    return cfg;
+}
+
+} // namespace agent

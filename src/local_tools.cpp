@@ -1,4 +1,4 @@
-#include "local_tools.h"
+﻿#include "local_tools.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -21,29 +21,57 @@ namespace agent {
 
 const std::map<std::string, std::string>& LocalToolDiscovery::known_tools() {
     static const std::map<std::string, std::string> tools = {
-        // C++ Compilers
+        // ── C++ Compilers ───────────────────────────────────
         {"g++",       "GNU G++ compiler. Compile and link C++ source files."},
         {"clang++",   "Clang C++ compiler (LLVM). Compile and link C++ source files with better diagnostics."},
         {"cl",        "Microsoft Visual C++ compiler (MSVC). Compile C++ on Windows."},
 
-        // Build Systems
+        // ── JavaScript / TypeScript ─────────────────────────
+        {"node",      "Node.js runtime. Execute JavaScript/TypeScript code, run npm scripts."},
+        {"npm",       "Node Package Manager. Install packages, run scripts for JS/TS projects."},
+        {"npx",       "Node package runner. Execute npm packages without global install."},
+        {"tsc",       "TypeScript compiler. Compile TypeScript to JavaScript with type checking."},
+
+        // ── Python ──────────────────────────────────────────
+        {"python3",   "Python 3 interpreter. Run Python scripts and interactive shell."},
+        {"pip3",      "Python package installer (v3). Install Python packages from PyPI."},
+        {"pytest",    "Pytest testing framework. Discover and run Python unit tests."},
+
+        // ── Rust ────────────────────────────────────────────
+        {"cargo",     "Rust package manager and build tool. Build, test, and publish Rust projects."},
+        {"rustc",     "Rust compiler. Compile Rust source files directly."},
+
+        // ── Go ──────────────────────────────────────────────
+        {"go",        "Go programming language toolchain. Build, test, and run Go programs."},
+
+        // ── Java ────────────────────────────────────────────
+        {"javac",     "Java compiler. Compile Java source files to bytecode (.class)."},
+        {"java",      "Java runtime. Execute compiled Java programs."},
+        {"mvn",       "Apache Maven build tool. Build and manage Java projects with dependencies."},
+        {"gradle",    "Gradle build automation. Build Java/Kotlin projects with flexible DSL."},
+
+        // ── Web / Frontend ──────────────────────────────────
+        {"webpack",   "Webpack module bundler. Bundle JavaScript modules for web applications."},
+        {"vite",      "Vite build tool. Fast development server and build tool for modern web apps."},
+
+        // ── Build Systems (cross-language) ──────────────────
         {"cmake",     "CMake build system generator. Configure and generate build files for C++ projects."},
         {"make",      "GNU Make build automation tool. Execute Makefile targets to compile projects."},
         {"ninja",     "Ninja build system. Fast build focused on speed, used by CMake as backend."},
 
-        // Code Quality
+        // ── Code Quality (cross-language) ───────────────────
         {"clang-format", "Clang code formatter. Automatically format C/C++ source code."},
         {"clang-tidy",   "Clang static analysis tool. Check for bugs and style issues in C++ code."},
         {"cppcheck",     "Static analysis tool for C/C++ code. Detects bugs and coding errors."},
 
-        // Version Control
+        // ── Version Control ─────────────────────────────────
         {"git",       "Git version control system. Manage source code history, branches, diffs."},
 
-        // Debuggers
+        // ── Debuggers ───────────────────────────────────────
         {"gdb",       "GNU Debugger. Debug C/C++ programs with breakpoints, stack traces, variable inspection."},
         {"lldb",      "LLVM debugger. Debug programs compiled with Clang/LLVM toolchain."},
 
-        // Package Managers / Other
+        // ── Package Managers / Other ────────────────────────
         {"vcpkg",     "Microsoft C++ package manager. Install and manage C++ libraries."},
         {"conan",     "C/C++ package manager. Manage dependencies for C++ projects."},
     };
@@ -249,9 +277,9 @@ LocalToolInfo LocalToolDiscovery::find_tool(const std::string& name) {
 LocalExecutableTool::LocalExecutableTool(const LocalToolInfo& info) : info_(info) {}
 
 std::string LocalExecutableTool::name() const {
-    // Use tool name with underscores for special chars, e.g. "g++" -> "gpp_compiler"
+    // Sanitize tool name: replace special chars, add _tool suffix.
     std::string n = info_.name;
-    std::replace(n.begin(), n.end(), '+', 'p');  // g++ -> gpp
+    std::replace(n.begin(), n.end(), '+', 'p');   // g++ -> gpp, clang++ -> clangpp
     if (n == "cl") n = "msvc_cl";                 // avoid conflict with common word
     return n + "_tool";
 }
@@ -422,8 +450,8 @@ std::vector<ToolPtr> create_local_tools() {
     }
 
     if (tools.empty()) {
-        std::cout << "[LocalTools] No known C++ tools found in PATH." << std::endl;
-        std::cout << "  Install g++, clang++, cmake, or git to enable these features." << std::endl;
+        std::cout << "[LocalTools] No known dev tools found in PATH." << std::endl;
+        std::cout << "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
     } else {
         std::cout << "[LocalTools] Registered " << tools.size() << " local tool(s)." << std::endl;
     }

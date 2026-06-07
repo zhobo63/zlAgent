@@ -1,6 +1,6 @@
-﻿# ZL Agent - C++ Code Assistant
+﻿# ZL Agent - Multi-Language AI Coding Agent
 
-基于本地 LLM 的 AI Coding Agent，使用 LM Studio 作为推理引擎。具備任務規劃、自我反思糾錯、多 Agent 協作等進階能力。
+基於本地 LLM 的多語言 AI Coding Agent，支援 C++/JS/TS/Python/Rust/Go/Java/HTML/CSS 等語言。使用 LM Studio 作為推理引擎，具備任務規劃、自我反思糾錯、多 Agent 協作等進階能力。
 
 ## 架構
 
@@ -12,18 +12,24 @@
 │   ├── tool.h            # 工具基類 + ToolRegistry
 │   ├── tools.h           # 內建工具工廠函數
 │   ├── plugin_loader.h   # 動態外掛載入器
-│   ├── local_tools.h     # 本地工具自動發現
+│   ├── local_tools.h     # 本地工具自動發現（多語言）
+│   ├── config.h          # INI 配置解析 + Config 結構
+│   ├── system_prompt.h   # 多語言系統提示詞提供者
+│   ├── language_detector.h # 自動語言偵測（副檔名掃描）
 │   ├── task_planner.h    # 🆕 任務規劃（拆解複雜任務為子步驟）
 │   ├── self_reflector.h  # 🆕 自我反思/糾錯（品質審查 + 自動重試）
 │   └── multi_agent.h     # 🆕 多 Agent 協作（Coder / Reviewer / Tester）
 ├── src/                  # 核心實現
+│   ├── config.cpp        # INI 配置解析 + Config 載入
+│   ├── system_prompt.cpp # 多語言系統提示詞實現
+│   ├── language_detector.cpp # 自動語言偵測實現
 │   ├── main.cpp          # 互動式 CLI 入口
 │   ├── agent.cpp         # 推理循環 + Plan→Execute 高級管道
 │   ├── llm_client.cpp    # HTTP Client 實現
 │   ├── tool.cpp          # ToolRegistry 實現
 │   ├── memory.cpp        # 滑動視窗記憶 + summarize
 │   ├── plugin_loader.cpp # DLL/SO 動態載入
-│   ├── local_tools.cpp   # PATH 掃描 + LocalExecutableTool
+│   ├── local_tools.cpp   # PATH 掃描 + LocalExecutableTool（多語言）
 │   ├── task_planner.cpp  # 🆕 LLM-driven 計劃生成 + replan
 │   ├── self_reflector.cpp# 🆕 品質審查 + 反饋重試
 │   └── multi_agent.cpp   # 🆕 SubAgent 路由 + Coder→Reviewer pipeline
@@ -33,6 +39,7 @@
 │   ├── code_search_tool.cpp  # search_code（遞迴 regex 搜尋）
 │   └── fs_tool.cpp           # create_directory / delete_path / copy_path / move_path / find_files / get_file_outline / grep_with_context / run_build / git_status / git_diff / fetch_url
 ├── plugins/              # 外掛目錄（tool_*.dll / tool_*.so）
+├── zlagent.ini           # 全域設定檔
 └── CMakeLists.txt        # 構建配置 (C++17, CMake 3.16+)
 ```
 
@@ -104,6 +111,63 @@ Agent: [Planner] Generating task plan...
 | `git_diff` | unified diff 輸出 |
 | `fetch_url` | 抓取網頁內容轉 Markdown |
 
+## 全域設定（INI）
+
+所有功能開關和全域參數統一由 `zlagent.ini` 控制，無需修改代碼或編譯。
+
+```ini
+; zlagent.ini — ZL Agent Configuration File
+
+[llm]
+url = http://127.0.0.1:1234
+temperature = 0.2
+max_tokens = 4096
+
+[memory]
+max_messages = 50
+
+[agent]
+max_iterations = 10
+; Auto-detect language from source file extensions in current directory.
+auto_detect_language = true
+; Language: multi (default), cpp, js, ts, python, rust, go, java
+language = multi
+; Optional: path to an external system prompt file (.md / .txt). Overrides built-in.
+prompt_file =
+
+; ── Advanced Feature Toggles ───────────────────────────────
+[features]
+task_planning = true
+self_reflection = true
+multi_agent = false
+max_reflection_retries = 2
+
+[plugins]
+directory = plugins
+
+[local_tools]
+enabled = true
+```
+
+| Section | Key | 類型 | 預設值 | 說明 |
+|---------|-----|------|--------|------|
+| `[llm]` | `url` | string | `http://127.0.0.1:1234` | LLM 伺服器位址 |
+| | `temperature` | float | `0.2` | 生成溫度 |
+| | `max_tokens` | int | `4096` | 最大輸出 token 數 |
+| `[memory]` | `max_messages` | int | `50` | 對話記憶容量 |
+| `[agent]` | `max_iterations` | int | `10` | 推理循環最大迭代次數 |
+| | `auto_detect_language` | bool | `true` | 自動偵測工作目錄的程式語言 |
+| | `language` | string | `multi` | 語言模式：multi/cpp/js/ts/python/rust/go/java |
+| | `prompt_file` | string | *(空)* | 外部系統提示詞檔案路徑（覆蓋內建） |
+| `[features]` | `task_planning` | bool | `true` | 任務規劃開關 |
+| | `self_reflection` | bool | `true` | 自我反思/糾錯開關 |
+| | `multi_agent` | bool | `false` | 多 Agent 協作開關 |
+| | `max_reflection_retries` | int | `2` | 反思重試最大次數 |
+| `[plugins]` | `directory` | string | `plugins` | 外掛目錄路徑 |
+| `[local_tools]` | `enabled` | bool | `true` | 本地工具自動發現開關 |
+
+> **註：** 若找不到 `zlagent.ini`，Agent 會使用全部預設值並輸出提示訊息。
+
 ## 進階能力
 
 ### 🆕 任務規劃（Task Planning）
@@ -141,15 +205,24 @@ MultiAgent (協調器)
 Pipeline: Coder → Reviewer → (發現問題) → Coder fix
 ```
 
-### Agent API（高級功能開關）
+### 功能開關
 
-```cpp
-Agent ag;
-ag.set_task_planning(true);       // 任務規劃（預設開啟）
-ag.set_self_reflection(true);     // 自我反思（預設開啟）
-ag.set_multi_agent(false);        // 多 Agent 協作（預設關閉）
-ag.set_max_reflection_retries(2); // 最大反思重試次數
-```
+所有功能開關統一由 `zlagent.ini` 的 `[features]` section 控制：
+
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| `task_planning = true` | ✅ | 任務規劃（拆解複雜任務為子步驟） |
+| `self_reflection = true` | ✅ | 自我反思/糾錯（品質審查 + 自動重試） |
+| `multi_agent = false` | ❌ | 多 Agent 協作（Coder / Reviewer / Tester pipeline） |
+| `max_reflection_retries = 2` | 2 | 反思重試最大次數 |
+
+> **程式化控制：** 也可通過 API 動態調整：
+> ```cpp
+> ag.set_task_planning(true);
+> ag.set_self_reflection(true);
+> ag.set_multi_agent(false);
+> ag.set_max_reflection_retries(2);
+> ```
 
 ## 擴展
 
@@ -203,7 +276,19 @@ Agent 啟動時會自動掃描 `plugins/tool_*.dll`，無需修改主程序代�
 
 ### 方式三：本地工具自動發現
 
-Agent 啟動時自動掃描系統 PATH，偵測已安裝的開發工具（g++, cmake, git, cl.exe 等），並包裝為可調用 Tool。
+Agent 啟動時自動掃描系統 PATH，偵測已安裝的多語言開發工具，並包裝為可調用 Tool。
+
+**支援的工具：**
+
+| 語言/類別 | 工具 |
+|-----------|------|
+| C++ | g++, clang++, cl (MSVC), cmake, make, ninja, clang-format, clang-tidy, cppcheck, gdb, lldb, vcpkg, conan |
+| JavaScript/TypeScript | node, npm, npx, tsc, webpack, vite |
+| Python | python3, pip3, pytest |
+| Rust | cargo, rustc |
+| Go | go |
+| Java | javac, java, mvn, gradle |
+| 通用 | git |
 
 ## 技能系統（Skill System）
 

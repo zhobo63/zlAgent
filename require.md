@@ -2,7 +2,7 @@
 
 ## 1. 專案概述
 
-ZL Agent 是一個本地 AI 代理，採用純 C++17 實現，透過 LM Studio 作為推理引擎。Agent 具備工具調用能力，可自主讀取檔案、編寫程式碼、編譯執行、搜尋程式碼等，完成端到端的開發任務。
+ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透過 LM Studio 作為推理引擎。支援 C++/JS/TS/Python/Rust/Go/Java/HTML/CSS 等多種語言。Agent 具備工具調用能力，可自主讀取檔案、編寫程式碼、編譯執行、搜尋程式碼等，完成端到端的開發任務。
 
 **核心設計目標：**
 - 本地 AI 代理
@@ -14,22 +14,38 @@ ZL Agent 是一個本地 AI 代理，採用純 C++17 實現，透過 LM Studio �
 ## 2. 架構總覽
 
 ```
-┌──────────────────────────────────────────────┐
-│                  main.cpp                     │
-│           (互動式 CLI 入口)                    │
-│                                              │
-│  ┌─────────┐   ┌──────────┐   ┌───────────┐ │
-│  │ Agent   │──▶│ LLM      │◀──│ Memory    │ │
-│  │ (推理循環)│   │ Client   │   │ (對話記憶) │ │
-│  └────┬────┘   └──────────┘   └───────────┘ │
-│       │                                      │
-│  ┌────▼──────────────────────────────────┐   │
-│  │         ToolRegistry                  │   │
-│  │  ┌────────┐ ┌────────┐ ┌──────────┐  │   │
-│  │  │內建工具 │ │外掛工具 │ │本地工具  │  │   │
-│  │  └────────┘ └────────┘ └──────────┘  │   │
-│  └───────────────────────────────────────┘   │
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                      main.cpp                         │
+│                 (互動式 CLI 入口)                       │
+│                                                      │
+│  ┌─────────┐   ┌──────────┐   ┌───────────┐         │
+│  │ Agent   │──▶│ LLM      │◀──│ Memory    │         │
+│  │ (推理循環)│   │ Client   │   │ (對話記憶) │         │
+│  └────┬────┘   └──────────┘   └───────────┘         │
+│       │                                              │
+│  ┌────▼──────────────────────────────────────┐       │
+│  │            ToolRegistry                    │       │
+│  │  ┌────────┐ ┌────────┐ ┌──────────┐      │       │
+│  │  │內建工具 │ │外掛工具 │ │本地工具  │      │       │
+│  │  └────────┘ └────────┘ └──────────┘      │       │
+│  └───────────────────────────────────────────┘       │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │           Advanced Pipeline                   │    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │    │
+│  │  │TaskPlanner│ │SelfReflect│ │MultiAgent   │ │    │
+│  │  │(任務規劃) │ │(自我反思) │ │(多Agent協作) │ │    │
+│  │  └──────────┘ └──────────┘ └──────────────┘ │    │
+│  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │           Configuration                       │    │
+│  │  ┌──────────┐ ┌───────────┐ ┌────────────┐  │    │
+│  │  │INI Parser│ │SystemPrompt│ │LangDetector│  │    │
+│  │  │(zlagent.ini)│(多語言提示詞)│ (自動偵測) │  │    │
+│  │  └──────────┘ └───────────┘ └────────────┘  │    │
+│  └──────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -63,7 +79,7 @@ ZL Agent 是一個本地 AI 代理，採用純 C++17 實現，透過 LM Studio �
 | 推理循環 | 發送對話 → LLM 回傳 → 如有 tool_calls 則執行並回傳結果 → 重複直到無調用或達到最大迭代次數 |
 | 安全限制 | 最大迭代次數 = 10（防止無限循環） |
 | 工具註冊 | `add_tool(ToolPtr)` 動態新增 |
-| 系統提示 | 可配置，預設針對 C++ 程式碼助手場景 |
+| 系統提示 | 可配置 — INI `language`（multi/cpp/js/ts/python/rust/go/java）+ `prompt_file` 外部覆蓋；內建多語言提示詞 |
 
 ### 3.4 Tool System (`tool.h/cpp`)
 
@@ -249,15 +265,72 @@ extern "C" {
 
 **範例外掛：** `examples/custom_tool/` — clang-format 程式碼格式化工具
 
+### 3.6.1 INI 配置系統 (`config.h/cpp`, `zlagent.ini`)
+
+| 項目 | 要求 |
+|------|------|
+| IniParser | 輕量 INI 解析器，支援 `[section] key = value`、註解（`;` / `#`）、空白行 |
+| Config | 結構化配置：LLM URL/參數、Memory 容量、Agent 迭代次數、功能開關、外掛目錄、本地工具開關 |
+| zlagent.ini | 全域設定檔，找不到時使用預設值並輸出提示 |
+
+**INI 配置項：**
+
+| Section | Key | 類型 | 預設值 | 說明 |
+|---------|-----|------|--------|------|
+| `[llm]` | `url` | string | `http://127.0.0.1:1234` | LLM 伺服器位址 |
+| | `temperature` | float | `0.2` | 生成溫度 |
+| | `max_tokens` | int | `4096` | 最大輸出 token 數 |
+| `[memory]` | `max_messages` | int | `50` | 對話記憶容量 |
+| `[agent]` | `max_iterations` | int | `10` | 推理循環最大迭代次數 |
+| | `language` | string | `multi` | 語言模式：multi/cpp/js/ts/python/rust/go/java |
+| | `auto_detect_language` | bool | `true` | 自動偵測工作目錄的程式語言 |
+| | `prompt_file` | string | *(空)* | 外部系統提示詞檔案路徑（覆蓋內建） |
+| `[features]` | `task_planning` | bool | `true` | 任務規劃開關 |
+| | `self_reflection` | bool | `true` | 自我反思/糾錯開關 |
+| | `multi_agent` | bool | `false` | 多 Agent 協作開關 |
+| | `max_reflection_retries` | int | `2` | 反思重試最大次數 |
+| `[plugins]` | `directory` | string | `plugins` | 外掛目錄路徑 |
+| `[local_tools]` | `enabled` | bool | `true` | 本地工具自動發現開關 |
+
+### 3.6.2 多語言系統提示詞 (`system_prompt.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| SystemPromptProvider::get(language) | 根據語言標識返回對應的內建系統提示詞 |
+| 支援語言 | multi（預設）/ cpp / js / ts / python / rust / go / java |
+| 優先級鏈 | `prompt_file` 外部檔案 > 內建語言提示詞 > multi 回退 |
+
+### 3.6.3 自動語言偵測 (`language_detector.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| detect_directory(path) | 遞迴掃描目錄，根據副檔名統計各語言文件數量 |
+| extension_to_language(ext) | 將副檔名映射到語言標識（.cpp→cpp, .js→js, .ts→ts, .py→python, .rs→rust, .go→go, .java→java） |
+| 單一語言 | 只有一種語言 → 返回該語言 |
+| 多語言混合 | 主導語言 >60% → 返回主導語言；否則返回 `multi` |
+| 無源碼文件 | 返回空字串，由 INI 預設值接管 |
+
 ### 3.7 本地工具發現 (`local_tools.h/cpp`)
 
 | 項目 | 要求 |
 |------|------|
-| 功能 | 掃描系統 PATH，自動偵測已安裝的開發工具（g++, cmake, git, cl.exe 等） |
+| 功能 | 掃描系統 PATH，自動偵測已安裝的多語言開發工具（C++/JS/TS/Python/Rust/Go/Java/Web） |
 | LocalToolInfo | name, display_name, path, description, version |
 | resolve_path() | Windows: SearchPathW；Linux: which / PATH 遍歷 |
 | get_version() | 執行 `--version` / `-version` 取得版本字串 |
 | LocalExecutableTool | 將發現的本地工具包裝為 Agent Tool，LLM 可直接調用 |
+
+**已知工具清單（多語言）：**
+
+| 語言/類別 | 工具 |
+|-----------|------|
+| C++ | g++, clang++, cl (MSVC), cmake, make, ninja, clang-format, clang-tidy, cppcheck, gdb, lldb, vcpkg, conan |
+| JavaScript/TypeScript | node, npm, npx, tsc, webpack, vite |
+| Python | python3, pip3, pytest |
+| Rust | cargo, rustc |
+| Go | go |
+| Java | javac, java, mvn, gradle |
+| 通用 | git |
 
 ---
 
@@ -521,7 +594,7 @@ The skill is now available for use.
 
 | 項目 | 要求 |
 |------|------|
-| 啟動流程 | 註冊內建工具 → 載入外掛 → **自動偵測並導入技能** → 發現本地工具 → 進入互動循環 |
+| 啟動流程 | 載入 INI 配置 → **自動偵測語言**（如開啟）→ 設定系統提示詞 → 註冊內建工具 → 載入外掛 → 發現本地工具 → 進入互動循環 |
 | 輸入方式 | stdin 逐行讀取（getline） |
 | 退出命令 | `quit` / `exit` / EOF |
 | 輸出格式 | `Agent: <回應內容>` |
@@ -601,7 +674,10 @@ The skill is now available for use.
 | **路徑複製** | `copy_path` (遞迴複製) | ✅ |
 | **路徑移動/重新命名** | `move_path` (mv/rename) | ✅ |
 | **外掛系統** | 動態載入外部工具 (.dll/.so/.dylib) | ✅ (跨平台: LoadLibrary/dlopen + GetProcAddress/dlsym) |
-| **本地工具發現** | 自動偵測 PATH 中的開發工具 | ✅ |
+| **本地工具發現** | 自動偵測 PATH 中的多語言開發工具（C++/JS/TS/Python/Rust/Go/Java/Web） | ✅ |
+| **自動語言偵測** | 根據工作目錄副檔名自動判斷主要程式語言 | ✅ `language_detector` (遞迴掃描 + >60% 主導規則) |
+| **多語言系統提示詞** | 內建 multi/cpp/js/ts/python/rust/go/java 提示詞，支援外部檔案覆蓋 | ✅ `system_prompt` |
+| **INI 全域配置** | zlagent.ini 控制所有功能開關和參數 | ✅ `config.h/cpp` |
 | **按檔名 glob 搜尋檔案路徑** | `find_files` | ✅ (std::filesystem recursive_directory_iterator) |
 | **取得大檔案的符號摘要（函式/類別列表）** | `get_file_outline` | ✅ (C/C++/Python/JS) |
 | **帶上下文的 regex 搜尋（`-B/-A` 行數）** | `grep_with_context` | ✅ (std::regex + context lines) |
