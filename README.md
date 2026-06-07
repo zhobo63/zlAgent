@@ -14,6 +14,7 @@
 │   ├── plugin_loader.h   # 動態外掛載入器
 │   ├── local_tools.h     # 本地工具自動發現（多語言）
 │   ├── config.h          # INI 配置解析 + Config 結構
+│   ├── safety_guard.h    # 安全防護（危險操作確認/路徑白名單/輸入過濾）
 │   ├── system_prompt.h   # 多語言系統提示詞提供者
 │   ├── language_detector.h # 自動語言偵測（副檔名掃描）
 │   ├── task_planner.h    # 🆕 任務規劃（拆解複雜任務為子步驟）
@@ -21,6 +22,7 @@
 │   └── multi_agent.h     # 🆕 多 Agent 協作（Coder / Reviewer / Tester）
 ├── src/                  # 核心實現
 │   ├── config.cpp        # INI 配置解析 + Config 載入
+│   └── safety_guard.cpp  # 安全防護實現
 │   ├── system_prompt.cpp # 多語言系統提示詞實現
 │   ├── language_detector.cpp # 自動語言偵測實現
 │   ├── main.cpp          # 互動式 CLI 入口
@@ -147,6 +149,13 @@ directory = plugins
 
 [local_tools]
 enabled = true
+
+; ── Safety Settings ────────────────────────────────────────
+[safety]
+dangerous_tool_confirmation = true   ; 危險工具確認（rm -rf/del /f 等需用戶確認）
+path_whitelist =                     ; 允許操作的目錄列表（逗號分隔，空=無限制）
+skill_content_check = true           ; SKILL.md 內容檢查
+input_filter = true                  ; 輸入過濾（防止提示詞注入攻擊）
 ```
 
 | Section | Key | 類型 | 預設值 | 說明 |
@@ -165,6 +174,10 @@ enabled = true
 | | `max_reflection_retries` | int | `2` | 反思重試最大次數 |
 | `[plugins]` | `directory` | string | `plugins` | 外掛目錄路徑 |
 | `[local_tools]` | `enabled` | bool | `true` | 本地工具自動發現開關 |
+| `[safety]` | `dangerous_tool_confirmation` | bool | `true` | 危險工具確認（rm -rf/del /f 等需用戶確認） |
+| | `path_whitelist` | string | *(空)* | 允許操作的目錄列表（逗號分隔，空=無限制） |
+| | `skill_content_check` | bool | `true` | SKILL.md 內容檢查（偵測可疑 shell 命令） |
+| | `input_filter` | bool | `true` | 輸入過濾（防止提示詞注入攻擊） |
 
 > **註：** 若找不到 `zlagent.ini`，Agent 會使用全部預設值並輸出提示訊息。
 

@@ -64,6 +64,14 @@ struct Config {
         bool enabled = true;
     } local_tools;
 
+    // ── Safety ─────────────────────────────────────────────
+    struct Safety {
+        bool dangerous_tool_confirmation = true;  // prompt before destructive ops
+        std::vector<std::string> path_whitelist;   // empty = no restriction
+        bool skill_content_check = true;           // scan SKILL.md for suspicious patterns
+        bool input_filter = true;                  // detect prompt injection in user input
+    } safety;
+
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);
 

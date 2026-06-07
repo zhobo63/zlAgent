@@ -45,6 +45,14 @@ ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透
 │  │  │(zlagent.ini)│(多語言提示詞)│ (自動偵測) │  │    │
 │  │  └──────────┘ └───────────┘ └────────────┘  │    │
 │  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │           SafetyGuard                         │    │
+│  │  ┌───────────┐ ┌──────────┐ ┌────────────┐  │    │
+│  │  │DangerousOp│ │PathWhitelist│ │InputFilter│  │    │
+│  │  │(危險操作確認)│ (路徑白名單) │ (輸入過濾) │  │    │
+│  │  └───────────┘ └──────────┘ └────────────┘  │    │
+│  └──────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -291,6 +299,10 @@ extern "C" {
 | | `max_reflection_retries` | int | `2` | 反思重試最大次數 |
 | `[plugins]` | `directory` | string | `plugins` | 外掛目錄路徑 |
 | `[local_tools]` | `enabled` | bool | `true` | 本地工具自動發現開關 |
+| `[safety]` | `dangerous_tool_confirmation` | bool | `true` | 危險工具確認開關 |
+| | `path_whitelist` | string | *(空)* | 允許的目錄列表（逗號分隔，空=無限制） |
+| | `skill_content_check` | bool | `true` | SKILL.md 內容檢查開關 |
+| | `input_filter` | bool | `true` | 輸入過濾開關 |
 
 ### 3.6.2 多語言系統提示詞 (`system_prompt.h/cpp`)
 
@@ -331,6 +343,30 @@ extern "C" {
 | Go | go |
 | Java | javac, java, mvn, gradle |
 | 通用 | git |
+
+### 3.7 SafetyGuard（安全防護）(`safety_guard.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| **危險工具確認** | `execute_command` 偵測破壞性命令模式（rm -rf、del /f、fork bomb 等），要求用戶輸入 `y` 確認 |
+| **路徑白名單** | INI `[safety] path_whitelist` 設定允許操作的目錄，超出範圍時工具直接拒絕執行 |
+| **SKILL.md 內容檢查** | 掃描技能指令中的可疑模式（rm -rf /、curl\|bash、eval()、fork bomb、chmod 777 等），返回警告列表 |
+| **輸入過濾** | 偵測用戶輸入中的提示詞注入關鍵字（[SYSTEM]、ignore previous instructions、jailbreak 等），拒絕處理 |
+
+**INI 配置項：**
+
+```ini
+[safety]
+dangerous_tool_confirmation = true   ; 危險工具確認開關
+path_whitelist =                     ; 允許的目錄列表（逗號分隔，空=無限制）
+skill_content_check = true           ; SKILL.md 內容檢查開關
+input_filter = true                  ; 輸入過濾開關
+```
+
+**串接點：**
+- `execute_command` → `is_command_dangerous()` + `confirm_dangerous_operation()`
+- `delete_path` / `write_file` / `edit_file` → `is_path_allowed()`
+- CLI 互動循環 → `is_prompt_injection()`
 
 ---
 
@@ -628,10 +664,10 @@ The skill is now available for use.
 | 能力 | 說明 | 優先級 |
 |------|------|:-----:|
 | **最大迭代限制** | 防止無限循環 | ✅ (10次) |
-| **危險工具確認** | `delete_path`、`execute_command`（含 rm/del）等破壞性操作前，要求用戶輸入 `y` 確認 | 🔴 高 |
-| **路徑白名單** | 可配置允許操作的目錄範圍，超出範圍時拒絕執行 | 🟡 中 |
-| **SKILL.md 內容檢查** | 解析技能指令時，偵測可疑 shell 命令模式（如 `rm -rf /`、`curl | bash`）並警告 | 🔴 高 |
-| **輸入過濾** | 對用戶輸入進行基本清洗，防止提示詞注入（如檢測 `[SYSTEM]`、`IGNORE PREVIOUS INSTRUCTIONS` 等關鍵字） | 🟡 中 |
+| **危險工具確認** | `delete_path`、`execute_command`（含 rm/del）等破壞性操作前，要求用戶輸入 `y` 確認 | ✅ `SafetyGuard::confirm_dangerous_operation()` |
+| **路徑白名單** | 可配置允許操作的目錄範圍，超出範圍時拒絕執行 | ✅ `SafetyGuard::is_path_allowed()` + INI `path_whitelist` |
+| **SKILL.md 內容檢查** | 解析技能指令時，偵測可疑 shell 命令模式（如 `rm -rf /`、`curl | bash`）並警告 | ✅ `SafetyGuard::check_skill_content()` |
+| **輸入過濾** | 對用戶輸入進行基本清洗，防止提示詞注入（如檢測 `[SYSTEM]`、`IGNORE PREVIOUS INSTRUCTIONS` 等關鍵字） | ✅ `SafetyGuard::is_prompt_injection()` |
 
 ### 6.2 測試需求
 
@@ -708,10 +744,10 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **最大迭代限制** | 防止無限循環 | ✅ (10次) |
-| **危險工具確認** | `delete_path`、`execute_command`（含 rm/del）等破壞性操作前要求用戶確認 | 🔴 待實作 |
-| **路徑白名單** | 可配置允許操作的目錄範圍，超出範圍時拒絕執行 | 🟡 待實作 |
-| **SKILL.md 內容檢查** | 解析技能指令時偵測可疑 shell 命令模式並警告 | 🔴 待實作 |
-| **輸入過濾** | 防止提示詞注入攻擊（檢測 `[SYSTEM]`、`IGNORE PREVIOUS INSTRUCTIONS` 等） | 🟡 待實作 |
+| **危險工具確認** | `execute_command` 偵測破壞性命令模式，要求用戶輸入 `y` 確認 | ✅ `SafetyGuard::confirm_dangerous_operation()` |
+| **路徑白名單** | INI `[safety] path_whitelist` 設定允許操作的目錄，超出範圍時拒絕執行 | ✅ `SafetyGuard::is_path_allowed()` |
+| **SKILL.md 內容檢查** | 掃描技能指令中的可疑模式（rm -rf /、curl\|bash、eval() 等）並警告 | ✅ `SafetyGuard::check_skill_content()` |
+| **輸入過濾** | 偵測用戶輸入中的提示詞注入關鍵字，拒絕處理 | ✅ `SafetyGuard::is_prompt_injection()` |
 
 ### 7️⃣ 互動介面（溝通）
 | 能力 | 說明 | 你的專案狀態 |

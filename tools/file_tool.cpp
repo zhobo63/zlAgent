@@ -1,4 +1,5 @@
 #include "tool.h"
+#include "safety_guard.h"
 #include "json.hpp"
 #include <fstream>
 #include <sstream>
@@ -72,6 +73,11 @@ public:
 
             if (path.empty()) return "Error: No file path provided.";
 
+            // Safety: path whitelist check.
+            if (!SafetyGuard::is_path_allowed(path)) {
+                return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
+            }
+
             std::ofstream file(path, std::ios::trunc);
             if (!file.is_open()) {
                 return "Error: Cannot create/open file '" + path + "'";
@@ -122,6 +128,11 @@ public:
 
             if (path.empty()) return "Error: No file path provided.";
             if (old_text.empty()) return "Error: No old_text provided.";
+
+            // Safety: path whitelist check.
+            if (!SafetyGuard::is_path_allowed(path)) {
+                return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
+            }
 
             // Read the file
             std::ifstream infile(path);

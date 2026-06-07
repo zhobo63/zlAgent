@@ -1,4 +1,5 @@
 ﻿#include "tool.h"
+#include "safety_guard.h"
 #include "json.hpp"
 #include "httplib.h"
 #include <filesystem>
@@ -171,6 +172,11 @@ public:
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No path provided.";
+
+            // Safety: path whitelist check.
+            if (!SafetyGuard::is_path_allowed(path)) {
+                return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
+            }
 
             // Check existence first
             if (!fs::exists(path)) {

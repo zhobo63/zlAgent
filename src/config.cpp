@@ -122,6 +122,35 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("enabled")) cfg.local_tools.enabled = parse_bool(s["enabled"], true);
     }
 
+    // ── [safety] ───────────────────────────────────────────
+    if (data.count("safety")) {
+        auto& s = data["safety"];
+        if (s.count("dangerous_tool_confirmation")) cfg.safety.dangerous_tool_confirmation = parse_bool(s["dangerous_tool_confirmation"], true);
+        if (s.count("path_whitelist")) {
+            // Comma-separated list of directories.
+            std::string wl_str = s["path_whitelist"];
+            size_t pos = 0;
+            while ((pos = wl_str.find(',', pos)) != std::string::npos) {
+                std::string dir = wl_str.substr(0, pos);
+                // Trim.
+                auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
+                auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
+                ltrim(dir);
+                rtrim(dir);
+                if (!dir.empty()) cfg.safety.path_whitelist.push_back(dir);
+                wl_str = wl_str.substr(pos + 1);
+            }
+            // Last segment.
+            auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
+            auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
+            ltrim(wl_str);
+            rtrim(wl_str);
+            if (!wl_str.empty()) cfg.safety.path_whitelist.push_back(wl_str);
+        }
+        if (s.count("skill_content_check")) cfg.safety.skill_content_check = parse_bool(s["skill_content_check"], true);
+        if (s.count("input_filter"))        cfg.safety.input_filter = parse_bool(s["input_filter"], true);
+    }
+
     // Print loaded values.
     std::cout << "[Config] LLM URL: " << cfg.llm.url << std::endl;
     std::cout << "[Config] Language: " << cfg.agent_.language

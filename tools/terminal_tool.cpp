@@ -1,4 +1,5 @@
 #include "tool.h"
+#include "safety_guard.h"
 #include "json.hpp"
 #include <string>
 
@@ -41,6 +42,14 @@ public:
             std::string cwd = args.value("cwd", "");
 
             if (command.empty()) return "Error: No command provided.";
+
+            // Safety: check for dangerous commands and require confirmation.
+            if (SafetyGuard::is_command_dangerous(command)) {
+                std::string op = "execute_command: " + command;
+                if (!SafetyGuard::confirm_dangerous_operation(op)) {
+                    return "Operation cancelled by user.";
+                }
+            }
 
 #ifdef _WIN32
             std::string full_cmd = "cmd.exe /c \"" + command + "\"";

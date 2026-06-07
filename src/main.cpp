@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include "config.h"
+#include "safety_guard.h"
 #include "language_detector.h"
 #include "system_prompt.h"
 #include "agent.h"
@@ -21,6 +22,19 @@ int main() {
     std::cout << std::endl;
 
     agent::Agent ag(cfg.llm.url);
+
+    // ── Safety setup ───────────────────────────────────────
+    if (!cfg.safety.path_whitelist.empty()) {
+        agent::SafetyGuard::set_path_whitelist(cfg.safety.path_whitelist);
+        std::cout << "[Config] Path whitelist enabled: ";
+        for (size_t i = 0; i < cfg.safety.path_whitelist.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << cfg.safety.path_whitelist[i];
+        }
+        std::cout << std::endl;
+    } else {
+        std::cout << "[Config] Path whitelist: disabled (no restriction)" << std::endl;
+    }
 
     // Determine the effective language: auto-detect > config value.
     std::string effective_language = cfg.agent_.language;
@@ -109,6 +123,12 @@ int main() {
         }
 
         if (input.empty()) continue;
+
+        // Safety: input filter — detect prompt injection attempts.
+        if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
+            std::cerr << "\n⚠️  [Safety] Possible prompt injection detected. Input rejected." << std::endl;
+            continue;
+        }
 
         std::cout << "\nAgent: ";
         ag.run_stream(input, [](const std::string& token) {

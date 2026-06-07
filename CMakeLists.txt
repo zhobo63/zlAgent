@@ -12,6 +12,7 @@ endif()
 # Core source files
 set(CORE_SOURCES
     src/config.cpp
+    src/safety_guard.cpp
     src/system_prompt.cpp
     src/language_detector.cpp
     src/llm_client.cpp
