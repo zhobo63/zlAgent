@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 project(zlagent VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -17,6 +17,9 @@ set(CORE_SOURCES
     src/agent.cpp
     src/plugin_loader.cpp
     src/local_tools.cpp
+    src/task_planner.cpp
+    src/self_reflector.cpp
+    src/multi_agent.cpp
 )
 
 # Tool source files

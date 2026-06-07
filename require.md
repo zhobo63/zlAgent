@@ -1,4 +1,4 @@
-# ZL Agent - 需求規格說明書
+﻿# ZL Agent - 需求規格說明書
 
 ## 1. 專案概述
 
@@ -548,7 +548,7 @@ The skill is now available for use.
 | 第三方依賴 | **httplib.h** (single-header HTTP client) |
 | JSON 解析 | ✅ **nlohmann/json** (single-header, header-only，零執行時依賴) |
 | 跨平台 | ✅ Windows / Linux / macOS（全部實現） |
-| 編碼 | UTF-8 |
+| 編碼 | UTF-8-BOM |
 
 ### 6.1 安全機制需求
 
@@ -624,9 +624,9 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **Tool Calling 循環** | LLM → 調用工具 → 回傳結果 → 再推理 | ✅ (最多10輪) |
-| **任務規劃** | 將複雜任務拆解為子步驟 | ⬜ 未規劃 |
-| **自我反思/糾錯** | 檢查輸出品質，自動修正錯誤 | ⬜ 未規劃 |
-| **多 Agent 協作** | 多個 Agent 分工合作 | ⬜ 未規劃 |
+| **任務規劃** | 將複雜任務拆解為子步驟 | ✅ `task_planner` (LLM-driven JSON plan + replan on failure) |
+| **自我反思/糾錯** | 檢查輸出品質，自動修正錯誤 | ✅ `self_reflector` (quality review → retry with feedback, max 2 retries) |
+| **多 Agent 協作** | 多個 Agent 分工合作 | ✅ `multi_agent` (Coder / Reviewer / Tester pipeline + keyword routing) |
 
 ### 6️⃣ 安全與約束（護欄）
 | 能力 | 說明 | 你的專案狀態 |

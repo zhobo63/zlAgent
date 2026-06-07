@@ -1,36 +1,48 @@
-# ZL Agent - C++ Code Assistant
+﻿# ZL Agent - C++ Code Assistant
 
-基于本地 LLM 的 C++ 代码助手，使用 LM Studio 作为推理引擎。
+基于本地 LLM 的 AI Coding Agent，使用 LM Studio 作为推理引擎。具備任務規劃、自我反思糾錯、多 Agent 協作等進階能力。
 
-## 架构
+## 架構
 
 ```
-├── include/          # 头文件
-│   ├── agent.h       # Agent 核心（推理循环）
-│   ├── llm_client.h  # LM Studio HTTP Client
-│   ├── memory.h      # 对话记忆管理
-│   ├── tool.h        # 工具基类 + 注册表
-│   └── tools.h       # 工具工厂函数
-├── src/              # 核心实现
-│   ├── main.cpp      # 交互式 CLI 入口
-│   ├── agent.cpp     # 推理循环实现
-│   ├── llm_client.cpp# WinHTTP 客户端
-│   ├── tool.cpp      # 注册表实现
-│   └── memory.cpp    # 滑动窗口记忆
-├── tools/            # 工具实现
-│   ├── file_tool.cpp       # 文件读写
-│   ├── terminal_tool.cpp   # 终端命令执行（编译/运行）
-│   └── code_search_tool.cpp# 代码正则搜索
-└── CMakeLists.txt    # 构建配置
+├── include/              # 頭文件
+│   ├── agent.h           # Agent 核心（推理循環 + 高級管道）
+│   ├── llm_client.h      # LM Studio HTTP Client (httplib.h)
+│   ├── memory.h          # 對話記憶管理（滑動視窗 + 摘要壓縮）
+│   ├── tool.h            # 工具基類 + ToolRegistry
+│   ├── tools.h           # 內建工具工廠函數
+│   ├── plugin_loader.h   # 動態外掛載入器
+│   ├── local_tools.h     # 本地工具自動發現
+│   ├── task_planner.h    # 🆕 任務規劃（拆解複雜任務為子步驟）
+│   ├── self_reflector.h  # 🆕 自我反思/糾錯（品質審查 + 自動重試）
+│   └── multi_agent.h     # 🆕 多 Agent 協作（Coder / Reviewer / Tester）
+├── src/                  # 核心實現
+│   ├── main.cpp          # 互動式 CLI 入口
+│   ├── agent.cpp         # 推理循環 + Plan→Execute 高級管道
+│   ├── llm_client.cpp    # HTTP Client 實現
+│   ├── tool.cpp          # ToolRegistry 實現
+│   ├── memory.cpp        # 滑動視窗記憶 + summarize
+│   ├── plugin_loader.cpp # DLL/SO 動態載入
+│   ├── local_tools.cpp   # PATH 掃描 + LocalExecutableTool
+│   ├── task_planner.cpp  # 🆕 LLM-driven 計劃生成 + replan
+│   ├── self_reflector.cpp# 🆕 品質審查 + 反饋重試
+│   └── multi_agent.cpp   # 🆕 SubAgent 路由 + Coder→Reviewer pipeline
+├── tools/                # 工具實現
+│   ├── file_tool.cpp         # read_file / write_file / edit_file
+│   ├── terminal_tool.cpp     # execute_command（跨平台）
+│   ├── code_search_tool.cpp  # search_code（遞迴 regex 搜尋）
+│   └── fs_tool.cpp           # create_directory / delete_path / copy_path / move_path / find_files / get_file_outline / grep_with_context / run_build / git_status / git_diff / fetch_url
+├── plugins/              # 外掛目錄（tool_*.dll / tool_*.so）
+└── CMakeLists.txt        # 構建配置 (C++17, CMake 3.16+)
 ```
 
-## 前置条件
+## 前置條件
 
-- **C++17** 编译器 (MSVC / MinGW)
+- **C++17** 編譯器 (MSVC / MinGW)
 - **CMake 3.16+**
-- **LM Studio** 本地运行，端口 `1234`（默认）
+- **LM Studio** 本地運行，端口 `1234`（預設）
 
-## 构建
+## 構建
 
 ```bash
 cd F:\hg\zlagent
@@ -42,37 +54,110 @@ cmake --build . --config Release
 
 ## 使用
 
-1. 启动 LM Studio，加载模型，开启本地服务器（默认 `http://127.0.0.1:1234`）
-2. 运行 `zlagent.exe`
-3. 输入你的需求，Agent 会自动调用工具完成任务
+1. 啟動 LM Studio，載入模型，開啟本地伺服器（預設 `http://127.0.0.1:1234`）
+2. 運行 `zlagent.exe`
+3. 輸入你的需求，Agent 會自動調用工具完成任務
 
-### 示例对话
+### 示例對話
 
 ```
-You: 帮我写一个 C++ 快速排序并编译测试
+You: 幫我寫一個 C++ 快速排序並編譯測試
 
-Agent: [调用 write_file 创建 quicksort.cpp]
-      [调用 execute_command 执行 g++ 编译]
-      [调用 execute_command 运行程序]
-      已完成。快速排序实现已保存到 quicksort.cpp，编译通过，输出正确。
+Agent: [Planner] Generating task plan...
+       [Planner] Plan for: Write quicksort in C++, compile and test
+         Step 1: Create a C++ file with quicksort implementation
+         Step 2: Compile the code using g++ or clang++
+         Step 3: Run the program to verify output
+
+       [Planner] Executing Step 1: Create a C++ file...
+       [Tool] write_file ...
+       [Reflection] Step passed quality check.
+
+       [Planner] Executing Step 2: Compile the code...
+       [Tool] execute_command g++ -o quicksort quicksort.cpp ...
+       [Reflection] Step passed quality check.
+
+       ## Task Completed
+       **Goal:** Write quicksort in C++, compile and test
+       **Steps executed:** (all completed successfully)
 ```
 
-## 工具列表
+## 工具列表（17 個內建）
 
 | 工具 | 功能 |
 |------|------|
-| `read_file` | 读取文件内容 |
-| `write_file` | 写入/创建文件 |
-| `execute_command` | 执行 shell 命令（编译、运行等） |
-| `search_code` | 正则搜索代码 |
+| `read_file` | 讀取文件內容 |
+| `write_file` | 寫入/創建文件（全量覆蓋） |
+| `edit_file` | 精準編輯（查找 old_text → 替換 new_text） |
+| `list_directory` | 列出目錄中的文件和資料夾 |
+| `execute_command` | 執行 shell 命令（編譯、運行等，跨平台） |
+| `search_code` | 遞迴 regex 搜尋代碼 |
+| `create_directory` | 創建目錄及父目錄（mkdir -p） |
+| `delete_path` | 刪除文件或目錄（rm -rf） |
+| `copy_path` | 複製文件或目錄（遞迴） |
+| `move_path` | 移動或重新命名文件/目錄 |
+| `find_files` | 按 glob 模式搜尋文件路徑 |
+| `get_file_outline` | 提取大文件的符號摘要（C/C++/Python/JS） |
+| `grep_with_context` | regex 搜尋 + 前後 N 行上下文 |
+| `run_build` | 編譯專案並解析錯誤訊息（g++/clang++/MSVC） |
+| `git_status` | 結構化 git status 輸出 |
+| `git_diff` | unified diff 輸出 |
+| `fetch_url` | 抓取網頁內容轉 Markdown |
 
-## 扩展
+## 進階能力
 
-### 方式一：内置工具（编译进主程序）
+### 🆕 任務規劃（Task Planning）
 
-1. 继承 `Tool` 类，实现纯虚函数
-2. 在 `tools.h` 声明工厂函数
-3. 在 `main.cpp` 注册到 Agent
+複雜任務自動拆解為有序子步驟，失敗時自動 replan：
+
+```
+用戶輸入 → LLM 生成計劃 (JSON) → 依序執行每個步驟
+         ↓ (某步驟失敗)
+       replan() → 帶已完成上下文重新規劃
+```
+
+### 🆕 自我反思/糾錯（Self-Reflection）
+
+每步輸出經品質審查，發現問題自動重試：
+
+```
+執行步驟 → SelfReflector.review() → needs_correction?
+    ↓ yes                    ↓ no
+retry with feedback          ✓ 通過
+(max 2 retries)
+```
+
+### 🆕 多 Agent 協作（Multi-Agent）
+
+三個專職子 Agent 分工合作，Coder 任務自動走審查 pipeline：
+
+```
+MultiAgent (協調器)
+├── Coder    → 寫代碼、修改文件
+├── Reviewer → 審查代碼質量
+└── Tester   → 編譯測試、驗證結果
+
+路由策略: keyword-based (review→Reviewer, build/test→Tester, default→Coder)
+Pipeline: Coder → Reviewer → (發現問題) → Coder fix
+```
+
+### Agent API（高級功能開關）
+
+```cpp
+Agent ag;
+ag.set_task_planning(true);       // 任務規劃（預設開啟）
+ag.set_self_reflection(true);     // 自我反思（預設開啟）
+ag.set_multi_agent(false);        // 多 Agent 協作（預設關閉）
+ag.set_max_reflection_retries(2); // 最大反思重試次數
+```
+
+## 擴展
+
+### 方式一：內建工具（編譯進主程序）
+
+1. 繼承 `Tool` 類，實現純虛函數
+2. 在 `tools.h` 聲明工廠函數
+3. 在 `main.cpp` 註冊到 Agent
 
 ```cpp
 class MyNewTool : public Tool { ... };
@@ -80,9 +165,9 @@ ToolPtr create_my_new_tool() { return std::make_shared<MyNewTool>(); }
 // main.cpp: ag.add_tool(agent::create_my_new_tool());
 ```
 
-### 方式二：外部插件（动态 DLL，无需重新编译主程序）
+### 方式二：外部外掛（動態 DLL，無需重新編譯主程序）
 
-只需实现 `tool_sdk.h` 定义的 **4 个 C 接口**，编译为 DLL 放入 `plugins/` 目录即可：
+只需實現 `tool_sdk.h` 定義的 **4 個 C 接口**，編譯為 DLL 放入 `plugins/` 目錄即可：
 
 ```cpp
 #define TOOL_SDK_EXPORTS
@@ -99,7 +184,7 @@ extern "C" {
 }
 ```
 
-**编译 & 部署：**
+**編譯 & 部署：**
 
 ```bash
 # MSVC
@@ -108,10 +193,31 @@ cl /LD /DTOOL_SDK_EXPORTS /I..\include my_tool.cpp /Fe:tool_mytool.dll
 # MinGW
 g++ -shared -O2 -DTOOL_SDK_EXPORTS -I../include my_tool.cpp -o tool_mytool.dll
 
-# 复制到 plugins/ 目录（必须命名为 tool_*.dll）
+# 複製到 plugins/ 目錄（必須命名為 tool_*.dll）
 copy tool_mytool.dll ..\..\plugins\
 ```
 
-Agent 启动时会自动扫描 `plugins/tool_*.dll`，无需修改主程序代码。
+Agent 啟動時會自動掃描 `plugins/tool_*.dll`，無需修改主程序代碼。
 
-**示例插件：** `examples/custom_tool/` — clang-format 代码格式化工具
+**示例外掛：** `examples/custom_tool/` — clang-format 代碼格式化工具
+
+### 方式三：本地工具自動發現
+
+Agent 啟動時自動掃描系統 PATH，偵測已安裝的開發工具（g++, cmake, git, cl.exe 等），並包裝為可調用 Tool。
+
+## 技能系統（Skill System）
+
+技能是比工具更高層次的可複用能力單元：**指令模板 + 工具依賴 + 配置參數**。
+
+- **內建技能**：code_review / project_setup / debug_build / refactor_helper
+- **跨 Agent 相容**：自動偵測 `.claude/skills/`、`.cursor/skills/` 等格式並導入
+- **動態創建**：LLM 可在對話中通過 `create_skill` 工具即時創建新技能
+
+## 技術棧
+
+| 組件 | 選擇 |
+|------|------|
+| HTTP Client | httplib.h (single-header, cross-platform) |
+| JSON 解析 | nlohmann/json (header-only) |
+| C++ 標準 | C++17 |
+| 跨平台 | ✅ Windows / Linux / macOS |
