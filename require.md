@@ -686,7 +686,7 @@ The skill is now available for use.
 |------|------|:---:|
 | **LLM 調用** | 與語言模型互動，取得推理結果 | ✅ `llm_client` (httplib.h) |
 | **串流輸出 (SSE)** | 逐字回傳，降低首字延遲 | ✅ `chat_stream` / `run_stream` |
-| **多模型支援** | 切換不同本地/雲端模型 | ⬜ 未規劃 |
+| **多模型支援** | 動態切換模型，持久化到 INI | ✅ `LLMClient::set_model()` / `list_models()` (GET /v1/models), `/model` 互動式選號 + IniParser::update_key() 寫回 zlagent.ini, `[llm] model = local` config
 
 ### 2️⃣ 記憶系統（上下文）
 | 能力 | 說明 | 你的專案狀態 |
@@ -763,7 +763,7 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **CLI 互動** | 命令列對話 | ✅ `main.cpp` |
-| **對話中使用者命令** | `/help`, `/status`, `/skills`, `/facts`, `/sessions`, `/clear-memory`, `/save-session`, `/search-kb`, `/add-doc`, `/config` | ✅ `CommandDispatcher` + `register_command_handlers()` (10 commands, /-prefix dispatch) |
+| **對話中使用者命令** | `/help`, `/status`, `/skills`, `/model`, `/model-info`, `/facts`, `/sessions`, `/clear-memory`, `/save-session`, `/search-kb`, `/add-doc`, `/config` | ✅ `CommandDispatcher` + `register_command_handlers()` (12 commands, /-prefix dispatch) |
 | **GUI / Web UI** | 圖形化介面 | ⬜ 未規劃 |
 | **Markdown 渲染** | 格式化輸出（程式碼區塊、表格等） | ⬜ 未規劃 |
 | **Auto update** | 偵測新版本/自動更新 | ⬜ 未規劃 |

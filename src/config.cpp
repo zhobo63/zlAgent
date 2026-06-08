@@ -57,6 +57,34 @@ std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const
     return result;
 }
 
+bool IniParser::update_key(const std::string& ini_path,
+                            const std::string& section,
+                            const std::string& key,
+                            const std::string& value) {
+    // Read existing content.
+    auto data = parse(ini_path);
+
+    // Update the key in the section.
+    data[section][key] = value;
+
+    // Write back.
+    std::ofstream out(ini_path);
+    if (!out.is_open()) return false;
+
+    bool first_section = true;
+    for (const auto& [sec, kvs] : data) {
+        if (!first_section) out << "\n";
+        out << "[" << sec << "]\n";
+        for (const auto& [k, v] : kvs) {
+            out << k << " = " << v << "\n";
+        }
+        first_section = false;
+    }
+
+    out.close();
+    return true;
+}
+
 // ── Config helpers ─────────────────────────────────────────
 
 bool Config::parse_bool(const std::string& s, bool default_val) {
@@ -82,6 +110,7 @@ Config Config::load(const std::string& ini_path) {
     if (data.count("llm")) {
         auto& s = data["llm"];
         if (s.count("url"))         cfg.llm.url = s["url"];
+        if (s.count("model"))       cfg.llm.model = s["model"];
         if (s.count("temperature")) cfg.llm.temperature = std::stod(s["temperature"]);
         if (s.count("max_tokens"))  cfg.llm.max_tokens = std::stoi(s["max_tokens"]);
     }

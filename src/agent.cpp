@@ -7,7 +7,8 @@
 
 namespace agent {
 
-Agent::Agent(const std::string& llm_url) : llm_(llm_url) {}
+Agent::Agent(const std::string& llm_url, const std::string& model)
+    : llm_(llm_url, model) {}
 
 void Agent::add_tool(ToolPtr tool) {
     registry_.register_tool(std::move(tool));

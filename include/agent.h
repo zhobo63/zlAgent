@@ -21,7 +21,8 @@ namespace agent {
  */
 class Agent {
 public:
-    explicit Agent(const std::string& llm_url = "http://127.0.0.1:1234");
+    Agent(const std::string& llm_url = "http://127.0.0.1:1234",
+          const std::string& model = "local");
 
     // Register a tool the agent can use
     void add_tool(ToolPtr tool);
@@ -63,6 +64,9 @@ public:
     const Memory& get_memory() const { return memory_; }
     LLMClient& get_llm() { return llm_; }
     const LLMClient& get_llm() const { return llm_; }
+
+    // Switch the LLM model at runtime.
+    void set_llm_model(const std::string& model) { llm_.set_model(model); }
 
 private:
     LLMClient llm_;

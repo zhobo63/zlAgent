@@ -15,6 +15,12 @@ public:
     // Parse an INI file into a map of section -> key-value pairs.
     static std::map<std::string, std::map<std::string, std::string>> parse(const std::string& path);
 
+    // Update or add a single key in the given section. Creates the file if it doesn't exist.
+    static bool update_key(const std::string& ini_path,
+                           const std::string& section,
+                           const std::string& key,
+                           const std::string& value);
+
 private:
     IniParser() = default;
 };
@@ -26,6 +32,7 @@ struct Config {
     // ── LLM ────────────────────────────────────────────────
     struct LLM {
         std::string url       = "http://127.0.0.1:1234";
+        std::string model     = "local";
         double    temperature = 0.2;
         int       max_tokens  = 4096;
     } llm;

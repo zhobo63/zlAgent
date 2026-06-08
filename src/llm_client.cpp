@@ -7,8 +7,8 @@
 namespace agent {
 using json = nlohmann::json;
 
-LLMClient::LLMClient(const std::string& base_url)
-    : base_url_(base_url) {}
+LLMClient::LLMClient(const std::string& base_url, const std::string& model)
+    : base_url_(base_url), model_(model) {}
 
 // ---------------------------------------------------------------------------
 // URL parsing helper
@@ -86,7 +86,7 @@ std::string LLMClient::build_chat_json(
     bool stream) {
 
     json req;
-    req["model"] = "local";
+    req["model"] = model_;
     req["temperature"] = temperature;
     req["max_tokens"] = max_tokens;
     if (stream) req["stream"] = true;
@@ -226,7 +226,8 @@ ChatResponse chat_stream_impl(
     const std::vector<ToolDefinition>& tools,
     double temperature,
     int max_tokens,
-    const LLMClient::UrlParts& url) {
+    const LLMClient::UrlParts& url,
+    const std::string& model) {
 
     ClientType client(url.host, url.port);
     if (!client.is_valid()) return {};
@@ -234,12 +235,17 @@ ChatResponse chat_stream_impl(
     client.set_read_timeout(120, 0);
     client.set_write_timeout(30, 0);
 
-    std::string json_body = LLMClient::build_chat_json(messages, tools, temperature, max_tokens, true);
+    // Build JSON body with the given model.
+    json req;
+    req["model"] = model;
+    req["temperature"] = temperature;
+    req["max_tokens"] = max_tokens;
+    req["stream"] = true;
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
     auto handle = client.open_stream("POST", "/v1/chat/completions",
-        {}, headers, json_body);
+        {}, headers, req.dump());
 
     if (!handle.is_valid()) return {};
 
@@ -303,13 +309,41 @@ ChatResponse LLMClient::chat_stream(
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
     if (url.is_ssl)
-        return chat_stream_impl<httplib::SSLClient>(messages, on_token, tools, temperature, max_tokens, url);
+        return chat_stream_impl<httplib::SSLClient>(messages, on_token, tools, temperature, max_tokens, url, model_);
     else
-        return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url);
+        return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url, model_);
 #else
     if (url.is_ssl) return {};
-    return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url);
+    return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url, model_);
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// list_models — query /v1/models API
+// ---------------------------------------------------------------------------
+
+std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
+    std::vector<ModelInfo> models;
+
+    auto parts = parse_url();
+
+    // Use plain HTTP client — local LM Studio typically runs on HTTP.
+    httplib::Client client(parts.host, parts.port);
+    auto res = client.Get("/v1/models");
+    if (!res || res->status != 200) return models;
+    try {
+        auto j = json::parse(res->body);
+        if (j.contains("data") && j["data"].is_array()) {
+            for (const auto& item : j["data"]) {
+                ModelInfo mi;
+                mi.id = item.value("id", "unknown");
+                mi.owned_by = item.value("owned_by", "-");
+                models.push_back(mi);
+            }
+        }
+    } catch (...) {}
+
+    return models;
 }
 
 } // namespace agent

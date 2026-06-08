@@ -122,6 +122,7 @@ Agent: [Planner] Generating task plan...
 
 [llm]
 url = http://127.0.0.1:1234
+model = local
 temperature = 0.2
 max_tokens = 4096
 
@@ -161,9 +162,15 @@ input_filter = true                  ; 輸入過濾（防止提示詞注入攻�
 | Section | Key | 類型 | 預設值 | 說明 |
 |---------|-----|------|--------|------|
 | `[llm]` | `url` | string | `http://127.0.0.1:1234` | LLM 伺服器位址 |
+| | `model` | string | `local` | 當前使用的模型名稱（可通過 `/model` 動態切換） |
 | | `temperature` | float | `0.2` | 生成溫度 |
 | | `max_tokens` | int | `4096` | 最大輸出 token 數 |
 | `[memory]` | `max_messages` | int | `50` | 對話記憶容量 |
+| | `long_term_enabled` | bool | `false` | 長期記憶開關（會話摘要 + 語義事實） |
+| | `store_dir` | string | `.zlagent_memory` | 長期記憶儲存目錄 |
+| | `max_sessions` | int | `100` | 最多保留的會話數 |
+| | `inject_facts_to_prompt` | bool | `true` | 將語義事實注入系統提示詞 |
+| | `auto_extract_facts` | bool | `true` | 自動從對話中提取結構化事實 |
 | `[agent]` | `max_iterations` | int | `10` | 推理循環最大迭代次數 |
 | | `auto_detect_language` | bool | `true` | 自動偵測工作目錄的程式語言 |
 | | `language` | string | `multi` | 語言模式：multi/cpp/js/ts/python/rust/go/java |
@@ -310,6 +317,74 @@ Agent 啟動時自動掃描系統 PATH，偵測已安裝的多語言開發工具
 - **內建技能**：code_review / project_setup / debug_build / refactor_helper
 - **跨 Agent 相容**：自動偵測 `.claude/skills/`、`.cursor/skills/` 等格式並導入
 - **動態創建**：LLM 可在對話中通過 `create_skill` 工具即時創建新技能
+
+## 向量檢索（RAG）
+
+從知識庫中語意搜尋相關片段，支援 LM Studio API embedding 和 TF-IDF fallback。
+
+```ini
+[rag]
+enabled = true
+embedding_backend = tfidf          ; "lm_studio" or "tfidf"
+store_path = knowledge_base.json   ; empty = in-memory only
+top_k = 5
+min_score = 0.3
+knowledge_dirs = docs/             ; directories to ingest at startup
+```
+
+## 長期記憶（Long-Term Memory）
+
+持久化儲存會話摘要和結構化事實，跨會話回憶。
+
+```ini
+[memory]
+max_messages = 50
+long_term_enabled = true
+store_dir = .zlagent_memory
+max_sessions = 100
+inject_facts_to_prompt = true
+auto_extract_facts = true
+```
+
+## CLI 使用者命令
+
+在對話中輸入 `/` 開頭的命令，即時操作 Agent 狀態：
+
+| 命令 | 說明 |
+|------|------|
+| `/help` | 列出所有可用命令 |
+| `/status` | 顯示工具數、技能數、記憶統計 |
+| `/config` | 提示查看 zlagent.ini |
+| `/skills` | 列出已註冊的技能（含 enabled/disabled） |
+| `/model` | **互動式模型切換** — 編號列表 + CURRENT 標記，輸入號碼切換並寫入 INI |
+| `/model-info` | 顯示當前模型 + 伺服器可用模型清單 |
+| `/facts [prefix]` | 查詢語義事實（支援前綴過濾） |
+| `/sessions [n]` | 列出最近 N 次會話摘要 |
+| `/clear-memory` | 清空當前對話歷史 |
+| `/save-session` | 立即將當前會話保存到長期記憶 |
+| `/search-kb query` | CLI 直接搜尋 RAG 知識庫 |
+| `/add-doc path` | 將檔案/目錄加入 RAG 知識庫 |
+
+## 動態模型切換
+
+在對話中輸入 `/model`，系統會查詢 LM Studio 的 `/v1/models` API，列出所有可用模型並標記當前模型：
+
+```
+--- Available Models ---
+  [1] llama3.2 (owned_by: local)
+  [2] qwen2.5-coder-7b (owned_by: local) <-- CURRENT
+  [3] deepseek-r1-distill-qwen-7b (owned_by: local)
+
+Enter model number to switch, or press Enter to keep current (qwen2.5-coder-7b): 
+```
+
+切換後會自動寫入 `zlagent.ini`，下次啟動時沿用：
+
+```ini
+[llm]
+url = http://127.0.0.1:1234
+model = deepseek-r1-distill-qwen-7b    ; 動態切換後持久化
+```
 
 ## 技術棧
 

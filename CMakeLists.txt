@@ -78,17 +78,20 @@ else()
 endif()
 
 if(OPENSSL_FOUND)
-    add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)
+    add_compile_definitions(CPPHTTLIB_OPENSSL_SUPPORT)
 
-    # Link OpenSSL libraries
+    # Link OpenSSL libraries (static on MSVC, dynamic elsewhere)
     if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
         target_link_libraries(zlagent PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     elseif(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
-        # Fallback: link directly from NuGet package
+        # Static link OpenSSL from NuGet package
+        set(OPENSSL_STATIC_DIR "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
         target_include_directories(zlagent PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
         target_link_libraries(zlagent PRIVATE
-            "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native/libssl.lib"
-            "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native/libcrypto.lib"
+            "${OPENSSL_STATIC_DIR}/libssl_static_v143.lib"
+            "${OPENSSL_STATIC_DIR}/libcrypto_static_v143.lib"
+            # Windows system libraries required by static OpenSSL
+            ws2_32 advapi32 crypt32 user32 gdi32
         )
     endif()
 endif()

@@ -28,7 +28,7 @@ int main() {
     std::cout << "========================================" << std::endl;
     std::cout << std::endl;
 
-    agent::Agent ag(cfg.llm.url);
+    agent::Agent ag(cfg.llm.url, cfg.llm.model);
 
     // ── Safety setup ───────────────────────────────────────
     if (!cfg.safety.path_whitelist.empty()) {

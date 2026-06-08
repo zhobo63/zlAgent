@@ -50,7 +50,8 @@ using TokenCallback = std::function<bool(const std::string& token)>;
  */
 class LLMClient {
 public:
-    explicit LLMClient(const std::string& base_url = "http://127.0.0.1:1234");
+    explicit LLMClient(const std::string& base_url = "http://127.0.0.1:1234",
+                      const std::string& model = "local");
 
     // Non-streaming chat (blocks until full response)
     ChatResponse chat(
@@ -70,7 +71,7 @@ public:
         int max_tokens = 4096);
 
     // Build the JSON request body for chat (shared by both streaming and non-streaming)
-    static std::string build_chat_json(
+    std::string build_chat_json(
         const std::vector<ChatMessage>& messages,
         const std::vector<ToolDefinition>& tools,
         double temperature,
@@ -80,8 +81,22 @@ public:
     // Parse a single SSE "data: ..." line into content/tool_calls
     static void parse_sse_data(const std::string& data_line, ChatResponse& resp);
 
+    // Set the model name for subsequent requests.
+    void set_model(const std::string& model) { model_ = model; }
+
+    // Get the current model name.
+    const std::string& get_model() const { return model_; }
+
+    // Query /v1/models API to list available models. Returns empty on failure.
+    struct ModelInfo {
+        std::string id;
+        std::string owned_by;
+    };
+    std::vector<ModelInfo> list_models() const;
+
 private:
     std::string base_url_;
+    std::string model_;
 
     // Internal HTTP POST via httplib.h (non-streaming)
     std::string post_json(const std::string& path, const std::string& json_body);

@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
+#include "config.h"
 #include "agent.h"
 #include "skill_system.h"
 #include "rag_manager.h"
@@ -24,6 +25,9 @@ void register_command_handlers(
                   << "  /status            Show agent status (tools, skills, memory)\n"
                   << "  /config            Show current configuration summary\n"
                   << "  /skills            List registered skills\n"
+                  << "\nModel commands:\n"
+                  << "  /model             List available models and switch interactively\n"
+                  << "  /model-info        Show current LLM model info\n"
                   << "\nMemory commands:\n"
                   << "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
                   << "  /sessions [n]      List recent session summaries (default: 5)\n"
@@ -104,6 +108,84 @@ void register_command_handlers(
             if (s->description.size() > 80) std::cout << "...";
             std::cout << "\n";
         }
+        std::cout << std::endl;
+    });
+
+    // ── /model — interactive model switcher ────────────────
+    dispatcher.register_command("model", [ag](const auto&) {
+        if (!ag) return;
+
+        auto models = ag->get_llm().list_models();
+        std::string current_model = ag->get_llm().get_model();
+
+        if (models.empty()) {
+            std::cout << "  Unable to query /v1/models API.\n"
+                      << "  Current model: " << current_model << "\n";
+            return;
+        }
+
+        std::cout << "\n--- Available Models ---\n";
+        for (size_t i = 0; i < models.size(); ++i) {
+            const auto& m = models[i];
+            std::string marker = (m.id == current_model) ? " <-- CURRENT" : "";
+            std::cout << "  [" << (i + 1) << "] " << m.id
+                      << " (owned_by: " << m.owned_by << ")"
+                      << marker << "\n";
+        }
+        std::cout << "\nEnter model number to switch, or press Enter to keep current (" 
+                  << current_model << "): ";
+
+        std::string input;
+        if (!std::getline(std::cin, input)) return;
+
+        // Trim.
+        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());
+        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
+
+        if (input.empty()) {
+            std::cout << "  Kept current model: " << current_model << "\n";
+            return;
+        }
+
+        // Parse number.
+        int num = -1;
+        try { num = std::stoi(input); } catch (...) {}
+
+        if (num < 1 || static_cast<size_t>(num) > models.size()) {
+            std::cout << "  Invalid selection. Kept current model: " << current_model << "\n";
+            return;
+        }
+
+        std::string new_model = models[num - 1].id;
+        ag->set_llm_model(new_model);
+
+        // Persist the choice to zlagent.ini.
+        agent::IniParser::update_key("zlagent.ini", "llm", "model", new_model);
+
+        std::cout << "  Model switched to: " << new_model << "\n"
+                  << "  Saved to zlagent.ini [llm] model = " << new_model << "\n";
+    });
+
+    // ── /model-info ────────────────────────────────
+    dispatcher.register_command("model-info", [ag](const auto&) {
+        if (!ag) return;
+
+        std::cout << "\n--- LLM Model Info ---\n"
+                  << "  Current model: " << ag->get_llm().get_model() << "\n";
+
+        // Also show available models from API.
+        auto models = ag->get_llm().list_models();
+        if (!models.empty()) {
+            std::cout << "  Available on server: " << models.size() << " model(s)\n";
+            for (const auto& m : models) {
+                std::string marker = (m.id == ag->get_llm().get_model()) ? " <-- CURRENT" : "";
+                std::cout << "    - " << m.id << " (owned_by: " << m.owned_by << ")"
+                          << marker << "\n";
+            }
+        } else {
+            std::cout << "  Unable to query /v1/models API.\n";
+        }
+
         std::cout << std::endl;
     });
 
