@@ -30,9 +30,14 @@ struct Config {
         int       max_tokens  = 4096;
     } llm;
 
-    // ── Memory ─────────────────────────────────────────────
+    // ── Memory ─────────────────────────────────────
     struct Memory {
         int max_messages = 50;
+        bool long_term_enabled = false;
+        std::string store_dir = ".zlagent_memory";
+        int max_sessions = 100;
+        bool inject_facts_to_prompt = true;
+        bool auto_extract_facts = true;
     } memory;
 
     // ── Agent ──────────────────────────────────────────────

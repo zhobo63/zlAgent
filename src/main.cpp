@@ -10,6 +10,7 @@
 #include "skill_system.h"
 #include "rag_manager.h"
 #include "embedding_provider.h"
+#include "long_term_memory.h"
 #include "agent.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -217,6 +218,48 @@ int main() {
         std::cout << "  Total chunks indexed: " << rag_manager->total_chunks() << std::endl;
     }
 
+    // ── Long-Term Memory ───────────────────────────────
+    std::unique_ptr<agent::LongTermMemory> long_term_memory;
+    if (cfg.memory.long_term_enabled) {
+        std::cout << "\nInitializing long-term memory..." << std::endl;
+
+        agent::LongTermMemory::Config ltm_cfg;
+        ltm_cfg.store_dir = cfg.memory.store_dir;
+        ltm_cfg.max_sessions = cfg.memory.max_sessions;
+        ltm_cfg.inject_facts_to_prompt = cfg.memory.inject_facts_to_prompt;
+        ltm_cfg.auto_extract_facts = cfg.memory.auto_extract_facts;
+
+        long_term_memory = std::make_unique<agent::LongTermMemory>(ltm_cfg);
+
+        // Load from disk.
+        if (long_term_memory->load()) {
+            std::cout << "  Loaded: " << long_term_memory->get_recent_sessions(10).size()
+                      << " sessions, " << long_term_memory->get_facts().size() << " facts" << std::endl;
+        } else {
+            std::cout << "  No existing memory found (starting fresh)" << std::endl;
+        }
+
+        // Inject facts into system prompt.
+        if (ltm_cfg.inject_facts_to_prompt) {
+            std::string context = long_term_memory->build_context_string(5);
+            if (!context.empty()) {
+                system_prompt += "\n\n" + context;
+                ag.set_system_prompt(system_prompt);
+                std::cout << "  Injected semantic facts into system prompt" << std::endl;
+            }
+        }
+
+        // Integrate with RAG if available.
+        if (agent::get_global_rag_manager()) {
+            long_term_memory->integrate_with_rag(agent::get_global_rag_manager());
+            std::cout << "  Session summaries injected into RAG knowledge base" << std::endl;
+        }
+
+        set_global_long_term_memory(long_term_memory.get());
+        ag.add_tool(agent::create_search_memories_tool());
+        ag.add_tool(agent::create_recall_facts_tool());
+    }
+
     std::cout << "\nReady. Type your request (or 'quit' to exit):\n" << std::endl;
 
     // Interactive loop with streaming output.
@@ -226,7 +269,12 @@ int main() {
         if (!std::getline(std::cin, input)) break;
 
         if (input == "quit" || input == "exit") {
-            std::cout << "\nGoodbye!" << std::endl;
+            // Save session to long-term memory before exiting.
+            if (long_term_memory) {
+                std::cout << "\nSaving session to long-term memory..." << std::endl;
+                long_term_memory->save_session(ag.get_memory(), ag.get_llm());
+            }
+            std::cout << "Goodbye!" << std::endl;
             break;
         }
 

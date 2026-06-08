@@ -58,6 +58,12 @@ public:
     // Maximum reflection retries per step (default: 2)
     void set_max_reflection_retries(int n) { max_reflection_retries_ = n; }
 
+    // Accessors for internal components (used by long-term memory integration).
+    Memory& get_memory() { return memory_; }
+    const Memory& get_memory() const { return memory_; }
+    LLMClient& get_llm() { return llm_; }
+    const LLMClient& get_llm() const { return llm_; }
+
 private:
     LLMClient llm_;
     ToolRegistry registry_;

@@ -692,7 +692,7 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **短期記憶** | 滑動視窗保留最近對話 | ✅ `memory` (50條) |
-| **長期記憶** | 持久化儲存，跨會話回憶 | ⬜ 未規劃 |
+| **長期記憶** | 持久化儲存，跨會話回憶 | ✅ `LongTermMemory` — Episodic (session summaries via LLM), Semantic (structured facts auto-extracted), JSON persistence (.zlagent_memory/), RAG integration, search_memories + recall_facts tools |
 | **上下文壓縮/摘要** | 對超長歷史做智慧摘要 | ✅ `Memory::summarize()` |
 | **向量檢索 (RAG)** | 從知識庫中語意搜尋相關片段 | ✅ |
 

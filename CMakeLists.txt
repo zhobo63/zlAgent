@@ -30,6 +30,8 @@ set(CORE_SOURCES
     src/vector_store.cpp
     src/document_chunker.cpp
     src/rag_manager.cpp
+    # Long-term memory
+    src/long_term_memory.cpp
 )
 
 # Tool source files
@@ -40,6 +42,7 @@ set(TOOL_SOURCES
     tools/fs_tool.cpp
     tools/skill_tool.cpp
     tools/rag_tool.cpp
+    tools/memory_tool.cpp
 )
 
 # Include directories

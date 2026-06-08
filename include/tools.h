@@ -32,4 +32,8 @@ ToolPtr create_delete_skill_tool();
 // RAG tool
 ToolPtr create_search_knowledge_base_tool();
 
+// Long-term memory tools
+ToolPtr create_search_memories_tool();
+ToolPtr create_recall_facts_tool();
+
 } // namespace agent

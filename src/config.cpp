@@ -89,7 +89,12 @@ Config Config::load(const std::string& ini_path) {
     // ── [memory] ───────────────────────────────────────────
     if (data.count("memory")) {
         auto& s = data["memory"];
-        if (s.count("max_messages")) cfg.memory.max_messages = std::stoi(s["max_messages"]);
+        if (s.count("max_messages"))         cfg.memory.max_messages = std::stoi(s["max_messages"]);
+        if (s.count("long_term_enabled"))    cfg.memory.long_term_enabled = parse_bool(s["long_term_enabled"], false);
+        if (s.count("store_dir"))            cfg.memory.store_dir = s["store_dir"];
+        if (s.count("max_sessions"))         cfg.memory.max_sessions = std::stoi(s["max_sessions"]);
+        if (s.count("inject_facts_to_prompt")) cfg.memory.inject_facts_to_prompt = parse_bool(s["inject_facts_to_prompt"], true);
+        if (s.count("auto_extract_facts"))   cfg.memory.auto_extract_facts = parse_bool(s["auto_extract_facts"], true);
     }
 
     // ── [agent] ────────────────────────────────────────────
