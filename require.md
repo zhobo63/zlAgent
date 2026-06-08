@@ -694,7 +694,7 @@ The skill is now available for use.
 | **短期記憶** | 滑動視窗保留最近對話 | ✅ `memory` (50條) |
 | **長期記憶** | 持久化儲存，跨會話回憶 | ⬜ 未規劃 |
 | **上下文壓縮/摘要** | 對超長歷史做智慧摘要 | ✅ `Memory::summarize()` |
-| **向量檢索 (RAG)** | 從知識庫中語意搜尋相關片段 | ⬜ 未規劃 |
+| **向量檢索 (RAG)** | 從知識庫中語意搜尋相關片段 | ✅ |
 
 ### 3️⃣ 工具系統（手腳）
 | 能力 | 說明 | 你的專案狀態 |
@@ -731,6 +731,16 @@ The skill is now available for use.
 | **內建技能** | code_review / project_setup / debug_build / refactor_helper | ✅ 已完成 |
 | **Agent 動態創建技能** | LLM 通過 `create_skill` 工具在運行時創建新技能 | ✅ 已完成 |
 | **技能刪除** | 移除已註冊的技能及其 SKILL.md | ✅ 已完成 |
+
+### 4.5️⃣ 向量檢索（RAG）
+| 能力 | 說明 | 你的專案狀態 |
+|------|------|:---:|
+| **Embedding Provider** | LM Studio API + TF-IDF fallback，雙路徑語意嵌入 | ✅ `LLMEmbeddingProvider` (POST /v1/embeddings) + `TfidfEmbeddingProvider` (pure C++ fit/transform/L2-norm) |
+| **Vector Store** | Cosine similarity top-K search + JSON 持久化 | ✅ `VectorStore::search()` partial_sort top-K, `save()/load()` via nlohmann::json |
+| **Document Chunker** | 滑動視窗 + 段落感知切分，支援多檔案類型 | ✅ `DocumentChunker` (chunk_size/overlap/respect_paragraphs), 16+ extensions |
+| **RAG Manager** | 知識庫導入（文件/目錄）+ 檢索整合層 | ✅ `add_document/add_file/add_directory`, TF-IDF auto-fit on first ingestion |
+| **search_knowledge_base Tool** | LLM 可呼叫的工具，從知識庫語意搜尋相關片段 | ✅ `SearchKnowledgeBaseTool` (query + top_k params) |
+| **INI RAG Config** | `[rag]` section：backend / model / store_path / top_k / min_score / knowledge_dirs | ✅ full config parsing in `Config::load()` |
 
 ### 5️⃣ 推理循環（決策）
 | 能力 | 說明 | 你的專案狀態 |

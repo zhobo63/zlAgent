@@ -151,6 +151,36 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("input_filter"))        cfg.safety.input_filter = parse_bool(s["input_filter"], true);
     }
 
+    // ── [rag] ─────────────────────────────────────────────
+    if (data.count("rag")) {
+        auto& s = data["rag"];
+        if (s.count("enabled"))             cfg.rag.enabled = parse_bool(s["enabled"], false);
+        if (s.count("embedding_backend"))   cfg.rag.embedding_backend = s["embedding_backend"];
+        if (s.count("embedding_model"))     cfg.rag.embedding_model = s["embedding_model"];
+        if (s.count("store_path"))          cfg.rag.store_path = s["store_path"];
+        if (s.count("top_k"))               cfg.rag.top_k = std::stoi(s["top_k"]);
+        if (s.count("min_score"))           cfg.rag.min_score = std::stof(s["min_score"]);
+        if (s.count("knowledge_dirs")) {
+            // Comma-separated list of directories.
+            std::string dirs_str = s["knowledge_dirs"];
+            size_t pos = 0;
+            while ((pos = dirs_str.find(',', pos)) != std::string::npos) {
+                std::string dir = dirs_str.substr(0, pos);
+                auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
+                auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
+                ltrim(dir);
+                rtrim(dir);
+                if (!dir.empty()) cfg.rag.knowledge_dirs.push_back(dir);
+                dirs_str = dirs_str.substr(pos + 1);
+            }
+            auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
+            auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
+            ltrim(dirs_str);
+            rtrim(dirs_str);
+            if (!dirs_str.empty()) cfg.rag.knowledge_dirs.push_back(dirs_str);
+        }
+    }
+
     // Print loaded values.
     std::cout << "[Config] LLM URL: " << cfg.llm.url << std::endl;
     std::cout << "[Config] Language: " << cfg.agent_.language

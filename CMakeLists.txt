@@ -25,6 +25,11 @@ set(CORE_SOURCES
     src/task_planner.cpp
     src/self_reflector.cpp
     src/multi_agent.cpp
+    # RAG system
+    src/embedding_provider.cpp
+    src/vector_store.cpp
+    src/document_chunker.cpp
+    src/rag_manager.cpp
 )
 
 # Tool source files
@@ -34,6 +39,7 @@ set(TOOL_SOURCES
     tools/code_search_tool.cpp
     tools/fs_tool.cpp
     tools/skill_tool.cpp
+    tools/rag_tool.cpp
 )
 
 # Include directories
@@ -83,7 +89,7 @@ endif()
 
 # Platform-specific settings
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /wd4566)
 elseif(UNIX AND NOT APPLE)
     # Linux: link dl for dlopen/dlsym
     target_link_libraries(zlagent PRIVATE dl)

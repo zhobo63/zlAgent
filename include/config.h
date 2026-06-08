@@ -64,13 +64,24 @@ struct Config {
         bool enabled = true;
     } local_tools;
 
-    // ── Safety ─────────────────────────────────────────────
+    // ── Safety ───────────────────────────────────────
     struct Safety {
         bool dangerous_tool_confirmation = true;  // prompt before destructive ops
         std::vector<std::string> path_whitelist;   // empty = no restriction
         bool skill_content_check = true;           // scan SKILL.md for suspicious patterns
         bool input_filter = true;                  // detect prompt injection in user input
     } safety;
+
+    // ── RAG (Retrieval Augmented Generation) ─────────
+    struct RAG {
+        bool enabled = false;
+        std::string embedding_backend = "tfidf";   // "lm_studio" or "tfidf"
+        std::string embedding_model = "text-embedding-3-small";
+        std::string store_path = "knowledge_base.json";
+        int top_k = 5;
+        float min_score = 0.3f;
+        std::vector<std::string> knowledge_dirs;   // directories to ingest at startup
+    } rag;
 
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);

@@ -29,4 +29,7 @@ ToolPtr create_fetch_url_tool();
 ToolPtr create_create_skill_tool();
 ToolPtr create_delete_skill_tool();
 
+// RAG tool
+ToolPtr create_search_knowledge_base_tool();
+
 } // namespace agent

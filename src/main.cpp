@@ -2,11 +2,14 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
 #include "config.h"
 #include "safety_guard.h"
 #include "language_detector.h"
 #include "system_prompt.h"
 #include "skill_system.h"
+#include "rag_manager.h"
+#include "embedding_provider.h"
 #include "agent.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -164,6 +167,54 @@ int main() {
         for (auto& tool : local_tools) {
             ag.add_tool(std::move(tool));
         }
+    }
+
+    // ── RAG System ───────────────────────────────────────
+    if (cfg.rag.enabled) {
+        std::cout << "\nInitializing RAG system..." << std::endl;
+
+        agent::EmbeddingProvider* provider = nullptr;
+        if (cfg.rag.embedding_backend == "lm_studio") {
+            provider = new agent::LLMEmbeddingProvider(cfg.llm.url, cfg.rag.embedding_model);
+            std::cout << "  Embedding backend: LM Studio (" << cfg.rag.embedding_model << ")" << std::endl;
+        } else {
+            provider = new agent::TfidfEmbeddingProvider();
+            std::cout << "  Embedding backend: TF-IDF (local)" << std::endl;
+        }
+
+        // Build RAG config.
+        agent::RAGManager::Config rag_cfg;
+        rag_cfg.top_k = cfg.rag.top_k;
+        rag_cfg.min_score = cfg.rag.min_score;
+        rag_cfg.store_path = cfg.rag.store_path;
+
+        std::unique_ptr<agent::RAGManager> rag_manager;
+
+        // Create RAG manager.
+        rag_manager = std::make_unique<agent::RAGManager>(provider, rag_cfg);
+
+        // Load existing store if available.
+        if (!cfg.rag.store_path.empty() && std::filesystem::exists(cfg.rag.store_path)) {
+            std::cout << "  Loading existing knowledge base from: " << cfg.rag.store_path << std::endl;
+            rag_manager->load_store(cfg.rag.store_path);
+        }
+
+        // Ingest knowledge directories at startup.
+        for (const auto& dir : cfg.rag.knowledge_dirs) {
+            std::cout << "  Ingesting: " << dir << std::endl;
+            rag_manager->add_directory(dir);
+        }
+
+        // Save store if persistence is configured.
+        if (!cfg.rag.store_path.empty()) {
+            rag_manager->save(cfg.rag.store_path);
+            std::cout << "  Knowledge base saved to: " << cfg.rag.store_path << std::endl;
+        }
+
+        set_global_rag_manager(rag_manager.get());
+        ag.add_tool(agent::create_search_knowledge_base_tool());
+
+        std::cout << "  Total chunks indexed: " << rag_manager->total_chunks() << std::endl;
     }
 
     std::cout << "\nReady. Type your request (or 'quit' to exit):\n" << std::endl;
