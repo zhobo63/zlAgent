@@ -13,6 +13,14 @@ void Agent::add_tool(ToolPtr tool) {
     registry_.register_tool(std::move(tool));
 }
 
+std::vector<std::string> Agent::get_tool_names() const {
+    std::vector<std::string> names;
+    for (const auto& tool : registry_.get_tools()) {
+        names.push_back(tool->name());
+    }
+    return names;
+}
+
 void Agent::set_system_prompt(const std::string& prompt) {
     memory_.set_system_prompt(prompt);
 }

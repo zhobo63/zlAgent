@@ -15,6 +15,7 @@ set(CORE_SOURCES
     src/safety_guard.cpp
     src/system_prompt.cpp
     src/language_detector.cpp
+    src/skill_system.cpp
     src/llm_client.cpp
     src/tool.cpp
     src/memory.cpp
@@ -32,6 +33,7 @@ set(TOOL_SOURCES
     tools/terminal_tool.cpp
     tools/code_search_tool.cpp
     tools/fs_tool.cpp
+    tools/skill_tool.cpp
 )
 
 # Include directories

@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -6,6 +6,7 @@
 #include "safety_guard.h"
 #include "language_detector.h"
 #include "system_prompt.h"
+#include "skill_system.h"
 #include "agent.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -91,6 +92,62 @@ int main() {
     ag.add_tool(agent::create_git_status_tool());
     ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
+
+    // ── Skill System ───────────────────────────────────────
+    agent::SkillRegistry skill_registry;
+    agent::set_global_skill_registry(&skill_registry);
+
+    std::cout << "\nLoading skills..." << std::endl;
+
+    // 1. Load native skills from zlagent/skills/.
+    auto native_skills = agent::SkillLoader::scan_directory("zlagent/skills", "native");
+    for (auto& skill : native_skills) {
+        skill_registry.register_skill(skill);
+        std::cout << "  ✓ " << skill->name
+                  << " (" << skill->source_path << ")" << std::endl;
+    }
+
+    // 2. Auto-detect and import cross-agent skills.
+    {
+        std::map<std::string, agent::SkillPtr> existing;
+        for (const auto& s : skill_registry.get_skills()) existing[s->name] = s;
+        auto imported_skills = agent::SkillLoader::auto_detect_and_import(".", existing);
+        for (auto& skill : imported_skills) {
+            skill_registry.register_skill(skill);
+            std::cout << "  + " << skill->name
+                      << " [imported from " << skill->source_path << "]" << std::endl;
+        }
+    }
+
+    // 2.5 Validate skill dependencies against available tools.
+    {
+        std::vector<std::string> tool_names = ag.get_tool_names();
+        for (auto& skill : skill_registry.get_skills()) {
+            agent::SkillLoader::validate_dependencies(skill, tool_names);
+        }
+    }
+
+    // 3. Inject skill summary into system prompt so the LLM knows available skills.
+    {
+        std::string skill_summary = skill_registry.build_skill_summary();
+        if (!skill_summary.empty()) {
+            system_prompt += "\n\n" + skill_summary;
+            ag.set_system_prompt(system_prompt);
+        }
+    }
+
+    // 4. Register create_skill and delete_skill tools.
+    ag.add_tool(agent::create_create_skill_tool());
+    ag.add_tool(agent::create_delete_skill_tool());
+
+    // Log summary.
+    int enabled_count = 0, disabled_count = 0;
+    for (const auto& skill : skill_registry.get_skills()) {
+        if (skill->enabled) ++enabled_count; else ++disabled_count;
+    }
+    std::cout << "\n" << enabled_count << " skills loaded"
+              << (disabled_count > 0 ? ", " + std::to_string(disabled_count) + " disabled" : "")
+              << "." << std::endl;
 
     // Load external plugins from configured directory.
     std::cout << "\nLoading external plugins..." << std::endl;

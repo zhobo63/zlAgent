@@ -25,4 +25,8 @@ ToolPtr create_git_status_tool();
 ToolPtr create_git_diff_tool();
 ToolPtr create_fetch_url_tool();
 
+// Skill tools
+ToolPtr create_create_skill_tool();
+ToolPtr create_delete_skill_tool();
+
 } // namespace agent

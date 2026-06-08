@@ -724,13 +724,13 @@ The skill is now available for use.
 ### 4️⃣ 技能系統（複合能力）
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
-| **技能註冊** | SkillRegistry 管理可複用的工作流單元 | ⬜ 待實作 |
-| **技能自動載入** | 掃描 `zlagent/skills/` + 相容目錄，自動解析 SKILL.md | ⬜ 待實作 |
-| **跨 Agent 技能導入** | 自動偵測 `.claude/skills/`、`.cursor/skills/` 等格式並導入 | ⬜ 待實作 |
-| **技能依賴驗證** | 檢查 Tools Required 是否滿足，缺失時標記 disabled | ⬜ 待實作 |
-| **內建技能** | code_review / project_setup / debug_build / refactor_helper | ⬜ 待實作 |
-| **Agent 動態創建技能** | LLM 通過 `create_skill` 工具在運行時創建新技能 | ⬜ 待實作 |
-| **技能刪除** | 移除已註冊的技能及其 SKILL.md | ⬜ 待實作 |
+| **技能註冊** | SkillRegistry 管理可複用的工作流單元 | ✅ 已完成 |
+| **技能自動載入** | 掃描 `zlagent/skills/` + 相容目錄，自動解析 SKILL.md | ✅ 已完成 |
+| **跨 Agent 技能導入** | 自動偵測 `.claude/skills/`、`.cursor/skills/` 等格式並導入 | ✅ 已完成 |
+| **技能依賴驗證** | 檢查 Tools Required 是否滿足，缺失時標記 disabled | ✅ 已完成 |
+| **內建技能** | code_review / project_setup / debug_build / refactor_helper | ✅ 已完成 |
+| **Agent 動態創建技能** | LLM 通過 `create_skill` 工具在運行時創建新技能 | ✅ 已完成 |
+| **技能刪除** | 移除已註冊的技能及其 SKILL.md | ✅ 已完成 |
 
 ### 5️⃣ 推理循環（決策）
 | 能力 | 說明 | 你的專案狀態 |
