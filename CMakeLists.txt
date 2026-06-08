@@ -32,6 +32,9 @@ set(CORE_SOURCES
     src/rag_manager.cpp
     # Long-term memory
     src/long_term_memory.cpp
+    # CLI command system
+    src/command_dispatcher.cpp
+    src/command_handlers.cpp
 )
 
 # Tool source files

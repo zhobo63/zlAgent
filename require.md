@@ -763,6 +763,7 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **CLI 互動** | 命令列對話 | ✅ `main.cpp` |
+| **對話中使用者命令** | `/help`, `/status`, `/skills`, `/facts`, `/sessions`, `/clear-memory`, `/save-session`, `/search-kb`, `/add-doc`, `/config` | ✅ `CommandDispatcher` + `register_command_handlers()` (10 commands, /-prefix dispatch) |
 | **GUI / Web UI** | 圖形化介面 | ⬜ 未規劃 |
 | **Markdown 渲染** | 格式化輸出（程式碼區塊、表格等） | ⬜ 未規劃 |
 | **Auto update** | 偵測新版本/自動更新 | ⬜ 未規劃 |

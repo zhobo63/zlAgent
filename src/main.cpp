@@ -11,6 +11,8 @@
 #include "rag_manager.h"
 #include "embedding_provider.h"
 #include "long_term_memory.h"
+#include "command_dispatcher.h"
+#include "command_handlers.h"
 #include "agent.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -260,7 +262,16 @@ int main() {
         ag.add_tool(agent::create_recall_facts_tool());
     }
 
-    std::cout << "\nReady. Type your request (or 'quit' to exit):\n" << std::endl;
+    // ── CLI Command Dispatcher ───────────────────────
+    agent::CommandDispatcher dispatcher;
+    register_command_handlers(
+        dispatcher,
+        &ag,
+        agent::get_global_skill_registry(),
+        agent::get_global_rag_manager(),
+        agent::get_global_long_term_memory());
+
+    std::cout << "\nReady. Type your request (or '/help' for commands):\n" << std::endl;
 
     // Interactive loop with streaming output.
     std::string input;
@@ -279,6 +290,9 @@ int main() {
         }
 
         if (input.empty()) continue;
+
+        // Dispatch slash-commands before sending to LLM.
+        if (dispatcher.dispatch(input)) continue;
 
         // Safety: input filter — detect prompt injection attempts.
         if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
