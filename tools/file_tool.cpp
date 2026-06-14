@@ -1,4 +1,6 @@
 #include "tool.h"
+#include "encoding.h"
+#include "wide_string.h"
 #include "safety_guard.h"
 #include "json.hpp"
 #include <fstream>
@@ -213,15 +215,15 @@ public:
             int folder_count = 0, file_count = 0;
 
 #ifdef _WIN32
-            WIN32_FIND_DATAA find_data;
-            std::string search_path = path + "*";
-            HANDLE hFind = FindFirstFileA(search_path.c_str(), &find_data);
+            std::wstring wsearch = agent::utf8_to_wide(path + "*");
+            WIN32_FIND_DATAW find_data;
+            HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
             if (hFind == INVALID_HANDLE_VALUE) {
                 return "Error: Cannot access directory '" + path + "'";
             }
 
             do {
-                std::string name = find_data.cFileName;
+                std::string name = agent::wide_to_utf8(find_data.cFileName);
                 if (name == "." || name == "..") continue;
 
                 if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -231,7 +233,7 @@ public:
                     files += "  " + name + "\n";
                     file_count++;
                 }
-            } while (FindNextFileA(hFind, &find_data) != 0);
+            } while (FindNextFileW(hFind, &find_data) != 0);
 
             FindClose(hFind);
 #else

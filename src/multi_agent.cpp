@@ -1,4 +1,5 @@
-﻿#include "multi_agent.h"
+#include "multi_agent.h"
+#include "wide_string.h"
 #include <iostream>
 #include <algorithm>
 
@@ -13,7 +14,7 @@ std::string agent_role_to_string(AgentRole role) {
     return "Unknown";
 }
 
-// ── SubAgent ───────────────────────────────────────────────
+// �w�w SubAgent �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
 
 SubAgent::SubAgent(const std::string& llm_url, AgentRole role, ToolRegistry* shared_registry)
     : llm_(llm_url), registry_(shared_registry), role_(role) {
@@ -34,14 +35,14 @@ std::string SubAgent::system_prompt() {
 - Check for bugs, memory safety issues, style violations, and performance anti-patterns.
 - Use read_file and grep_with_context to inspect the code.
 - Report findings in a structured format: severity (high/medium/low), location, description, suggestion.
-- Be constructive — always suggest how to fix issues.)";
+- Be constructive - always suggest how to fix issues.)";
 
         case AgentRole::Tester:
             return R"(You are a Tester agent. Your job is to build and test code.
 - Use run_build or execute_command to compile the project.
 - If compilation fails, analyze errors and report them clearly with file:line references.
 - Run tests if they exist; report pass/fail status.
-- Do NOT modify source files — only verify.)";
+- Do NOT modify source files - only verify.)";
     }
     return "You are a general-purpose agent.";
 }
@@ -70,7 +71,7 @@ ChatResponse SubAgent::run_loop(const std::string& task) {
 
         for (const auto& tc : resp.tool_calls) {
             std::cout << "  [" << agent_role_to_string(role_) << "] Tool: " << tc.name
-                      << " args: " << tc.arguments.substr(0, 120) << std::endl;
+                       << " args: " << tc.arguments.substr(0, 120) << std::endl;
 
             std::string result = "";
             if (registry_) {
@@ -95,7 +96,7 @@ std::string SubAgent::execute(const std::string& task) {
     return resp.content;
 }
 
-// ── MultiAgent ─────────────────────────────────────────────
+// �w�w MultiAgent �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
 
 MultiAgent::MultiAgent(const std::string& llm_url, ToolRegistry* shared_registry)
     : coder_(std::make_shared<SubAgent>(llm_url, AgentRole::Coder, shared_registry)),
@@ -129,7 +130,7 @@ std::string MultiAgent::execute_task(const std::string& task_description) {
 
     std::cout << "\n[MultiAgent] Routing step to " << agent_role_to_string(role) << " agent." << std::endl;
 
-    // For coding tasks, run a Coder → Reviewer pipeline.
+    // For coding tasks, run a Coder �� Reviewer pipeline.
     if (role == AgentRole::Coder) {
         auto coder_result = coder_->execute(task_description);
 

@@ -1,9 +1,10 @@
-﻿#include "skill_system.h"
+#include "skill_system.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
+#include "wide_string.h"
 
 namespace agent {
 namespace fs = std::filesystem;
@@ -48,7 +49,7 @@ std::string SkillRegistry::build_skill_summary() const {
 }
 
 // ============================================================================
-// SkillLoader — parsing helpers
+// SkillLoader - parsing helpers
 // ============================================================================
 
 std::string SkillLoader::extract_section(const std::string& content, const std::string& heading) {
@@ -140,7 +141,7 @@ std::map<std::string, std::string> SkillLoader::parse_config(const std::string& 
 }
 
 // ============================================================================
-// SkillLoader — main parsing & scanning
+// SkillLoader - main parsing & scanning
 // ============================================================================
 
 SkillPtr SkillLoader::parse_skill_md(const std::string& md_path) {
@@ -215,7 +216,7 @@ bool SkillLoader::validate_dependencies(SkillPtr skill, const std::vector<std::s
         }
         if (!found) {
             std::cout << "  [Skill] " << skill->name
-                      << ": tool '" << tool_name << "' not found, disabled." << std::endl;
+                       << ": tool '" << tool_name << "' not found, disabled." << std::endl;
             skill->enabled = false;
             return false;
         }
@@ -257,10 +258,10 @@ std::vector<SkillPtr> SkillLoader::auto_detect_and_import(
 
             auto skills = scan_directory(dir.path, "imported");
             for (auto& skill : skills) {
-                // Skip duplicates — native takes priority.
+                // Skip duplicates - native takes priority.
                 if (existing_skills.count(skill->name)) {
                     std::cout << "  [Skill] " << skill->name
-                              << dir.label << " — skipped (duplicate)" << std::endl;
+                               << dir.label << " - skipped (duplicate)" << std::endl;
                     continue;
                 }
                 imported.push_back(skill);

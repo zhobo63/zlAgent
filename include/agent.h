@@ -68,6 +68,13 @@ public:
     // Switch the LLM model at runtime.
     void set_llm_model(const std::string& model) { llm_.set_model(model); }
 
+    // Enable lazy local tool discovery (default: true).
+    // When enabled, local tools are discovered on first chat instead of at startup.
+    void set_lazy_local_tools(bool enabled) { lazy_local_tools_ = enabled; }
+
+    // Set whether local tool discovery is allowed (from config).
+    void set_local_tools_enabled(bool enabled) { local_tools_enabled_ = enabled; }
+
 private:
     LLMClient llm_;
     ToolRegistry registry_;
@@ -79,13 +86,25 @@ private:
     bool task_planning_   = true;
     bool self_reflection_ = true;
     bool multi_agent_     = false;
+
+    // Lazy local tool discovery — discover on first chat instead of at startup.
+    bool local_tools_enabled_    = true;
+    bool lazy_local_tools_       = true;
+    bool local_tools_discovered_ = false;
     int  max_reflection_retries_ = 2;
+
+    // Discover and register local tools if lazy discovery is enabled.
+    void discover_local_tools();
 
     // Internal loop: call LLM, execute tools, repeat (non-streaming)
     ChatResponse reasoning_loop();
 
     // Internal streaming loop: same logic but uses chat_stream with token callback
     ChatResponse reasoning_loop_stream(TokenCallback on_token);
+
+    // Heuristic: decide whether the input warrants task planning.
+    // Returns true for complex multi-step requests, false for simple queries.
+    static bool needs_planning(const std::string& input);
 
     // ── Advanced pipeline ───────────────────────────────────
 

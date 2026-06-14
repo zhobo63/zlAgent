@@ -1,8 +1,9 @@
-﻿#include "task_planner.h"
+#include "task_planner.h"
 #include <iostream>
 #include <sstream>
 #include <regex>
 #include "json.hpp"
+#include "wide_string.h"
 
 namespace agent {
 
@@ -10,11 +11,11 @@ TaskPlanner::TaskPlanner(LLMClient& llm) : llm_(llm) {}
 
 std::string TaskPlanner::planning_system_prompt() {
     return R"(You are a task planner. Break the user's request into clear, ordered sub-steps.
-Each step should be specific and actionable — something an agent can execute with tools.
+Each step should be specific and actionable - something an agent can execute with tools.
 
 Respond in JSON format:
 {
-  "overall_goal": "<one-line summary of what we're trying to achieve>",
+  "overall_goa": "<one-line summary of what we're trying to achieve>",
   "steps": [
     {"id": 1, "description": "<concrete action>"},
     {"id": 2, "description": "<next concrete action>"},
@@ -26,8 +27,8 @@ Rules:
 - Steps must be in logical order (dependencies first).
 - Each step should be a single focused action.
 - Include verification steps where appropriate (e.g., compile after writing code).
-- Keep the number of steps reasonable (3–8 for most tasks).
-- Do NOT include tool names or implementation details — just describe what to do.)";
+- Keep the number of steps reasonable (3-8 for most tasks).
+- Do NOT include tool names or implementation details - just describe what to do.)";
 }
 
 Plan TaskPlanner::generate_plan(const std::string& task, const std::vector<ChatMessage>& context) {
@@ -100,8 +101,8 @@ Plan TaskPlanner::parse_plan(const std::string& raw_response) {
     try {
         auto j = nlohmann::json::parse(json_str);
 
-        if (j.contains("overall_goal")) {
-            plan.overall_goal = j["overall_goal"].get<std::string>();
+        if (j.contains("overall_goa")) {
+            plan.overall_goal = j["overall_goa"].get<std::string>();
         }
 
         if (j.contains("steps") && j["steps"].is_array()) {
@@ -113,7 +114,7 @@ Plan TaskPlanner::parse_plan(const std::string& raw_response) {
             }
         }
     } catch (...) {
-        // JSON parse failed — fall back to line-by-line extraction.
+        // JSON parse failed - fall back to line-by-line extraction.
         std::cout << "[Planner] JSON parse failed, falling back to text parsing." << std::endl;
 
         // Look for lines like "1. ..." or "- ...".

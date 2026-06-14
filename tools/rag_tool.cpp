@@ -18,7 +18,7 @@ RAGManager* get_global_rag_manager() {
 }
 
 // -----------------------------------------------------------------------
-// SearchKnowledgeBaseTool — LLM can call this to search the knowledge base
+// SearchKnowledgeBaseTool - LLM can call this to search the knowledge base
 // -----------------------------------------------------------------------
 class SearchKnowledgeBaseTool : public Tool {
 public:

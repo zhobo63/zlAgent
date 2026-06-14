@@ -1,4 +1,5 @@
 ﻿#include "tool.h"
+#include "encoding.h"
 #include "safety_guard.h"
 #include "json.hpp"
 #include "httplib.h"
@@ -65,7 +66,7 @@ static std::string execute_shell_command(const std::string& cmd, const std::stri
 
     WaitForSingleObject(pi.hProcess, 60000); // 60s timeout
 
-    std::string output;
+    std::string raw_output;
     char buffer[4096];
     DWORD bytesRead;
     CloseHandle(hWritePipe);
@@ -74,14 +75,15 @@ static std::string execute_shell_command(const std::string& cmd, const std::stri
         if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
         if (bytesRead == 0) break;
         buffer[bytesRead] = '\0';
-        output += buffer;
+        raw_output += buffer;
     }
 
     CloseHandle(hReadPipe);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    return output;
+    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
+    return agent::big5_to_utf8(raw_output);
 #else
     std::string shell_cmd = cmd;
     if (!cwd.empty()) {
@@ -135,7 +137,7 @@ public:
             }
 
             if (!created) {
-                // Path already exists — check what it is
+                // Path already exists - check what it is
                 if (fs::is_directory(path)) {
                     return "Directory '" + path + "' already exists.";
                 }

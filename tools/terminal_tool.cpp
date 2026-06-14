@@ -1,4 +1,5 @@
 #include "tool.h"
+#include "encoding.h"
 #include "safety_guard.h"
 #include "json.hpp"
 #include <string>
@@ -90,7 +91,7 @@ public:
 
             WaitForSingleObject(pi.hProcess, 30000);
 
-            std::string output;
+            std::string raw_output;
             char buffer[4096];
             DWORD bytesRead;
             CloseHandle(hWritePipe);
@@ -99,14 +100,15 @@ public:
                 if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
                 if (bytesRead == 0) break;
                 buffer[bytesRead] = '\0';
-                output += buffer;
+                raw_output += buffer;
             }
 
             CloseHandle(hReadPipe);
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
 
-            return output;
+            // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
+            return agent::big5_to_utf8(raw_output);
 #else
             // Linux/macOS: popen with timeout via fork+exec
             std::string shell_cmd = command;

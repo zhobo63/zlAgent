@@ -1,6 +1,10 @@
-﻿#include "agent.h"
+#include "agent.h"
+#include <algorithm>
 #include <iostream>
+#include "encoding.h"
+#include "wide_string.h"
 #include <sstream>
+#include "local_tools.h"
 #include "task_planner.h"
 #include "self_reflector.h"
 #include "multi_agent.h"
@@ -26,7 +30,29 @@ void Agent::set_system_prompt(const std::string& prompt) {
     memory_.set_system_prompt(prompt);
 }
 
+// �w�w Lazy local tool discovery �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+
+void Agent::discover_local_tools() {
+    if (!local_tools_enabled_ || !lazy_local_tools_ || local_tools_discovered_) return;
+    local_tools_discovered_ = true;
+
+    std::cout << "\n[Lazy] Discovering local tools..." << std::endl;
+    auto local_tools = create_local_tools();
+    for (auto& tool : local_tools) {
+        registry_.register_tool(std::move(tool));
+    }
+    std::cout << "[Lazy] Local tools discovered and registered." << std::endl;
+}
+
 std::string Agent::run(const std::string& user_input) {
+    // Lazy discover local tools on first chat.
+    discover_local_tools();
+
+    // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
+    if (task_planning_ && needs_planning(user_input)) {
+        return run_planned(user_input, nullptr);
+    }
+
     // Add user message to memory
     ChatMessage user_msg{"user", user_input, ""};
     memory_.add(user_msg);
@@ -40,10 +66,68 @@ std::string Agent::run(const std::string& user_input) {
     return response.content;
 }
 
+// �w�w Planning heuristic �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+
+bool Agent::needs_planning(const std::string& input) {
+    // Convert to lowercase for case-insensitive checks.
+    std::string lower = input;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    // 1. Length threshold �X short inputs are unlikely to need planning.
+    if (input.size() < 30) return false;
+
+    // 2. Multi-step keywords (English + Chinese)
+    static const char* multi_step_keywords[] = {
+        "first", "then", "next", "after that", "finally",
+        "step", "steps", "phase", "phases",
+        "also", "and then", "followed by",
+        "1.", "2.", "3.",
+        // Chinese multi-step indicators
+        u8"����", u8"�M��", u8"����", u8"�̫�", u8"�A", u8"����",
+        u8"�B�J", u8"���q", u8"�Ĥ@�B", u8"�ĤG�B",
+    };
+    for (const auto* kw : multi_step_keywords) {
+        if (lower.find(kw) != std::string::npos)
+            return true;
+    }
+
+    // 3. Action-rich input �X contains multiple action verbs suggesting a pipeline.
+    static const char* action_verbs[] = {
+        "create", "write", "read", "search", "build",
+        "test", "deploy", "refactor", "analyze",
+        "generate", "implement", "fix", "review",
+    };
+    int verb_count = 0;
+    for (const auto* v : action_verbs) {
+        if (lower.find(v) != std::string::npos)
+            ++verb_count;
+    }
+    if (verb_count >= 2)
+        return true;
+
+    // 4. Long input with file/code references �X likely a complex task.
+    static const char* code_refs[] = {
+        "file", "code", "function",
+        u8"�ɮ�", u8"�{���X", u8"�禡", u8"�Ҳ�",
+    };
+    if (input.size() > 100) {
+        for (const auto* ref : code_refs) {
+            if (lower.find(ref) != std::string::npos)
+                return true;
+        }
+    }
+
+    // Default: simple query �X no planning needed.
+    return false;
+}
+
 // Streaming version: tokens are printed as they arrive via on_token callback
 std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token) {
+    // Lazy discover local tools on first chat.
+    discover_local_tools();
+
     // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
-    if (task_planning_) {
+    if (task_planning_ && needs_planning(user_input)) {
         return run_planned(user_input, on_token);
     }
 
@@ -86,7 +170,7 @@ ChatResponse Agent::reasoning_loop() {
         // Execute each tool call and add results to memory
         for (const auto& tc : resp.tool_calls) {
             std::cout << "[Tool] Executing: " << tc.name
-                      << " with args: " << tc.arguments << std::endl;
+                      << " with args: " << utf8_to_big5(tc.arguments) << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -134,7 +218,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         // Execute each tool call and add results to memory (non-streaming for tools)
         for (const auto& tc : resp.tool_calls) {
             std::cout << "\n[Tool] Executing: " << tc.name
-                      << " with args: " << tc.arguments << std::endl;
+                      << " with args: " << utf8_to_big5(tc.arguments) << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -145,8 +229,9 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
             }
             memory_.add(tool_msg);
 
-            std::cout << "[Tool] Result: " << result.substr(0, 200)
-                      << (result.size() > 200 ? "..." : "") << "\n" << std::endl;
+            std::string preview = result.substr(0, 200);
+            if (result.size() > 200) preview += "...";
+            std::cout << "[Tool] Result: " << utf8_to_big5(preview) << "\n" << std::endl;
         }
 
         // Loop again - LLM will see tool results and decide next action
@@ -156,12 +241,12 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
     return ChatResponse{"[Max iterations reached. Stopping.]"};
 }
 
-// ── Advanced Pipeline: Plan → Execute (with Reflection + Multi-Agent) ──
+// �w�w Advanced Pipeline: Plan �� Execute (with Reflection + Multi-Agent) �w�w
 
 std::string Agent::run_planned(const std::string& user_input, TokenCallback on_token) {
     TaskPlanner planner(llm_);
     SelfReflector reflector(llm_);
-    MultiAgent multi_agent("http://127.0.0.1:1234", &registry_);
+    MultiAgent multi_agent(llm_.get_base_url(), &registry_);
 
     // Step 1: Generate a plan
     std::cout << "\n[Planner] Generating task plan..." << std::endl;
@@ -169,7 +254,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
     Plan plan = planner.generate_plan(user_input, context);
 
     if (plan.steps.empty()) {
-        // Planning failed — fall back to normal execution.
+        // Planning failed - fall back to normal execution.
         std::cout << "[Planner] No steps generated, falling back to direct execution." << std::endl;
         ChatMessage user_msg{"user", user_input, ""};
         memory_.add(user_msg);

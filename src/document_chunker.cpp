@@ -92,7 +92,7 @@ std::vector<TextChunk> DocumentChunker::chunk(
         // Advance with overlap.
         size_t next_pos = end - cfg_.overlap;
         if (next_pos >= end) {
-            // Overlap larger than chunk — just move forward by half the chunk.
+            // Overlap larger than chunk - just move forward by half the chunk.
             next_pos = end - cfg_.chunk_size / 2;
         }
         pos = std::max(pos + 1, next_pos); // ensure progress

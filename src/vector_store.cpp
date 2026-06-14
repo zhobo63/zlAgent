@@ -19,22 +19,6 @@ void VectorStore::insert(const std::vector<float>& embedding,
     entries_.push_back({embedding, content, meta});
 }
 
-float VectorStore::cosine_similarity(const std::vector<float>& a,
-                                     const std::vector<float>& b) {
-    if (a.size() != b.size()) return 0.0f;
-    float dot = 0.0f, norm_a = 0.0f, norm_b = 0.0f;
-    for (size_t i = 0; i < a.size(); ++i) {
-        dot += a[i] * b[i];
-        norm_a += a[i] * a[i];
-        norm_b += b[i] * b[i];
-    }
-    float denom = std::sqrt(norm_a) * std::sqrt(norm_b);
-    if (denom < 1e-9f) return 0.0f;
-    // Clamp to [0, 1] — negative values mean opposite direction, treat as no match.
-    float sim = dot / denom;
-    return std::max(0.0f, std::min(1.0f, sim));
-}
-
 std::vector<VectorStore::SearchResult> VectorStore::search(
     const std::vector<float>& query_embedding,
     int top_k,

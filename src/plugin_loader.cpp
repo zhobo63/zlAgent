@@ -1,4 +1,5 @@
 #include "plugin_loader.h"
+#include "wide_string.h"
 #include <algorithm>
 #include <iostream>
 #include <sstream>
@@ -7,6 +8,9 @@
 #include <filesystem>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <direct.h>
@@ -52,7 +56,7 @@ std::string PluginTool::execute(const std::string& json_args) {
     }
 
     // Handle case where plugin wrote more than buffer (truncate safely)
-    int safe_len = static_cast<int>(min(written, sizeof(buffer) - 1));
+    int safe_len = static_cast<int>(std::min(static_cast<size_t>(written), sizeof(buffer) - 1));
     buffer[safe_len] = '\0';
 
     return std::string(buffer, safe_len);
@@ -102,7 +106,7 @@ void* PluginLoader::get_symbol(void* handle, const std::string& name) {
     HMODULE hmod = reinterpret_cast<HMODULE>(handle);
     FARPROC proc = GetProcAddress(hmod, name.c_str());
     if (!proc) {
-        std::cerr << "[Plugin] Symbol '" << name << "' not found in DLL" << std::endl;
+        std::cerr << "[Plugin] Symbol '" << name << "' not found in DL" << std::endl;
     }
     return reinterpret_cast<void*>(proc);
 #else
@@ -125,7 +129,7 @@ ToolPtr PluginLoader::load_plugin(const std::string& dll_path) {
     plugin->get_name_   = reinterpret_cast<PluginTool::GetNameFunc>(get_symbol(handle, "get_tool_name"));
     plugin->get_desc_   = reinterpret_cast<PluginTool::GetDescFunc>(get_symbol(handle, "get_tool_description"));
     plugin->get_schema_ = reinterpret_cast<PluginTool::GetSchemaFunc>(get_symbol(handle, "get_tool_parameters_schema"));
-    plugin->execute_fn_ = reinterpret_cast<PluginTool::ExecuteFunc>(get_symbol(handle, "execute_tool"));
+    plugin->execute_fn_ = reinterpret_cast<PluginTool::ExecuteFunc>(get_symbol(handle, "execute_too"));
 
     // Validate: at minimum we need name and execute
     if (!plugin->get_name_ || !plugin->execute_fn_) {
@@ -135,7 +139,7 @@ ToolPtr PluginLoader::load_plugin(const std::string& dll_path) {
     }
 
     std::cout << "[Plugin] Loaded: " << plugin->name()
-              << " - " << plugin->description() << std::endl;
+               << " - " << plugin->description() << std::endl;
 
     return plugin;
 }
@@ -144,11 +148,12 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
     std::vector<ToolPtr> plugins;
 
 #ifdef _WIN32
-    // Scan directory for tool_*.dll files
+    // Scan directory for tool_*.dll files — use Wide API for Unicode support.
     std::string search_path = plugin_dir + "\\tool_*.dll";
+    std::wstring wsearch = agent::utf8_to_wide(search_path);
 
-    WIN32_FIND_DATAA find_data;
-    HANDLE hFind = FindFirstFileA(search_path.c_str(), &find_data);
+    WIN32_FIND_DATAW find_data;
+    HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
 
     if (hFind == INVALID_HANDLE_VALUE) {
         std::cout << "[Plugin] No plugins found in '" << plugin_dir << "/'" << std::endl;
@@ -156,7 +161,7 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
     }
 
     do {
-        std::string dll_name = find_data.cFileName;
+        std::string dll_name = agent::wide_to_utf8(find_data.cFileName);
         if (dll_name == "." || dll_name == "..") continue;
 
         std::string full_path = plugin_dir + "\\" + dll_name;
@@ -165,7 +170,7 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
         if (tool) {
             plugins.push_back(std::move(tool));
         }
-    } while (FindNextFileA(hFind, &find_data));
+    } while (FindNextFileW(hFind, &find_data));
 
     FindClose(hFind);
 #else
@@ -203,7 +208,7 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
 #endif
 
     if (!plugins.empty()) {
-        std::cout << "[Plugin] " << plugins.size() << " plugin(s) loaded successfully." << std::endl;
+        std::cout << "[Plugin] " << std::to_string(plugins.size()) << " plugin(s) loaded successfully." << std::endl;
     }
 
     return plugins;

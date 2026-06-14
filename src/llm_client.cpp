@@ -1,6 +1,8 @@
 ﻿#include "llm_client.h"
+#include "encoding.h"
 #include "httplib.h"
 #include "json.hpp"
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 
@@ -40,7 +42,7 @@ LLMClient::UrlParts LLMClient::parse_url() const {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Non-streaming POST — template to handle both Client and SSLClient
+// Non-streaming POST - template to handle both Client and SSLClient
 // ---------------------------------------------------------------------------
 
 template<typename ClientType>
@@ -134,8 +136,11 @@ std::string LLMClient::build_chat_json(
 void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp) {
     if (data_line == "[DONE]") return;
 
+    // Sanitize: replace invalid UTF-8 bytes so json::parse() does not throw.
+    std::string sanitized = agent::sanitize_utf8(data_line);
+
     try {
-        json data = json::parse(data_line);
+        json data = json::parse(sanitized);
 
         // Extract choices[0].delta.content
         if (data.contains("choices") && !data["choices"].empty()) {
@@ -149,21 +154,40 @@ void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp)
                     resp.content += content;
                 }
 
-                // Tool calls in the stream chunk
+                // Tool calls in the stream chunk — merge into existing calls by id
                 if (delta.contains("tool_calls")) {
                     resp.has_tool_calls = true;
                     for (auto& tc : delta["tool_calls"]) {
-                        ChatResponse::ToolCall call;
+                        std::string call_id;
                         if (tc.contains("id") && !tc["id"].is_null())
-                            call.id = tc["id"].get<std::string>();
-                        if (tc.contains("function")) {
-                            auto& func = tc["function"];
-                            if (func.contains("name"))
-                                call.name = func["name"].get<std::string>();
-                            if (func.contains("arguments") && !func["arguments"].is_null())
-                                call.arguments += func["arguments"].get<std::string>();
+                            call_id = tc["id"].get<std::string>();
+
+                        // Find existing tool call with the same id, or create new one.
+                        auto it = std::find_if(resp.tool_calls.begin(), resp.tool_calls.end(),
+                            [&call_id](const ChatResponse::ToolCall& c) { return c.id == call_id; });
+
+                        if (it != resp.tool_calls.end()) {
+                            // Merge: append arguments to the existing call.
+                            if (tc.contains("function")) {
+                                auto& func = tc["function"];
+                                if (func.contains("name") && it->name.empty())
+                                    it->name = func["name"].get<std::string>();
+                                if (func.contains("arguments") && !func["arguments"].is_null())
+                                    it->arguments += func["arguments"].get<std::string>();
+                            }
+                        } else {
+                            // New tool call — build from scratch.
+                            ChatResponse::ToolCall call;
+                            call.id = call_id;
+                            if (tc.contains("function")) {
+                                auto& func = tc["function"];
+                                if (func.contains("name"))
+                                    call.name = func["name"].get<std::string>();
+                                if (func.contains("arguments") && !func["arguments"].is_null())
+                                    call.arguments = func["arguments"].get<std::string>();
+                            }
+                            resp.tool_calls.push_back(call);
                         }
-                        resp.tool_calls.push_back(call);
                     }
                 }
             }
@@ -216,7 +240,7 @@ ChatResponse LLMClient::chat(
 }
 
 // ---------------------------------------------------------------------------
-// Streaming chat (SSE) — template to handle both Client and SSLClient
+// Streaming chat (SSE) - template to handle both Client and SSLClient
 // ---------------------------------------------------------------------------
 
 template<typename ClientType>
@@ -235,12 +259,44 @@ ChatResponse chat_stream_impl(
     client.set_read_timeout(120, 0);
     client.set_write_timeout(30, 0);
 
-    // Build JSON body with the given model.
+    // Build JSON body — include messages and tools (was missing before).
     json req;
     req["model"] = model;
     req["temperature"] = temperature;
     req["max_tokens"] = max_tokens;
     req["stream"] = true;
+
+    // Messages array
+    json messages_arr = json::array();
+    for (const auto& m : messages) {
+        json msg;
+        msg["role"] = m.role;
+        msg["content"] = m.content;
+        if (!m.name.empty()) msg["name"] = m.name;
+        messages_arr.push_back(msg);
+    }
+    req["messages"] = messages_arr;
+
+    // Tools array (if any)
+    if (!tools.empty()) {
+        json tools_arr = json::array();
+        for (const auto& t : tools) {
+            json tool_def;
+            tool_def["type"] = "function";
+            json func;
+            func["name"] = t.name;
+            func["description"] = t.description;
+            try {
+                func["parameters"] = json::parse(t.parameters_schema);
+            } catch (...) {
+                func["parameters"] = json::object();
+            }
+            tool_def["function"] = func;
+            tools_arr.push_back(tool_def);
+        }
+        req["tools"] = tools_arr;
+        req["tool_choice"] = "auto";
+    }
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
@@ -273,8 +329,9 @@ ChatResponse chat_stream_impl(
                 LLMClient::parse_sse_data(data_payload, resp);
 
                 // Call the token callback for content tokens
+                std::string sanitized_token = agent::sanitize_utf8(data_payload);
                 try {
-                    json data = json::parse(data_payload);
+                    json data = json::parse(sanitized_token);
                     if (data.contains("choices") && !data["choices"].empty()) {
                         auto& choice = data["choices"][0];
                         if (choice.contains("delta")) {
@@ -319,7 +376,7 @@ ChatResponse LLMClient::chat_stream(
 }
 
 // ---------------------------------------------------------------------------
-// list_models — query /v1/models API
+// list_models - query /v1/models API
 // ---------------------------------------------------------------------------
 
 std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
@@ -327,7 +384,7 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
 
     auto parts = parse_url();
 
-    // Use plain HTTP client — local LM Studio typically runs on HTTP.
+    // Use plain HTTP client - local LM Studio typically runs on HTTP.
     httplib::Client client(parts.host, parts.port);
     auto res = client.Get("/v1/models");
     if (!res || res->status != 200) return models;

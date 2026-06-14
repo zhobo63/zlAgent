@@ -1,4 +1,5 @@
-﻿#include "config.h"
+#include "config.h"
+#include "wide_string.h"
 #include <fstream>
 #include <iostream>
 #include <algorithm>
@@ -6,7 +7,7 @@
 
 namespace agent {
 
-// ── IniParser ──────────────────────────────────────────────
+// �w�w IniParser �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
 
 std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const std::string& path) {
     std::map<std::string, std::map<std::string, std::string>> result;
@@ -85,7 +86,7 @@ bool IniParser::update_key(const std::string& ini_path,
     return true;
 }
 
-// ── Config helpers ─────────────────────────────────────────
+// �w�w Config helpers �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
 
 bool Config::parse_bool(const std::string& s, bool default_val) {
     std::string lower = s;
@@ -106,16 +107,16 @@ Config Config::load(const std::string& ini_path) {
 
     std::cout << "[Config] Loaded from: " << ini_path << std::endl;
 
-    // ── [llm] ──────────────────────────────────────────────
+    // �w�w [llm] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("llm")) {
         auto& s = data["llm"];
-        if (s.count("url"))         cfg.llm.url = s["url"];
-        if (s.count("model"))       cfg.llm.model = s["model"];
+        if (s.count("ur"))         cfg.llm.url = s["ur"];
+        if (s.count("mode"))       cfg.llm.model = s["mode"];
         if (s.count("temperature")) cfg.llm.temperature = std::stod(s["temperature"]);
         if (s.count("max_tokens"))  cfg.llm.max_tokens = std::stoi(s["max_tokens"]);
     }
 
-    // ── [memory] ───────────────────────────────────────────
+    // �w�w [memory] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("memory")) {
         auto& s = data["memory"];
         if (s.count("max_messages"))         cfg.memory.max_messages = std::stoi(s["max_messages"]);
@@ -126,7 +127,7 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("auto_extract_facts"))   cfg.memory.auto_extract_facts = parse_bool(s["auto_extract_facts"], true);
     }
 
-    // ── [agent] ────────────────────────────────────────────
+    // �w�w [agent] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("agent")) {
         auto& s = data["agent"];
         if (s.count("max_iterations")) cfg.agent_.max_iterations = std::stoi(s["max_iterations"]);
@@ -135,7 +136,7 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("prompt_file"))          cfg.agent_.prompt_file = s["prompt_file"];
     }
 
-    // ── [features] ─────────────────────────────────────────
+    // �w�w [features] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("features")) {
         auto& s = data["features"];
         if (s.count("task_planning"))          cfg.features.task_planning = parse_bool(s["task_planning"], true);
@@ -144,19 +145,19 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("max_reflection_retries")) cfg.features.max_reflection_retries = std::stoi(s["max_reflection_retries"]);
     }
 
-    // ── [plugins] ──────────────────────────────────────────
+    // �w�w [plugins] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("plugins")) {
         auto& s = data["plugins"];
         if (s.count("directory")) cfg.plugins.directory = s["directory"];
     }
 
-    // ── [local_tools] ──────────────────────────────────────
+    // �w�w [local_tools] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("local_tools")) {
         auto& s = data["local_tools"];
         if (s.count("enabled")) cfg.local_tools.enabled = parse_bool(s["enabled"], true);
     }
 
-    // ── [safety] ───────────────────────────────────────────
+    // �w�w [safety] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("safety")) {
         auto& s = data["safety"];
         if (s.count("dangerous_tool_confirmation")) cfg.safety.dangerous_tool_confirmation = parse_bool(s["dangerous_tool_confirmation"], true);
@@ -185,12 +186,12 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("input_filter"))        cfg.safety.input_filter = parse_bool(s["input_filter"], true);
     }
 
-    // ── [rag] ─────────────────────────────────────────────
+    // �w�w [rag] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("rag")) {
         auto& s = data["rag"];
         if (s.count("enabled"))             cfg.rag.enabled = parse_bool(s["enabled"], false);
         if (s.count("embedding_backend"))   cfg.rag.embedding_backend = s["embedding_backend"];
-        if (s.count("embedding_model"))     cfg.rag.embedding_model = s["embedding_model"];
+        if (s.count("embedding_mode"))     cfg.rag.embedding_model = s["embedding_mode"];
         if (s.count("store_path"))          cfg.rag.store_path = s["store_path"];
         if (s.count("top_k"))               cfg.rag.top_k = std::stoi(s["top_k"]);
         if (s.count("min_score"))           cfg.rag.min_score = std::stof(s["min_score"]);
@@ -220,10 +221,10 @@ Config Config::load(const std::string& ini_path) {
     std::cout << "[Config] Language: " << cfg.agent_.language
               << (cfg.agent_.prompt_file.empty() ? "" : ", Prompt file: " + cfg.agent_.prompt_file)
               << std::endl;
-    std::cout << "[Config] Features — task_planning=" << cfg.features.task_planning
-              << ", self_reflection=" << cfg.features.self_reflection
-              << ", multi_agent=" << cfg.features.multi_agent
-              << ", max_reflection_retries=" << cfg.features.max_reflection_retries << std::endl;
+    std::cout << "[Config] Features - task_planning=" << std::to_string(cfg.features.task_planning)
+              << ", self_reflection=" << std::to_string(cfg.features.self_reflection)
+              << ", multi_agent=" << std::to_string(cfg.features.multi_agent)
+              << ", max_reflection_retries=" << std::to_string(cfg.features.max_reflection_retries) << std::endl;
 
     return cfg;
 }

@@ -22,7 +22,7 @@ Check for:
 - Quality: Is the code clean, well-structured, and free of obvious bugs?
 - Consistency: Are there contradictions or half-done changes?
 
-Be strict but fair. Only flag real issues — don't nitpick style unless it causes confusion.)";
+Be strict but fair. Only flag real issues - don't nitpick style unless it causes confusion.)";
 }
 
 ReflectionResult SelfReflector::review(const std::string& task_description,
@@ -80,7 +80,7 @@ ReflectionResult SelfReflector::parse_reflection(const std::string& raw_response
             }
         }
     } else {
-        // No JSON — treat the whole response as feedback.
+        // No JSON - treat the whole response as feedback.
         if (!raw_response.empty()) {
             result.needs_correction = true;
             result.feedback = raw_response.substr(0, std::min(raw_response.size(), static_cast<size_t>(500)));

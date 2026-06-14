@@ -106,5 +106,11 @@ elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
 
+# Tests (optional - enable with -DBUILD_TESTING=ON)
+option(BUILD_TESTING "Build unit tests" OFF)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 # Install target
 install(TARGETS zlagent DESTINATION bin)

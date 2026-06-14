@@ -1,4 +1,4 @@
-﻿#include "command_handlers.h"
+#include "command_handlers.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -103,7 +103,7 @@ void register_command_handlers(
         std::cout << "\n--- Registered Skills ---\n";
         for (const auto& s : skills) {
             std::string status = s->enabled ? "[OK]" : "[DISABLED]";
-            std::cout << "  " << status << " **" << s->name << "** — "
+            std::cout << "  " << status << " **" << s->name << "** - "
                       << s->description.substr(0, 80);
             if (s->description.size() > 80) std::cout << "...";
             std::cout << "\n";
@@ -111,7 +111,7 @@ void register_command_handlers(
         std::cout << std::endl;
     });
 
-    // ── /model — interactive model switcher ────────────────
+    // ── /model - interactive model switcher ────────────────
     dispatcher.register_command("model", [ag](const auto&) {
         if (!ag) return;
 

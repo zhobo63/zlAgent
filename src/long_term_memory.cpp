@@ -143,7 +143,7 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
             }
         }
     } catch (...) {
-        // JSON parse failed — no facts extracted.
+        // JSON parse failed - no facts extracted.
     }
 
     return facts;
@@ -341,7 +341,7 @@ std::string LongTermMemory::build_context_string(int recent_n) const {
             // Extract date from timestamp.
             std::string date = s.timestamp.substr(0, 10);
             oss << (i + 1) << ". [" << date << "] **" << s.topic
-                << "** — " << s.summary.substr(0, 200) << "\n";
+                << "** - " << s.summary.substr(0, 200) << "\n";
         }
     }
 

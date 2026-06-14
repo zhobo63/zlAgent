@@ -1,4 +1,11 @@
-﻿#include <iostream>
+#include <iostream>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -9,6 +16,7 @@
 #include "system_prompt.h"
 #include "skill_system.h"
 #include "rag_manager.h"
+#include "encoding.h"
 #include "embedding_provider.h"
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
@@ -17,8 +25,13 @@
 #include "tools.h"
 #include "plugin_loader.h"
 #include "local_tools.h"
+#include "wide_string.h"
 
 int main() {
+#ifdef _WIN32
+    // Set console output to UTF-8 so emoji and all Unicode display correctly.
+    SetConsoleOutputCP(65001);
+#endif
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
 
@@ -30,7 +43,7 @@ int main() {
 
     agent::Agent ag(cfg.llm.url, cfg.llm.model);
 
-    // ── Safety setup ───────────────────────────────────────
+    // �w�w Safety setup �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (!cfg.safety.path_whitelist.empty()) {
         agent::SafetyGuard::set_path_whitelist(cfg.safety.path_whitelist);
         std::cout << "[Config] Path whitelist enabled: ";
@@ -78,6 +91,7 @@ int main() {
     ag.set_self_reflection(cfg.features.self_reflection);
     ag.set_multi_agent(cfg.features.multi_agent);
     ag.set_max_reflection_retries(cfg.features.max_reflection_retries);
+    ag.set_local_tools_enabled(cfg.local_tools.enabled);
 
     // Register built-in tools
     std::cout << "Registering built-in tools..." << std::endl;
@@ -99,7 +113,7 @@ int main() {
     ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
 
-    // ── Skill System ───────────────────────────────────────
+    // �w�w Skill System �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     agent::SkillRegistry skill_registry;
     agent::set_global_skill_registry(&skill_registry);
 
@@ -109,7 +123,7 @@ int main() {
     auto native_skills = agent::SkillLoader::scan_directory("zlagent/skills", "native");
     for (auto& skill : native_skills) {
         skill_registry.register_skill(skill);
-        std::cout << "  ✓ " << skill->name
+        std::cout << "  \u2713 " << skill->name
                   << " (" << skill->source_path << ")" << std::endl;
     }
 
@@ -163,16 +177,9 @@ int main() {
         ag.add_tool(std::move(plugin));
     }
 
-    // Discover and register local tools if enabled.
-    if (cfg.local_tools.enabled) {
-        std::cout << "\nDiscovering local tools..." << std::endl;
-        auto local_tools = agent::create_local_tools();
-        for (auto& tool : local_tools) {
-            ag.add_tool(std::move(tool));
-        }
-    }
+    // Local tools are discovered lazily on first chat �X no startup delay.
 
-    // ── RAG System ───────────────────────────────────────
+    // �w�w RAG System �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (cfg.rag.enabled) {
         std::cout << "\nInitializing RAG system..." << std::endl;
 
@@ -220,7 +227,7 @@ int main() {
         std::cout << "  Total chunks indexed: " << rag_manager->total_chunks() << std::endl;
     }
 
-    // ── Long-Term Memory ───────────────────────────────
+    // �w�w Long-Term Memory �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     std::unique_ptr<agent::LongTermMemory> long_term_memory;
     if (cfg.memory.long_term_enabled) {
         std::cout << "\nInitializing long-term memory..." << std::endl;
@@ -262,7 +269,7 @@ int main() {
         ag.add_tool(agent::create_recall_facts_tool());
     }
 
-    // ── CLI Command Dispatcher ───────────────────────
+    // �w�w CLI Command Dispatcher �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     agent::CommandDispatcher dispatcher;
     register_command_handlers(
         dispatcher,
@@ -294,14 +301,17 @@ int main() {
         // Dispatch slash-commands before sending to LLM.
         if (dispatcher.dispatch(input)) continue;
 
-        // Safety: input filter — detect prompt injection attempts.
+        // Safety: input filter - detect prompt injection attempts.
         if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
-            std::cerr << "\n⚠️  [Safety] Possible prompt injection detected. Input rejected." << std::endl;
+            std::cerr << u8"\n!  [Safety] Possible prompt injection detected. Input rejected." << std::endl;
             continue;
         }
 
+        // Convert user input from BIG5 to UTF-8 before sending to LLM.
+        std::string utf8_input = agent::big5_to_utf8(input);
+
         std::cout << "\nAgent: ";
-        ag.run_stream(input, [](const std::string& token) {
+        ag.run_stream(utf8_input, [](const std::string& token) {
             std::cout << token << std::flush;
             return true;  // keep streaming
         });

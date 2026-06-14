@@ -1,4 +1,5 @@
-﻿#include "language_detector.h"
+#include "language_detector.h"
+#include "wide_string.h"
 #include <filesystem>
 #include <algorithm>
 #include <iostream>
@@ -67,7 +68,7 @@ std::string LanguageDetector::detect_directory(const std::string& dir_path) {
         return detected;
     }
 
-    // Multiple languages — find the dominant one. If it has >60% of files, use it; otherwise multi.
+    // Multiple languages - find the dominant one. If it has >60% of files, use it; otherwise multi.
     int max_count = 0;
     for (const auto& [lang, count] : lang_counts) {
         if (count > max_count) max_count = count;

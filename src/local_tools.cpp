@@ -1,4 +1,6 @@
 ﻿#include "local_tools.h"
+#include "encoding.h"
+#include "wide_string.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -85,31 +87,22 @@ const std::map<std::string, std::string>& LocalToolDiscovery::known_tools() {
 std::string LocalToolDiscovery::resolve_path(const std::string& exe_name) {
 #ifdef _WIN32
     wchar_t result[1024];
-    std::wstring wname(exe_name.begin(), exe_name.end());
+    std::wstring wname = agent::utf8_to_wide(exe_name);
 
     // SearchPathW needs a mutable buffer for the file name
     wchar_t search_buf[512];
-
-    // Helper: convert wchar_t to narrow string
-    auto w2s = [](const wchar_t* w) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
-        if (len <= 0) return "";
-        std::string s(len - 1, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], len, nullptr, nullptr);
-        return s;
-    };
 
     // Try with .exe extension first
     std::wstring wname_exe = wname + L".exe";
     wcsncpy_s(search_buf, wname_exe.c_str(), _TRUNCATE);
     if (SearchPathW(nullptr, search_buf, nullptr, 1024, result, nullptr)) {
-        return w2s(result);
+        return agent::wide_to_utf8(result);
     }
 
     // Also try without .exe
     wcsncpy_s(search_buf, wname.c_str(), _TRUNCATE);
     if (SearchPathW(nullptr, search_buf, nullptr, 1024, result, nullptr)) {
-        return w2s(result);
+        return agent::wide_to_utf8(result);
     }
 
     // If it's 'cl' and not found in PATH, return bare name for dev cmd env
@@ -145,8 +138,9 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
 #ifdef _WIN32
     // Try --version first, then -version
     std::string cmd = "\"" + full_path + "\" --version 2>&1";
-    if (cmd.find("cl.exe") != std::string::npos) {
+    if (cmd.find("cl") != std::string::npos) {
         cmd = "\"" + full_path + "\" 2>&1";  // cl doesn't support --version
+		return "unknown";  // For cl, we will just return unknown for version to avoid long hangs. In practice, cl is usually run in a dev cmd environment where the version is known.
     }
 
     HANDLE hReadPipe, hWritePipe;
@@ -166,10 +160,9 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
     si.dwFlags |= STARTF_USESTDHANDLES;
 
     std::string full_cmd = "cmd.exe /c " + cmd;
-    wchar_t wcmd[4096];
-    MultiByteToWideChar(CP_UTF8, 0, full_cmd.c_str(), -1, wcmd, 4096);
+    std::wstring wcmd = agent::utf8_to_wide(full_cmd);
 
-    if (!CreateProcessW(nullptr, wcmd, nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+    if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
                         nullptr, nullptr, &si, &pi)) {
         CloseHandle(hReadPipe);
         CloseHandle(hWritePipe);
@@ -178,7 +171,7 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
 
     WaitForSingleObject(pi.hProcess, 5000);
 
-    std::string output;
+    std::string raw_output;
     char buffer[4096];
     DWORD bytesRead;
     CloseHandle(hWritePipe);
@@ -187,12 +180,15 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
         if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
         if (bytesRead == 0) break;
         buffer[bytesRead] = '\0';
-        output += buffer;
+        raw_output += buffer;
     }
 
     CloseHandle(hReadPipe);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+
+    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
+    std::string output = agent::big5_to_utf8(raw_output);
 
     // Extract first line as version
     size_t nl = output.find('\n');
@@ -366,20 +362,16 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
     si.dwFlags |= STARTF_USESTDHANDLES;
 
     // Set working directory
-    wchar_t cwd_wide[1024] = L".";
+    std::wstring cwd_wide = L".";
     if (!cwd.empty()) {
-        int len = MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, nullptr, 0);
-        if (len > 0 && len <= 1024) {
-            MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, cwd_wide, 1024);
-        }
+        cwd_wide = agent::utf8_to_wide(cwd);
     }
 
     std::string full_cmd_win = "cmd.exe /c " + full_cmd;
-    wchar_t wcmd[4096];
-    MultiByteToWideChar(CP_UTF8, 0, full_cmd_win.c_str(), -1, wcmd, 4096);
+    std::wstring wcmd = agent::utf8_to_wide(full_cmd_win);
 
-    if (!CreateProcessW(nullptr, wcmd, nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
-                        nullptr, cwd_wide, &si, &pi)) {
+    if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+                        nullptr, cwd_wide.c_str(), &si, &pi)) {
         CloseHandle(hReadPipe);
         CloseHandle(hWritePipe);
         return "Error: Failed to execute '" + info_.name + "'.";
@@ -387,7 +379,7 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
 
     WaitForSingleObject(pi.hProcess, 30000);  // 30s timeout
 
-    std::string output;
+    std::string raw_output;
     char buffer[4096];
     DWORD bytesRead;
     CloseHandle(hWritePipe);
@@ -396,13 +388,15 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
         if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
         if (bytesRead == 0) break;
         buffer[bytesRead] = '\0';
-        output += buffer;
+        raw_output += buffer;
     }
 
     CloseHandle(hReadPipe);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
+    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
+    std::string output = agent::big5_to_utf8(raw_output);
     return output.empty() ? "(no output)" : output;
 #else
     // Linux/macOS implementation using popen
@@ -440,20 +434,21 @@ std::vector<ToolPtr> create_local_tools() {
     LocalToolDiscovery discovery;
     auto found = discovery.discover();
 
-    std::cout << "[LocalTools] Scanning for installed tools..." << std::endl;
+    std::wcout << L"[LocalTools] Scanning for installed tools..." << std::endl;
 
     std::vector<ToolPtr> tools;
     for (const auto& info : found) {
-        std::cout << "  Found: " << info.name << " v" << info.version
-                  << " (" << info.path << ")" << std::endl;
+        std::wcout << L"  Found: " << agent::utf8_to_wide(info.name)
+                  << L" v:" << agent::utf8_to_wide(info.version)
+                  << L" (" << agent::utf8_to_wide(info.path) << L")" << std::endl;
         tools.push_back(std::make_shared<LocalExecutableTool>(info));
     }
 
     if (tools.empty()) {
-        std::cout << "[LocalTools] No known dev tools found in PATH." << std::endl;
-        std::cout << "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
+        std::wcout << L"[LocalTools] No known dev tools found in PATH." << std::endl;
+        std::wcout << L"  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
     } else {
-        std::cout << "[LocalTools] Registered " << tools.size() << " local tool(s)." << std::endl;
+        std::wcout << L"[LocalTools] Registered " << tools.size() << L" local tool(s)." << std::endl;
     }
 
     return tools;

@@ -87,6 +87,9 @@ public:
     // Get the current model name.
     const std::string& get_model() const { return model_; }
 
+    // Get the base URL.
+    const std::string& get_base_url() const { return base_url_; }
+
     // Query /v1/models API to list available models. Returns empty on failure.
     struct ModelInfo {
         std::string id;

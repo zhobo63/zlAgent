@@ -21,7 +21,7 @@ bool CommandDispatcher::dispatch(const std::string& raw_input) {
     if (it == commands_.end()) {
         std::cerr << "Unknown command: /" << cmd_name
                   << ". Type /help for available commands." << std::endl;
-        return true; // handled — don't send to LLM
+        return true; // handled - don't send to LLM
     }
 
     it->second(args);

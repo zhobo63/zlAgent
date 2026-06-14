@@ -11,7 +11,7 @@
 namespace agent {
 
 // ============================================================================
-// LLMEmbeddingProvider — calls LM Studio / OpenAI-compatible API
+// LLMEmbeddingProvider - calls LM Studio / OpenAI-compatible API
 // ============================================================================
 
 LLMEmbeddingProvider::LLMEmbeddingProvider(
@@ -47,7 +47,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
     }
     json << "]}";
 
-    // Use raw HTTP via httplib — same approach as LLMClient.
+    // Use raw HTTP via httplib - same approach as LLMClient.
     std::string url = base_url_ + "/v1/embeddings";
 
     // Parse URL for host/port/ssl.
@@ -81,31 +81,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
 
     auto parts = parse_url(url);
 
-#ifdef CPPHTTLIB_OPENSSL_SUPPORT
-    if (parts.is_ssl) {
-        httplib::SSLClient client(parts.host, parts.port);
-        auto res = client.Post("/v1/embeddings", json.str(), "application/json");
-        if (!res || res->status != 200) return {};
-
-        std::vector<std::vector<float>> results;
-        try {
-            auto j = nlohmann::json::parse(res->body);
-            if (j.contains("data") && j["data"].is_array()) {
-                for (const auto& item : j["data"]) {
-                    if (item.contains("embedding") && item["embedding"].is_array()) {
-                        std::vector<float> vec;
-                        for (const auto& val : item["embedding"]) {
-                            vec.push_back(val.get<float>());
-                        }
-                        results.push_back(vec);
-                    }
-                }
-            }
-        } catch (...) {}
-        return results;
-    }
-#endif
-
+    // Use plain HTTP - local LM Studio typically runs on HTTP.
     httplib::Client client(parts.host, parts.port);
 
     auto res = client.Post("/v1/embeddings", json.str(), "application/json");
@@ -129,14 +105,14 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
             }
         }
     } catch (...) {
-        return {}; // parse error — fallback to empty
+        return {}; // parse error - fallback to empty
     }
 
     return results;
 }
 
 // ============================================================================
-// TfidfEmbeddingProvider — pure C++ TF-IDF with L2 normalization
+// TfidfEmbeddingProvider - pure C++ TF-IDF with L2 normalization
 // ============================================================================
 
 TfidfEmbeddingProvider::TfidfEmbeddingProvider(int max_features)

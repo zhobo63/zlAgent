@@ -7,7 +7,7 @@ namespace agent {
 using json = nlohmann::json;
 
 // -----------------------------------------------------------------------
-// SearchMemoriesTool — semantic search over past session summaries via RAG
+// SearchMemoriesTool - semantic search over past session summaries via RAG
 // -----------------------------------------------------------------------
 class SearchMemoriesTool : public Tool {
 public:
@@ -41,7 +41,7 @@ public:
                 return "No past sessions found in long-term memory.";
             }
 
-            // Simple keyword matching — for semantic search, use RAG's search_knowledge_base instead.
+            // Simple keyword matching - for semantic search, use RAG's search_knowledge_base instead.
             std::string query_lower = query;
             std::transform(query_lower.begin(), query_lower.end(), query_lower.begin(), ::tolower);
 
@@ -111,7 +111,7 @@ public:
 };
 
 // -----------------------------------------------------------------------
-// RecallFactsTool — retrieve structured facts by key prefix
+// RecallFactsTool - retrieve structured facts by key prefix
 // -----------------------------------------------------------------------
 class RecallFactsTool : public Tool {
 public:

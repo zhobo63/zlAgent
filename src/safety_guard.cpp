@@ -1,8 +1,9 @@
-﻿#include "safety_guard.h"
+#include "safety_guard.h"
 #include <iostream>
 #include <algorithm>
 #include <cctype>
 #include <regex>
+#include "wide_string.h"
 
 namespace agent {
 
@@ -30,7 +31,7 @@ bool SafetyGuard::is_command_dangerous(const std::string& command) {
 }
 
 bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
-    std::cout << "\n⚠️  [Safety] Dangerous operation detected: " << operation << std::endl;
+    std::cout << "\n!  [Safety] Dangerous operation detected: " << operation << std::endl;
     std::cout << "   Type 'y' to confirm, anything else to cancel: ";
 
     std::string response;
@@ -109,15 +110,15 @@ std::vector<std::string> SafetyGuard::check_skill_content(const std::string& con
     };
 
     static const PatternCheck checks[] = {
-        {"rm -rf /",         "⚠️  Detected destructive command: 'rm -rf /'"},
-        {"rm -rf /*",        "⚠️  Detected destructive command: 'rm -rf /*'"},
-        {"curl.*\\|.*bash",  "⚠️  Detected pipe-to-shell pattern (potential malware delivery)"},
-        {"wget.*\\|.*sh",    "⚠️  Detected wget-pipe-to-shell pattern"},
-        {"eval(",            "⚠️  Detected 'eval()' — arbitrary code execution risk"},
-        {":(){:|:&};:",      "⚠️  Detected fork bomb pattern"},
-        {"chmod 777",        "⚠️  Detected 'chmod 777' — overly permissive permissions"},
-        {"mkfs",             "⚠️  Detected filesystem formatting command"},
-        {"> /dev/",          "⚠️  Detected write to device file"},
+        {"rm -rf /",         "!  Detected destructive command: 'rm -rf /'"},
+        {"rm -rf /*",        "!  Detected destructive command: 'rm -rf /*'"},
+        {"curl.*\\|.*bash",  "!  Detected pipe-to-shell pattern (potential malware delivery)"},
+        {"wget.*\\|.*sh",    "!  Detected wget-pipe-to-shell pattern"},
+        {"eval(",            "!  Detected 'eval()' - arbitrary code execution risk"},
+        {":(){:|:&};:",      "!  Detected fork bomb pattern"},
+        {"chmod 777",        "!  Detected 'chmod 777' - overly permissive permissions"},
+        {"mkfs",             "!  Detected filesystem formatting command"},
+        {"> /dev/",          "!  Detected write to device file"},
     };
 
     std::string lower = content;
@@ -134,7 +135,7 @@ std::vector<std::string> SafetyGuard::check_skill_content(const std::string& con
 }
 
 // ============================================================================
-// 4. Input filter — prompt injection detection
+// 4. Input filter - prompt injection detection
 // ============================================================================
 
 bool SafetyGuard::is_prompt_injection(const std::string& input) {

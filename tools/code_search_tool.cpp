@@ -1,4 +1,6 @@
 #include "tool.h"
+#include "encoding.h"
+#include "wide_string.h"
 #include "json.hpp"
 #include <fstream>
 #include <sstream>
@@ -82,14 +84,16 @@ private:
             search_path = dir + "\\" + file_pattern;
         }
 
-        WIN32_FIND_DATAA find_data;
-        HANDLE hFind = FindFirstFileA(search_path.c_str(), &find_data);
+        std::wstring wsearch = agent::utf8_to_wide(search_path);
+        WIN32_FIND_DATAW find_data;
+        HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
         if (hFind == INVALID_HANDLE_VALUE) return;
 
         do {
-            if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) continue;
+            std::string fname = agent::wide_to_utf8(find_data.cFileName);
+            if (fname == "." || fname == "..") continue;
 
-            std::string full_path = dir + "\\" + find_data.cFileName;
+            std::string full_path = dir + "\\" + fname;
 
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                 search_directory(full_path, file_pattern, re, results, match_count, max_results);
@@ -98,7 +102,7 @@ private:
             }
 
             if (match_count >= max_results) break;
-        } while (FindNextFileA(hFind, &find_data) && match_count < max_results);
+        } while (FindNextFileW(hFind, &find_data) && match_count < max_results);
 
         FindClose(hFind);
 #else
