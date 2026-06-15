@@ -154,39 +154,32 @@ void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp)
                     resp.content += content;
                 }
 
-                // Tool calls in the stream chunk — merge into existing calls by id
+                // Tool calls in the stream chunk — merge into existing calls by index.
+                // OpenAI streaming sends tool_call chunks split across SSE events:
+                //   first chunk  → {index, id, function:{name}}
+                //   later chunks → {index, function:{arguments}} (id may be absent)
                 if (delta.contains("tool_calls")) {
                     resp.has_tool_calls = true;
                     for (auto& tc : delta["tool_calls"]) {
-                        std::string call_id;
-                        if (tc.contains("id") && !tc["id"].is_null())
-                            call_id = tc["id"].get<std::string>();
+                        int index = 0;
+                        if (tc.contains("index") && !tc["index"].is_null())
+                            index = tc["index"].get<int>();
 
-                        // Find existing tool call with the same id, or create new one.
-                        auto it = std::find_if(resp.tool_calls.begin(), resp.tool_calls.end(),
-                            [&call_id](const ChatResponse::ToolCall& c) { return c.id == call_id; });
+                        // Ensure we have enough entries for this index.
+                        while (static_cast<int>(resp.tool_calls.size()) <= index) {
+                            resp.tool_calls.emplace_back();
+                        }
+                        auto& call = resp.tool_calls[index];
 
-                        if (it != resp.tool_calls.end()) {
-                            // Merge: append arguments to the existing call.
-                            if (tc.contains("function")) {
-                                auto& func = tc["function"];
-                                if (func.contains("name") && it->name.empty())
-                                    it->name = func["name"].get<std::string>();
-                                if (func.contains("arguments") && !func["arguments"].is_null())
-                                    it->arguments += func["arguments"].get<std::string>();
-                            }
-                        } else {
-                            // New tool call — build from scratch.
-                            ChatResponse::ToolCall call;
-                            call.id = call_id;
-                            if (tc.contains("function")) {
-                                auto& func = tc["function"];
-                                if (func.contains("name"))
-                                    call.name = func["name"].get<std::string>();
-                                if (func.contains("arguments") && !func["arguments"].is_null())
-                                    call.arguments = func["arguments"].get<std::string>();
-                            }
-                            resp.tool_calls.push_back(call);
+                        if (tc.contains("id") && !tc["id"].is_null() && call.id.empty())
+                            call.id = tc["id"].get<std::string>();
+
+                        if (tc.contains("function")) {
+                            auto& func = tc["function"];
+                            if (func.contains("name") && call.name.empty())
+                                call.name = func["name"].get<std::string>();
+                            if (func.contains("arguments") && !func["arguments"].is_null())
+                                call.arguments += func["arguments"].get<std::string>();
                         }
                     }
                 }

@@ -1,7 +1,6 @@
-#include "agent.h"
+﻿#include "agent.h"
 #include <algorithm>
 #include <iostream>
-#include "encoding.h"
 #include "wide_string.h"
 #include <sstream>
 #include "local_tools.h"
@@ -30,7 +29,7 @@ void Agent::set_system_prompt(const std::string& prompt) {
     memory_.set_system_prompt(prompt);
 }
 
-// �w�w Lazy local tool discovery �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+// ── Lazy local tool discovery ──────────────────────────────
 
 void Agent::discover_local_tools() {
     if (!local_tools_enabled_ || !lazy_local_tools_ || local_tools_discovered_) return;
@@ -66,14 +65,14 @@ std::string Agent::run(const std::string& user_input) {
     return response.content;
 }
 
-// �w�w Planning heuristic �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+// ── Planning heuristic ─────────────────────────────────────
 
 bool Agent::needs_planning(const std::string& input) {
     // Convert to lowercase for case-insensitive checks.
     std::string lower = input;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-    // 1. Length threshold �X short inputs are unlikely to need planning.
+    // 1. Length threshold — short inputs are unlikely to need planning.
     if (input.size() < 30) return false;
 
     // 2. Multi-step keywords (English + Chinese)
@@ -83,15 +82,15 @@ bool Agent::needs_planning(const std::string& input) {
         "also", "and then", "followed by",
         "1.", "2.", "3.",
         // Chinese multi-step indicators
-        u8"����", u8"�M��", u8"����", u8"�̫�", u8"�A", u8"����",
-        u8"�B�J", u8"���q", u8"�Ĥ@�B", u8"�ĤG�B",
+        u8"首先", u8"然後", u8"接著", u8"階段", u8"一", u8"步驟",
+        u8"二步", u8"接下來", u8"第三步", u8"第四步",
     };
     for (const auto* kw : multi_step_keywords) {
         if (lower.find(kw) != std::string::npos)
             return true;
     }
 
-    // 3. Action-rich input �X contains multiple action verbs suggesting a pipeline.
+    // 3. Action-rich input — contains multiple action verbs suggesting a pipeline.
     static const char* action_verbs[] = {
         "create", "write", "read", "search", "build",
         "test", "deploy", "refactor", "analyze",
@@ -105,10 +104,10 @@ bool Agent::needs_planning(const std::string& input) {
     if (verb_count >= 2)
         return true;
 
-    // 4. Long input with file/code references �X likely a complex task.
+    // 4. Long input with file/code references — likely a complex task.
     static const char* code_refs[] = {
         "file", "code", "function",
-        u8"�ɮ�", u8"�{���X", u8"�禡", u8"�Ҳ�",
+        u8"檔案", u8"程式碼", u8"函數", u8"類別",
     };
     if (input.size() > 100) {
         for (const auto* ref : code_refs) {
@@ -117,7 +116,7 @@ bool Agent::needs_planning(const std::string& input) {
         }
     }
 
-    // Default: simple query �X no planning needed.
+    // Default: simple query — no planning needed.
     return false;
 }
 
@@ -170,7 +169,7 @@ ChatResponse Agent::reasoning_loop() {
         // Execute each tool call and add results to memory
         for (const auto& tc : resp.tool_calls) {
             std::cout << "[Tool] Executing: " << tc.name
-                      << " with args: " << utf8_to_big5(tc.arguments) << std::endl;
+                      << " with args: " << tc.arguments << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -218,7 +217,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         // Execute each tool call and add results to memory (non-streaming for tools)
         for (const auto& tc : resp.tool_calls) {
             std::cout << "\n[Tool] Executing: " << tc.name
-                      << " with args: " << utf8_to_big5(tc.arguments) << std::endl;
+                      << " with args: " << tc.arguments << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -231,7 +230,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
             std::string preview = result.substr(0, 200);
             if (result.size() > 200) preview += "...";
-            std::cout << "[Tool] Result: " << utf8_to_big5(preview) << "\n" << std::endl;
+            std::cout << "[Tool] Result: " << preview << "\n" << std::endl;
         }
 
         // Loop again - LLM will see tool results and decide next action
@@ -241,7 +240,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
     return ChatResponse{"[Max iterations reached. Stopping.]"};
 }
 
-// �w�w Advanced Pipeline: Plan �� Execute (with Reflection + Multi-Agent) �w�w
+// ── Advanced Pipeline: Plan → Execute (with Reflection + Multi-Agent) ──
 
 std::string Agent::run_planned(const std::string& user_input, TokenCallback on_token) {
     TaskPlanner planner(llm_);
