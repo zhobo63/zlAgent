@@ -78,7 +78,51 @@ ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透
 |------|------|
 | 策略 | 滑動視窗（Sliding Window），保留最近 N 條訊息 |
 | 預設容量 | 50 條訊息 |
-| 功能 | add / get_messages / clear / set_system_prompt |
+| Token-aware | 同時根據 token 預算截斷，不只看訊息數量 |
+| 功能 | add / get_messages / clear / set_system_prompt / summarize / get_token_count / needs_compression |
+
+### 3.2.1 TokenCounter (`token_counter.h/cpp`)
+
+**核心概念：** 輕量 token 估算器。非精確 tokenizer（如 tiktoken），但提供合理的 heuristics 近似值，用於 Memory 的壓縮觸發、預算管理等。
+
+| 項目 | 要求 |
+|------|------|
+| `estimate(text)` | 估算單一字串的 token 數 |
+| `estimate_message(msg)` | 估算 ChatMessage 的 token 數（含 role overhead） |
+| `estimate_conversation(messages)` | 估算整段對話的總 token 數 |
+| UTF-8 處理 | **先解碼 codepoint，再對完整字元分類** — 不可逐 byte 分類 |
+
+**字元權重規則：**
+
+| 字元類型 | 權重（tokens/char） | 說明 |
+|----------|-------------------|------|
+| ASCII whitespace / punctuation | 0.25 | 空白、逗號、句點等，通常與周圍文字共享 token |
+| ASCII letters (a-z, A-Z) | 0.25 | GPT-style BPE 平均 ~4 bytes/token |
+| ASCII digits (0-9) | 0.30 | 數字常與周圍文字共享 token |
+| ASCII symbols / operators | 0.60 | 程式碼中的運算子，每個可能獨立成 token |
+| 2-byte UTF-8 (Latin ext, Greek, Cyrillic) | 0.50 | 擴展拉丁、希臘文、西里爾文等 |
+| 3-byte UTF-8 (CJK) | 1.50 | 中日韓字元，BPE tokenizer 通常 1-2 tokens/char |
+| 4-byte UTF-8 (emoji, rare chars) | 2.00 | Emoji、罕見字元 |
+| Fallback | 1.00 | 無法分類的字元 |
+
+**TokenUsage 追蹤：**
+
+```cpp
+struct TokenUsage {
+    size_t prompt_tokens = 0;       // 本次請求的 prompt token 數
+    size_t completion_tokens = 0;   // LLM 回傳的 completion token 數
+    size_t total_tokens = 0;        // 累計總使用量
+};
+```
+
+- `TokenCounter::from_api_usage(json)` — 從 API 回應的 `usage` 欄位提取真實 token 數據
+- Agent 每次 LLM 呼叫後更新 TokenUsage，供 CLI `/stats` 命令查詢
+
+**增量計算：**
+
+- Memory 在 `add()` 時累加 token 計數，不重新遍歷整個 history
+- `summarize()` 後更新緩存值
+- 提供 `get_cached_token_count()` 避免 O(n) 重算
 
 ### 3.3 Agent (`agent.h/cpp`)
 
