@@ -96,8 +96,12 @@ public:
     struct ModelInfo {
         std::string id;
         std::string owned_by;
+        int context_length = 0;  // 0 means unknown
     };
     std::vector<ModelInfo> list_models() const;
+
+    // Look up the known context length for a model. Returns 0 if unknown.
+    static int get_model_context_length(const std::string& model_id);
 
 private:
     std::string base_url_;

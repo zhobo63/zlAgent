@@ -124,12 +124,23 @@ void register_command_handlers(
             return;
         }
 
+        // Helper: format context length for display.
+        auto fmt_ctx = [](int ctx) -> std::string {
+            if (ctx == 0) return "?";
+            if (ctx >= 1000000)
+                return std::to_string(ctx / 1000) + "K";
+            if (ctx >= 1000)
+                return std::to_string(ctx / 1000) + "K";
+            return std::to_string(ctx);
+        };
+
         std::cout << "\n--- Available Models ---\n";
         for (size_t i = 0; i < models.size(); ++i) {
             const auto& m = models[i];
             std::string marker = (m.id == current_model) ? " <-- CURRENT" : "";
             std::cout << "  [" << (i + 1) << "] " << m.id
-                      << " (owned_by: " << m.owned_by << ")"
+                      << " (ctx: " << fmt_ctx(m.context_length)
+                      << ", owned_by: " << m.owned_by << ")"
                       << marker << "\n";
         }
         std::cout << "\nEnter model number to switch, or press Enter to keep current (" 
@@ -156,19 +167,38 @@ void register_command_handlers(
             return;
         }
 
-        std::string new_model = models[num - 1].id;
-        ag->set_llm_model(new_model);
+        const auto& selected = models[num - 1];
+        ag->set_llm_model(selected.id);
 
-        // Persist the choice to zlagent.ini.
-        agent::IniParser::update_key("zlagent.ini", "llm", "model", new_model);
+        // Auto-adjust max_tokens based on context length.
+        // Use ~25% of context as a sensible default for output, capped at 8192.
+        int new_max_tokens = 4096;  // fallback
+        if (selected.context_length > 0) {
+            new_max_tokens = std::min(selected.context_length / 4, 8192);
+        }
 
-        std::cout << "  Model switched to: " << new_model << "\n"
-                  << "  Saved to zlagent.ini [llm] model = " << new_model << "\n";
+        // Persist both model and max_tokens to zlagent.ini.
+        agent::IniParser::update_key("zlagent.ini", "llm", "model", selected.id);
+        agent::IniParser::update_key("zlagent.ini", "llm", "max_tokens", std::to_string(new_max_tokens));
+
+        std::cout << "  Model switched to: " << selected.id << "\n"
+                  << "  Context length:    " << fmt_ctx(selected.context_length) << " tokens\n"
+                  << "  max_tokens set to: " << new_max_tokens << " (auto-adjusted)\n";
     });
 
     // ── /model-info ────────────────────────────────
     dispatcher.register_command("model-info", [ag](const auto&) {
         if (!ag) return;
+
+        // Helper: format context length for display.
+        auto fmt_ctx = [](int ctx) -> std::string {
+            if (ctx == 0) return "?";
+            if (ctx >= 1000000)
+                return std::to_string(ctx / 1000) + "K";
+            if (ctx >= 1000)
+                return std::to_string(ctx / 1000) + "K";
+            return std::to_string(ctx);
+        };
 
         std::cout << "\n--- LLM Model Info ---\n"
                   << "  Current model: " << ag->get_llm().get_model() << "\n";
@@ -179,7 +209,9 @@ void register_command_handlers(
             std::cout << "  Available on server: " << models.size() << " model(s)\n";
             for (const auto& m : models) {
                 std::string marker = (m.id == ag->get_llm().get_model()) ? " <-- CURRENT" : "";
-                std::cout << "    - " << m.id << " (owned_by: " << m.owned_by << ")"
+                std::cout << "    - " << m.id
+                          << " (ctx: " << fmt_ctx(m.context_length)
+                          << ", owned_by: " << m.owned_by << ")"
                           << marker << "\n";
             }
         } else {

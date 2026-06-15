@@ -3,6 +3,7 @@
 #include "httplib.h"
 #include "json.hpp"
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <sstream>
 
@@ -398,12 +399,78 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
                 ModelInfo mi;
                 mi.id = item.value("id", "unknown");
                 mi.owned_by = item.value("owned_by", "-");
+
+                // Try to read context_length from various API fields.
+                if (item.contains("max_model_len")) {
+                    try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {}
+                }
+                if (mi.context_length == 0 && item.contains("context_length")) {
+                    try { mi.context_length = item["context_length"].get<int>(); } catch (...) {}
+                }
+
+                // If API didn't provide it, fall back to our built-in table.
+                if (mi.context_length == 0)
+                    mi.context_length = get_model_context_length(mi.id);
+
                 models.push_back(mi);
             }
         }
     } catch (...) {}
 
     return models;
+}
+
+// Built-in context length table for common models.
+// Updated when API doesn't provide the info.
+int LLMClient::get_model_context_length(const std::string& model_id) {
+    // Normalize: lowercase and trim whitespace.
+    std::string id = model_id;
+    while (!id.empty() && std::isspace(static_cast<unsigned char>(id.front()))) id.erase(id.begin());
+    while (!id.empty() && std::isspace(static_cast<unsigned char>(id.back())))  id.pop_back();
+
+    // Convert to lowercase for matching.
+    std::transform(id.begin(), id.end(), id.begin(), [](unsigned char c){ return std::tolower(c); });
+
+    struct ModelContext {
+        const char* name;
+        int length;
+    };
+
+    static constexpr ModelContext table[] = {
+        // OpenAI
+        { "gpt-4o",                  128000 },
+        { "gpt-4o-mini",             128000 },
+        { "gpt-4-turbo",             128000 },
+        { "gpt-4",                   8192   },
+        { "gpt-3.5-turbo",           16385  },
+        // Claude
+        { "claude-opus-4",           200000 },
+        { "claude-sonnet-4",         200000 },
+        { "claude-3-opus",           200000 },
+        { "claude-3-sonnet",         200000 },
+        { "claude-3-haiku",          200000 },
+        // Anthropic (short names)
+        { "opus",                    200000 },
+        { "sonnet",                  200000 },
+        { "haiku",                   200000 },
+        // Google
+        { "gemini-2.5-pro",          1048576},
+        { "gemini-2.0-flash",        1048576},
+        { "gemini-1.5-pro",          2097152},
+        // Meta
+        { "llama3.3-70b",            131072 },
+        { "llama3.1-405b",           131072 },
+        { "llama3.1-70b",            131072 },
+        // Misc
+        { "qwen-max",                32768  },
+    };
+
+    for (const auto& entry : table) {
+        if (id.find(entry.name) != std::string::npos)
+            return entry.length;
+    }
+
+    return 0;  // unknown
 }
 
 } // namespace agent
