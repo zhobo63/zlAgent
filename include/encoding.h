@@ -51,33 +51,6 @@ inline std::string big5_to_utf8(const std::string& input) {
 }
 
 /**
- * Sanitize a string by replacing invalid UTF-8 byte sequences with '?'.
- * Use this before passing data to json::parse() or other strict parsers.
- */
-inline std::string sanitize_utf8(const std::string& input) {
-    std::string output;
-    const unsigned char* data = reinterpret_cast<const unsigned char*>(input.data());
-    size_t len = input.size();
-
-    for (size_t i = 0; i < len;) {
-        ucs4_t wc = 0;
-        int n = utf8_mbtowc(&wc, &data[i], static_cast<int>(len - i));
-
-        if (n == 0) {
-            // Invalid UTF-8 byte - substitute '?' and advance one byte
-            output += '?';
-            ++i;
-        } else {
-            // Valid UTF-8 - copy through as-is
-            output.append(reinterpret_cast<const char*>(&data[i]), n);
-            i += static_cast<size_t>(n);
-        }
-    }
-
-    return output;
-}
-
-/**
  * Convert a UTF-8-encoded string to BIG5.
  * Strips the BOM if present. Unconvertible characters are replaced with '?'.
  */

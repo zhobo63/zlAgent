@@ -136,17 +136,20 @@ std::string LLMClient::build_chat_json(
 void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp) {
     if (data_line == "[DONE]") return;
 
-    // Sanitize: replace invalid UTF-8 bytes so json::parse() does not throw.
-    std::string sanitized = agent::sanitize_utf8(data_line);
-
     try {
-        json data = json::parse(sanitized);
+        json data = json::parse(data_line);
 
         // Extract choices[0].delta.content
         if (data.contains("choices") && !data["choices"].empty()) {
             auto& choice = data["choices"][0];
             if (choice.contains("delta")) {
                 auto& delta = choice["delta"];
+
+                // Reasoning/thinking token
+                if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
+                    std::string reasoning = delta["reasoning_content"].get<std::string>();
+                    resp.reasoning_content += reasoning;
+                }
 
                 // Content token
                 if (delta.contains("content") && !delta["content"].is_null()) {
@@ -301,7 +304,7 @@ ChatResponse chat_stream_impl(
     ChatResponse resp;
     std::string buffer;
 
-    char read_buf[4096];
+    char read_buf[4096] = {0};
     while (true) {
         ssize_t n = handle.read(read_buf, sizeof(read_buf));
         if (n <= 0) break;
@@ -321,17 +324,24 @@ ChatResponse chat_stream_impl(
                 std::string data_payload = line.substr(5);
                 LLMClient::parse_sse_data(data_payload, resp);
 
-                // Call the token callback for content tokens
-                std::string sanitized_token = agent::sanitize_utf8(data_payload);
+                // Call the token callback for content and reasoning tokens
                 try {
-                    json data = json::parse(sanitized_token);
+                    json data = json::parse(data_payload);
                     if (data.contains("choices") && !data["choices"].empty()) {
                         auto& choice = data["choices"][0];
                         if (choice.contains("delta")) {
                             auto& delta = choice["delta"];
+
+                            // Reasoning/thinking tokens first
+                            if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
+                                std::string token = delta["reasoning_content"].get<std::string>();
+                                if (!token.empty() && !on_token(token, true)) break;
+                            }
+
+                            // Normal content tokens
                             if (delta.contains("content") && !delta["content"].is_null()) {
                                 std::string token = delta["content"].get<std::string>();
-                                if (!token.empty() && !on_token(token)) break;
+                                if (!token.empty() && !on_token(token, false)) break;
                             }
                         }
                     }

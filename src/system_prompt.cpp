@@ -119,6 +119,7 @@ Core capabilities:
 - Check git status using git_status
 - View git diff using git_diff
 - Fetch web pages and convert to Markdown using fetch_url
+- Use zh-tw
 
 Guidelines:
 1. Always list the directory and read existing files before modifying them
@@ -135,7 +136,7 @@ Language-specific notes:
 - Python: Follow PEP 8, use type hints where helpful
 - Rust: Use idiomatic patterns (Result, Option, lifetimes), run clippy
 - Go: Follow gofmt conventions, handle errors explicitly
-- Java: Follow Google Java Style, prefer records/streams in modern Java)";    
+- Java: Follow Google Java Style, prefer records/streams in modern Java)";
 }
 
 } // namespace agent

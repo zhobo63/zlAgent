@@ -30,6 +30,7 @@ struct ToolDefinition {
  */
 struct ChatResponse {
     std::string content;
+    std::string reasoning_content;  // thinking/reasoning output from models like o1
     bool has_tool_calls = false;
     struct ToolCall {
         std::string id;
@@ -41,9 +42,10 @@ struct ChatResponse {
 
 /**
  * Callback invoked for each streaming token chunk.
+ * is_reasoning = true means this token came from reasoning_content (thinking).
  * Return false to abort the stream early.
  */
-using TokenCallback = std::function<bool(const std::string& token)>;
+using TokenCallback = std::function<bool(const std::string& token, bool is_reasoning)>;
 
 /**
  * HTTP client that talks to LM Studio's local server (OpenAI-compatible).

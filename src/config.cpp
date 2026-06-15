@@ -110,8 +110,8 @@ Config Config::load(const std::string& ini_path) {
     // �w�w [llm] �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
     if (data.count("llm")) {
         auto& s = data["llm"];
-        if (s.count("ur"))         cfg.llm.url = s["ur"];
-        if (s.count("mode"))       cfg.llm.model = s["mode"];
+        if (s.count("url"))        cfg.llm.url = s["url"];
+        if (s.count("model"))      cfg.llm.model = s["model"];
         if (s.count("temperature")) cfg.llm.temperature = std::stod(s["temperature"]);
         if (s.count("max_tokens"))  cfg.llm.max_tokens = std::stoi(s["max_tokens"]);
     }

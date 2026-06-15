@@ -1,4 +1,5 @@
-#include <iostream>
+﻿#include <iostream>
+#include <clocale>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
+#include <thread>
 #include "config.h"
 #include "safety_guard.h"
 #include "language_detector.h"
@@ -29,21 +31,33 @@
 
 int main() {
 #ifdef _WIN32
-    // Set console output to UTF-8 so emoji and all Unicode display correctly.
+    // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
+    setlocale(LC_ALL, "zh_TW.UTF-8");
+
+    // Set console input/output code pages to UTF-8 so emoji and all Unicode display correctly.
+    SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
+
+    // Enable VT processing for ANSI escape codes (e.g., dim text for thinking output).
+    {
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD mode = 0;
+        if (GetConsoleMode(hOut, &mode))
+            SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
 #endif
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
 
     std::cout << "========================================" << std::endl;
-    std::cout << "  ZL Agent - C++ Code Assistant" << std::endl;
+    std::cout << "  ZL Agent - Code Assistant" << std::endl;
     std::cout << "  LLM: " << cfg.llm.url << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << std::endl;
 
     agent::Agent ag(cfg.llm.url, cfg.llm.model);
 
-    // �w�w Safety setup �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+    // === Safety setup ===
     if (!cfg.safety.path_whitelist.empty()) {
         agent::SafetyGuard::set_path_whitelist(cfg.safety.path_whitelist);
         std::cout << "[Config] Path whitelist enabled: ";
@@ -113,7 +127,7 @@ int main() {
     ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
 
-    // �w�w Skill System �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+    // === Skill System ===
     agent::SkillRegistry skill_registry;
     agent::set_global_skill_registry(&skill_registry);
 
@@ -177,9 +191,9 @@ int main() {
         ag.add_tool(std::move(plugin));
     }
 
-    // Local tools are discovered lazily on first chat �X no startup delay.
+    // Local tools are discovered lazily on first chat — no startup delay.
 
-    // �w�w RAG System �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+    // === RAG System ===
     if (cfg.rag.enabled) {
         std::cout << "\nInitializing RAG system..." << std::endl;
 
@@ -227,7 +241,7 @@ int main() {
         std::cout << "  Total chunks indexed: " << rag_manager->total_chunks() << std::endl;
     }
 
-    // �w�w Long-Term Memory �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+    // === Long-Term Memory ===
     std::unique_ptr<agent::LongTermMemory> long_term_memory;
     if (cfg.memory.long_term_enabled) {
         std::cout << "\nInitializing long-term memory..." << std::endl;
@@ -269,7 +283,7 @@ int main() {
         ag.add_tool(agent::create_recall_facts_tool());
     }
 
-    // �w�w CLI Command Dispatcher �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+    // === CLI Command Dispatcher ===
     agent::CommandDispatcher dispatcher;
     register_command_handlers(
         dispatcher,
@@ -283,7 +297,7 @@ int main() {
     // Interactive loop with streaming output.
     std::string input;
     while (true) {
-        std::cout << "You: ";
+        std::cout << "You: [" << ag.get_llm().get_model() << "] ";
         if (!std::getline(std::cin, input)) break;
 
         if (input == "quit" || input == "exit") {
@@ -307,14 +321,42 @@ int main() {
             continue;
         }
 
-        // Convert user input from BIG5 to UTF-8 before sending to LLM.
-        std::string utf8_input = agent::big5_to_utf8(input);
+        // --- Waiting spinner animation (rotating circle, single-threaded) ---
+        const char* spinners = "\u2809\u281B\u281E\u2817\u2814\u281A\u281C\u2808";  // ⠋⠙⠹⠸⠼⠴⠦⠧
+        //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
+        const int spinner_len = 8;
 
         std::cout << "\nAgent: ";
-        ag.run_stream(utf8_input, [](const std::string& token) {
+        //for (int i = 0; i < 3; ++i) {  // spin a few times while waiting for first token
+        //    if (i > 0)
+        //        std::cout << "\b";    // each Braille char is 1 display cell, so just \b once
+        //    std::cout << spinners[i % spinner_len] << std::flush;
+        //    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        //}
+        //// Erase the last spinner character (1 display cell)
+        //std::cout << " \b";
+
+        bool in_reasoning = false;
+        ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
+            // First reasoning token: show thinking indicator (dim)
+            if (is_reasoning_flag && !in_reasoning) {
+                in_reasoning = true;
+                std::cout << "\033[2m";  // dim for thinking content
+            }
+            // Transition from reasoning to content: restore normal brightness
+            else if (!is_reasoning_flag && in_reasoning) {
+                in_reasoning = false;
+                std::cout << "\033[0m";   // reset (end dim)
+            }
+
             std::cout << token << std::flush;
             return true;  // keep streaming
         });
+        // Ensure terminal is back to normal even if reasoning was the last output.
+        if (in_reasoning) {
+            in_reasoning = false;
+            std::cout << "\033[0m";
+        }
         std::cout << "\n\n";
     }
 

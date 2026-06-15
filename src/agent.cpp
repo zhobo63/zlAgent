@@ -286,9 +286,9 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
             memory_.add(user_msg);
 
             std::string step_result;
-            auto step_callback = [&step_result, &on_token](const std::string& token) -> bool {
+            auto step_callback = [&step_result, &on_token](const std::string& token, bool is_reasoning) -> bool {
                 step_result += token;
-                if (on_token) return on_token(token);
+                if (on_token) return on_token(token, is_reasoning);
                 return true;
             };
 
