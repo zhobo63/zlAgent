@@ -1,17 +1,13 @@
+#include "pch.h"
+
 #include "tool.h"
 #include "encoding.h"
 #include "wide_string.h"
 #include "json.hpp"
-#include <fstream>
-#include <sstream>
-#include <vector>
 #include <regex>
 #include <cstring>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cstring>

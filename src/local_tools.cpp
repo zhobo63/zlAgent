@@ -1,14 +1,10 @@
-﻿#include "local_tools.h"
+﻿#include "pch.h"
+
+#include "local_tools.h"
 #include "encoding.h"
 #include "wide_string.h"
-#include <iostream>
-#include <sstream>
-#include <algorithm>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <cstdlib>
 #include <cstdio>
 #include <unistd.h>
@@ -434,21 +430,21 @@ std::vector<ToolPtr> create_local_tools() {
     LocalToolDiscovery discovery;
     auto found = discovery.discover();
 
-    std::wcout << L"[LocalTools] Scanning for installed tools..." << std::endl;
+    std::cout << "[LocalTools] Scanning for installed tools..." << std::endl;
 
     std::vector<ToolPtr> tools;
     for (const auto& info : found) {
-        std::wcout << L"  Found: " << agent::utf8_to_wide(info.name)
-                  << L" v:" << agent::utf8_to_wide(info.version)
-                  << L" (" << agent::utf8_to_wide(info.path) << L")" << std::endl;
+        std::cout << "  Found: " << info.name
+                  << " v:" << info.version
+                  << " (" << info.path << ")" << std::endl;
         tools.push_back(std::make_shared<LocalExecutableTool>(info));
     }
 
     if (tools.empty()) {
-        std::wcout << L"[LocalTools] No known dev tools found in PATH." << std::endl;
-        std::wcout << L"  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
+        std::cout << "[LocalTools] No known dev tools found in PATH." << std::endl;
+        std::cout << "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
     } else {
-        std::wcout << L"[LocalTools] Registered " << tools.size() << L" local tool(s)." << std::endl;
+        std::cout << "[LocalTools] Registered " << tools.size() << " local tool(s)." << std::endl;
     }
 
     return tools;

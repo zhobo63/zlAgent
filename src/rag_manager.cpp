@@ -1,6 +1,6 @@
-﻿#include "rag_manager.h"
-#include <iostream>
-#include <algorithm>
+﻿#include "pch.h"
+
+#include "rag_manager.h"
 
 namespace agent {
 

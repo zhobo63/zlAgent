@@ -1,9 +1,7 @@
-﻿#include "vector_store.h"
-#include <fstream>
-#include <sstream>
-#include <algorithm>
+﻿#include "pch.h"
+
+#include "vector_store.h"
 #include <cmath>
-#include <iostream>
 #include "json.hpp"
 
 namespace agent {

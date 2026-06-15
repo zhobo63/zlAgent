@@ -1,11 +1,9 @@
-﻿#include "embedding_provider.h"
+﻿#include "pch.h"
+
+#include "embedding_provider.h"
 #include "json.hpp"
 #include "httplib.h"
-#include <algorithm>
 #include <cmath>
-#include <cctype>
-#include <sstream>
-#include <map>
 #include <set>
 
 namespace agent {

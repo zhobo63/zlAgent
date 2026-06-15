@@ -1,8 +1,7 @@
-﻿#include "agent.h"
-#include <algorithm>
-#include <iostream>
+﻿#include "pch.h"
+
+#include "agent.h"
 #include "wide_string.h"
-#include <sstream>
 #include "local_tools.h"
 #include "task_planner.h"
 #include "self_reflector.h"

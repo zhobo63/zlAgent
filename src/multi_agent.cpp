@@ -1,7 +1,7 @@
+#include "pch.h"
+
 #include "multi_agent.h"
 #include "wide_string.h"
-#include <iostream>
-#include <algorithm>
 
 namespace agent {
 

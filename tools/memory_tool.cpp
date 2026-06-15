@@ -1,6 +1,7 @@
-﻿#include "tool.h"
+﻿#include "pch.h"
+
+#include "tool.h"
 #include "json.hpp"
-#include <sstream>
 #include "long_term_memory.h"
 
 namespace agent {

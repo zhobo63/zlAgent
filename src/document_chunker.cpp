@@ -1,8 +1,6 @@
-﻿#include "document_chunker.h"
-#include <fstream>
-#include <sstream>
-#include <filesystem>
-#include <algorithm>
+﻿#include "pch.h"
+
+#include "document_chunker.h"
 
 namespace agent {
 namespace fs = std::filesystem;

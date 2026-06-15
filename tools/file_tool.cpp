@@ -1,14 +1,12 @@
+#include "pch.h"
+
 #include "tool.h"
 #include "encoding.h"
 #include "wide_string.h"
 #include "safety_guard.h"
 #include "json.hpp"
-#include <fstream>
-#include <sstream>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <dirent.h>
 #include <sys/stat.h>
 #endif

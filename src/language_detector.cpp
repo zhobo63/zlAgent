@@ -1,8 +1,7 @@
+#include "pch.h"
+
 #include "language_detector.h"
 #include "wide_string.h"
-#include <filesystem>
-#include <algorithm>
-#include <iostream>
 
 namespace agent {
 

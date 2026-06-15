@@ -1,7 +1,6 @@
+#include "pch.h"
+
 #include "safety_guard.h"
-#include <iostream>
-#include <algorithm>
-#include <cctype>
 #include <regex>
 #include "wide_string.h"
 

@@ -1,20 +1,14 @@
-﻿#include "tool.h"
+﻿#include "pch.h"
+
+#include "tool.h"
 #include "encoding.h"
 #include "safety_guard.h"
 #include "json.hpp"
 #include "httplib.h"
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <vector>
 #include <iomanip>
-#include <algorithm>
 #include <regex>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <cstdio>
 #include <cstdlib>
 #endif

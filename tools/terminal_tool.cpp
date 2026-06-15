@@ -1,13 +1,11 @@
+#include "pch.h"
+
 #include "tool.h"
 #include "encoding.h"
 #include "safety_guard.h"
 #include "json.hpp"
-#include <string>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -79,7 +77,7 @@ public:
             si.hStdError = hWritePipe;
             si.dwFlags |= STARTF_USESTDHANDLES;
 
-            wchar_t cmd_wide[4096];
+            wchar_t cmd_wide[4096] = { 0 };
             MultiByteToWideChar(CP_UTF8, 0, full_cmd.c_str(), -1, cmd_wide, 4096);
 
             if (!CreateProcessW(nullptr, cmd_wide, nullptr, nullptr, TRUE,
@@ -92,7 +90,7 @@ public:
             WaitForSingleObject(pi.hProcess, 30000);
 
             std::string raw_output;
-            char buffer[4096];
+            char buffer[4096] = { 0 };
             DWORD bytesRead;
             CloseHandle(hWritePipe);
 

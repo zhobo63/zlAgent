@@ -1,6 +1,7 @@
-﻿#include "tool.h"
+﻿#include "pch.h"
+
+#include "tool.h"
 #include "json.hpp"
-#include <sstream>
 #include "rag_manager.h"
 
 namespace agent {

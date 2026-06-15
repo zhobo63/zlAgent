@@ -1,18 +1,9 @@
+#include "pch.h"
+
 #include "plugin_loader.h"
 #include "wide_string.h"
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <string>
-#include <filesystem>
 
 #ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <direct.h>
 #else
 #include <dlfcn.h>

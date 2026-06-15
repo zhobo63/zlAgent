@@ -1,11 +1,9 @@
-﻿#include "llm_client.h"
+﻿#include "pch.h"
+
+#include "llm_client.h"
 #include "encoding.h"
 #include "httplib.h"
 #include "json.hpp"
-#include <algorithm>
-#include <cctype>
-#include <iostream>
-#include <sstream>
 
 namespace agent {
 using json = nlohmann::json;
@@ -295,10 +293,16 @@ ChatResponse chat_stream_impl(
         req["tool_choice"] = "auto";
     }
 
+	std::string json_body;
+	try {
+        json_body = req.dump();
+	}
+	catch (...) {}
+
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
     auto handle = client.open_stream("POST", "/v1/chat/completions",
-        {}, headers, req.dump());
+        {}, headers, json_body);
 
     if (!handle.is_valid()) return {};
 

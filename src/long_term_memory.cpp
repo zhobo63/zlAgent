@@ -1,11 +1,8 @@
-﻿#include "long_term_memory.h"
+﻿#include "pch.h"
+
+#include "long_term_memory.h"
 #include "memory.h"
 #include "rag_manager.h"
-#include <fstream>
-#include <sstream>
-#include <filesystem>
-#include <iostream>
-#include <algorithm>
 #include <ctime>
 #include <iomanip>
 #include "json.hpp"

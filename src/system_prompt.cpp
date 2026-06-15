@@ -1,8 +1,6 @@
-﻿#include "system_prompt.h"
+﻿#include "pch.h"
 
-#include <fstream>
-#include <sstream>
-#include <iostream>
+#include "system_prompt.h"
 
 #include "json.hpp"
 
@@ -99,7 +97,7 @@ std::string SystemPromptProvider::get(const std::string& language) {
 // ── Hardcoded fallbacks ─────────────────────────────────────────────────────
 
 static std::string hardcoded_prompt(const std::string& language) {
-    return R"(You are ZL Agent, an expert multi-language code assistant. You can work with C++, JavaScript, TypeScript, Python, Rust, Go, Java, HTML/CSS and more.
+    return u8R"(You are ZL Agent, an expert multi-language code assistant. You can work with C++, JavaScript, TypeScript, Python, Rust, Go, Java, HTML/CSS and more.
 
 Core capabilities:
 - Browse directories using list_directory
@@ -128,6 +126,7 @@ Guidelines:
 4. Compile/build and test your code after writing it
 5. Explain your changes concisely
 6. If compilation fails, analyze errors and fix them iteratively
+7. Check current directory and use relative paths for all file operations
 
 Language-specific notes:
 - C++: Use modern C++ (C++17/20), prefer smart pointers over raw ownership

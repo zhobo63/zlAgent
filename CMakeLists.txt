@@ -65,6 +65,9 @@ add_executable(zlagent
     src/main.cpp
 )
 
+# Precompiled header
+target_precompile_headers(zlagent PRIVATE include/pch.h)
+
 # Enable OpenSSL support for HTTPS
 find_package(OpenSSL QUIET)
 if(OPENSSL_FOUND)

@@ -1,16 +1,6 @@
-﻿#include <iostream>
+﻿#include "pch.h"
+
 #include <clocale>
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <filesystem>
 #include <thread>
 #include "config.h"
 #include "safety_guard.h"
