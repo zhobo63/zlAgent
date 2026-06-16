@@ -312,7 +312,7 @@ int main() {
         }
 
         // --- Waiting spinner animation (rotating circle, single-threaded) ---
-        const char* spinners = "\u2809\u281B\u281E\u2817\u2814\u281A\u281C\u2808";  // ⠋⠙⠹⠸⠼⠴⠦⠧
+        const char* spinners = u8"\u2809\u281B\u281E\u2817\u2814\u281A\u281C\u2808";  // ⠋⠙⠹⠸⠼⠴⠦⠧
         //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
         const int spinner_len = 8;
 

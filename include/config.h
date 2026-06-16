@@ -98,6 +98,9 @@ struct Config {
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);
 
+    // Save the config to an INI file path.
+    static bool save(const Config& cfg, const std::string& ini_path);
+
 private:
     // Helper: parse a boolean string ("true"/"false", "1"/"0", "yes"/"no").
     static bool parse_bool(const std::string& s, bool default_val = false);

@@ -76,10 +76,10 @@ ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透
 
 | 項目 | 要求 |
 |------|------|
-| 策略 | 滑動視窗（Sliding Window），保留最近 N 條訊息 |
-| 預設容量 | 50 條訊息 |
-| Token-aware | 同時根據 token 預算截斷，不只看訊息數量 |
-| 功能 | add / get_messages / clear / set_system_prompt / summarize / get_token_count / needs_compression |
+| 策略 | LLM 摘要壓縮（Summarization），歷史超長時將舊訊息壓縮為摘要，保留完整上下文 |
+| 預設容量 | 50 條訊息（觸發摘要閾值） |
+| Token-aware | 增量維護 token 計數，summarize() 後更新緩存值 |
+| 功能 | add / get_messages / clear / set_system_prompt / summarize / get_cached_token_count |
 
 ### 3.2.1 TokenCounter (`token_counter.h/cpp`)
 
@@ -717,7 +717,7 @@ The skill is now available for use.
 
 | 類型 | 範圍 | 工具/框架 |
 |------|------|----------|
-| **單元測試** | LLM Client 回應解析、Memory 滑動視窗、Tool execute 邏輯、SkillRegistry CRUD | Google Test (gtest) |
+| **單元測試** | LLM Client 回應解析、Memory 摘要壓縮、Tool execute 邏輯、SkillRegistry CRUD | Google Test (gtest) |
 | **整合測試** | Agent 推理循環（LLM → Tool → Result）、外掛載入與執行、技能導入流程 | gtest + mock LLM server |
 | **跨平台驗證** | Windows / Linux / macOS 的檔案操作、命令執行、外掛載入 | CI (GitHub Actions) |
 
@@ -735,7 +735,7 @@ The skill is now available for use.
 ### 2️⃣ 記憶系統（上下文）
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
-| **短期記憶** | 滑動視窗保留最近對話 | ✅ `memory` (50條) |
+| **短期記憶** | LLM 摘要壓縮，歷史超長時自動壓縮舊訊息為摘要 | ✅ `memory` (max_messages=50 觸發閾值) |
 | **長期記憶** | 持久化儲存，跨會話回憶 | ✅ `LongTermMemory` — Episodic (session summaries via LLM), Semantic (structured facts auto-extracted), JSON persistence (.zlagent_memory/), RAG integration, search_memories + recall_facts tools |
 | **上下文壓縮/摘要** | 對超長歷史做智慧摘要 | ✅ `Memory::summarize()` |
 | **向量檢索 (RAG)** | 從知識庫中語意搜尋相關片段 | ✅ |
@@ -807,7 +807,7 @@ The skill is now available for use.
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **CLI 互動** | 命令列對話 | ✅ `main.cpp` |
-| **對話中使用者命令** | `/help`, `/status`, `/skills`, `/model`, `/model-info`, `/facts`, `/sessions`, `/clear-memory`, `/save-session`, `/search-kb`, `/add-doc`, `/config` | ✅ `CommandDispatcher` + `register_command_handlers()` (12 commands, /-prefix dispatch) |
+| **對話中使用者命令** | `/help`, `/status`, `/skills`, `/model`, `/model-info`, `/facts`, `/sessions`, `/summary`, `/new`, `/clear-memory`, `/save-session`, `/search-kb`, `/add-doc`, `/config` | ✅ `CommandDispatcher` + `register_command_handlers()` (14 commands, /-prefix dispatch) |
 | **GUI / Web UI** | 圖形化介面 | ⬜ 未規劃 |
 | **Markdown 渲染** | 格式化輸出（程式碼區塊、表格等） | ⬜ 未規劃 |
 | **Auto update** | 偵測新版本/自動更新 | ⬜ 未規劃 |

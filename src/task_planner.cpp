@@ -10,7 +10,7 @@ namespace agent {
 TaskPlanner::TaskPlanner(LLMClient& llm) : llm_(llm) {}
 
 std::string TaskPlanner::planning_system_prompt() {
-    return R"(You are a task planner. Break the user's request into clear, ordered sub-steps.
+    return u8R"(You are a task planner. Break the user's request into clear, ordered sub-steps.
 Each step should be specific and actionable - something an agent can execute with tools.
 
 Respond in JSON format:

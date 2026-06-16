@@ -8,7 +8,7 @@
 ├── include/              # 頭文件
 │   ├── agent.h           # Agent 核心（推理循環 + 高級管道）
 │   ├── llm_client.h      # LM Studio HTTP Client (httplib.h)
-│   ├── memory.h          # 對話記憶管理（滑動視窗 + 摘要壓縮）
+│   ├── memory.h          # 對話記憶管理（LLM 摘要壓縮）
 │   ├── tool.h            # 工具基類 + ToolRegistry
 │   ├── tools.h           # 內建工具工廠函數
 │   ├── plugin_loader.h   # 動態外掛載入器
@@ -29,7 +29,7 @@
 │   ├── agent.cpp         # 推理循環 + Plan→Execute 高級管道
 │   ├── llm_client.cpp    # HTTP Client 實現
 │   ├── tool.cpp          # ToolRegistry 實現
-│   ├── memory.cpp        # 滑動視窗記憶 + summarize
+│   ├── memory.cpp        # LLM 摘要壓縮記憶 + summarize
 │   ├── plugin_loader.cpp # DLL/SO 動態載入
 │   ├── local_tools.cpp   # PATH 掃描 + LocalExecutableTool（多語言）
 │   ├── task_planner.cpp  # 🆕 LLM-driven 計劃生成 + replan
@@ -360,6 +360,8 @@ auto_extract_facts = true
 | `/model-info` | 顯示當前模型 + 伺服器可用模型清單 |
 | `/facts [prefix]` | 查詢語義事實（支援前綴過濾） |
 | `/sessions [n]` | 列出最近 N 次會話摘要 |
+| `/summary` | 對當前對話做摘要，並用摘要開始新對話 |
+| `/new` | 開始新對話（清空歷史） |
 | `/clear-memory` | 清空當前對話歷史 |
 | `/save-session` | 立即將當前會話保存到長期記憶 |
 | `/search-kb query` | CLI 直接搜尋 RAG 知識庫 |

@@ -7,20 +7,17 @@ namespace agent {
 Memory::Memory(int max_messages) : max_messages_(max_messages) {}
 
 void Memory::add(const ChatMessage& msg) {
+    cached_tokens_ += TokenCounter::estimate_message(msg);
     history_.push_back(msg);
 }
 
 std::vector<ChatMessage> Memory::get_messages() const {
-    if (static_cast<int>(history_.size()) <= max_messages_) {
-        return history_;
-    }
-    // Return the most recent messages (sliding window)
-    size_t start = history_.size() - max_messages_;
-    return std::vector<ChatMessage>(history_.begin() + start, history_.end());
+    return history_;
 }
 
 void Memory::clear() {
     history_.clear();
+    cached_tokens_ = 0;
 }
 
 void Memory::set_system_prompt(const std::string& prompt) {
@@ -28,10 +25,14 @@ void Memory::set_system_prompt(const std::string& prompt) {
     auto it = std::find_if(history_.begin(), history_.end(),
         [](const ChatMessage& m) { return m.role == "system"; });
     if (it != history_.end()) {
+        // Subtract old message tokens, then add new ones
+        cached_tokens_ -= TokenCounter::estimate_message(*it);
         *it = ChatMessage{"system", prompt, ""};
+        cached_tokens_ += TokenCounter::estimate_message(*it);
     } else {
         // Insert at the beginning
         history_.insert(history_.begin(), ChatMessage{"system", prompt, ""});
+        cached_tokens_ += TokenCounter::estimate_message(ChatMessage{"system", prompt, ""});
     }
 }
 
@@ -64,9 +65,10 @@ bool Memory::summarize(LLMClient& llm) {
         return false;  // nothing to summarize
     }
 
-    // Build a list of messages to summarize
+    // Build a list of messages to summarize and subtract their token count
     std::vector<ChatMessage> msgs_to_summarize;
     for (size_t i = summary_start; i < summary_end; i++) {
+        cached_tokens_ -= TokenCounter::estimate_message(history_[i]);
         msgs_to_summarize.push_back(history_[i]);
     }
 
@@ -95,6 +97,7 @@ bool Memory::summarize(LLMClient& llm) {
 
     // Replace the summarized range with a single summary message
     ChatMessage summary_msg{"assistant", "[Summary of earlier conversation]\n" + resp.content};
+    cached_tokens_ += TokenCounter::estimate_message(summary_msg);
 
     history_.erase(history_.begin() + static_cast<long>(summary_start),
                    history_.begin() + static_cast<long>(summary_end));

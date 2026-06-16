@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "multi_agent.h"
 #include "wide_string.h"
@@ -14,7 +14,7 @@ std::string agent_role_to_string(AgentRole role) {
     return "Unknown";
 }
 
-// �w�w SubAgent �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+// ── SubAgent ───────────────────────────────────────
 
 SubAgent::SubAgent(const std::string& llm_url, AgentRole role, ToolRegistry* shared_registry)
     : llm_(llm_url), registry_(shared_registry), role_(role) {
@@ -24,21 +24,21 @@ SubAgent::SubAgent(const std::string& llm_url, AgentRole role, ToolRegistry* sha
 std::string SubAgent::system_prompt() {
     switch (role_) {
         case AgentRole::Coder:
-            return R"(You are a Coder agent. Your job is to write, modify, and organize code.
+            return u8R"(You are a Coder agent. Your job is to write, modify, and organize code.
 - Use read_file before editing any file.
 - Prefer edit_file for targeted changes; use write_file only for new files or full rewrites.
 - Write clean, modern C++ (C++17/20) code with clear comments.
 - After writing code that should compile, suggest running the build tool.)";
 
         case AgentRole::Reviewer:
-            return R"(You are a Reviewer agent. Your job is to review code for quality and correctness.
+            return u8R"(You are a Reviewer agent. Your job is to review code for quality and correctness.
 - Check for bugs, memory safety issues, style violations, and performance anti-patterns.
 - Use read_file and grep_with_context to inspect the code.
 - Report findings in a structured format: severity (high/medium/low), location, description, suggestion.
 - Be constructive - always suggest how to fix issues.)";
 
         case AgentRole::Tester:
-            return R"(You are a Tester agent. Your job is to build and test code.
+            return u8R"(You are a Tester agent. Your job is to build and test code.
 - Use run_build or execute_command to compile the project.
 - If compilation fails, analyze errors and report them clearly with file:line references.
 - Run tests if they exist; report pass/fail status.
@@ -96,7 +96,7 @@ std::string SubAgent::execute(const std::string& task) {
     return resp.content;
 }
 
-// �w�w MultiAgent �w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w
+// ── MultiAgent ─────────────────────────────────────
 
 MultiAgent::MultiAgent(const std::string& llm_url, ToolRegistry* shared_registry)
     : coder_(std::make_shared<SubAgent>(llm_url, AgentRole::Coder, shared_registry)),
@@ -130,7 +130,7 @@ std::string MultiAgent::execute_task(const std::string& task_description) {
 
     std::cout << "\n[MultiAgent] Routing step to " << agent_role_to_string(role) << " agent." << std::endl;
 
-    // For coding tasks, run a Coder �� Reviewer pipeline.
+    // For coding tasks, run a Coder → Reviewer pipeline.
     if (role == AgentRole::Coder) {
         auto coder_result = coder_->execute(task_description);
 

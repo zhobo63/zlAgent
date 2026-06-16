@@ -19,6 +19,7 @@ set(CORE_SOURCES
     src/llm_client.cpp
     src/tool.cpp
     src/memory.cpp
+    src/token_counter.cpp
     src/agent.cpp
     src/plugin_loader.cpp
     src/local_tools.cpp

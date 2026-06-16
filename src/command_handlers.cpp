@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "command_handlers.h"
 #include "config.h"
@@ -29,6 +29,8 @@ void register_command_handlers(
                   << "\nMemory commands:\n"
                   << "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
                   << "  /sessions [n]      List recent session summaries (default: 5)\n"
+                  << "  /summary           Summarize current history and start a new conversation with the summary\n"
+                  << "  /new               Start a new conversation (clear history)\n"
                   << "  /clear-memory      Clear current conversation history\n"
                   << "  /save-session      Save current session to long-term memory now\n"
                   << "\nRAG commands:\n"
@@ -288,6 +290,65 @@ void register_command_handlers(
             }
         }
         std::cout << std::endl;
+    });
+
+    // ── /new ───────────────────────────────────────────
+    dispatcher.register_command("new", [ag](const auto&) {
+        if (!ag) return;
+        ag->get_memory().clear();
+        std::cout << "  New conversation started.\n";
+    });
+
+    // ── /summary ───────────────────────────────────────
+    dispatcher.register_command("summary", [ag](const auto&) {
+        if (!ag) return;
+
+        auto& memory = ag->get_memory();
+        auto messages = memory.get_messages();
+
+        // Need at least one non-system message to summarize.
+        bool has_content = false;
+        for (const auto& m : messages) {
+            if (m.role != "system") { has_content = true; break; }
+        }
+        if (!has_content) {
+            std::cout << "  Nothing to summarize.\n";
+            return;
+        }
+
+        // Build summary prompt — exclude system messages.
+        ChatMessage sys_msg{"system",
+            "You are a summarizer. Summarize the following conversation into 3-5 bullet points. "
+            "Preserve key facts, decisions, code changes, and important context. "
+            "Be concise but complete."};
+
+        std::vector<ChatMessage> prompt;
+        prompt.push_back(sys_msg);
+        for (const auto& m : messages) {
+            if (m.role == "system") continue;
+            std::string content = m.content;
+            if (content.size() > 2048) {
+                content = content.substr(0, 2048) + "... [truncated]";
+            }
+            prompt.push_back(ChatMessage{m.role, content, m.name});
+        }
+
+        std::cout << "  Summarizing conversation...\n";
+        auto resp = ag->get_llm().chat(prompt);
+
+        if (resp.content.empty()) {
+            std::cout << "  Summarization failed.\n";
+            return;
+        }
+
+        // Clear history and insert the summary as the start of a new conversation.
+        memory.clear();
+        ChatMessage summary_msg{"assistant",
+            "[Summary of previous conversation]\n" + resp.content};
+        memory.add(summary_msg);
+
+        std::cout << "  Conversation summarized. New session started with summary:\n\n"
+                  << resp.content << "\n";
     });
 
     // ── /clear-memory ────────────────────────────────

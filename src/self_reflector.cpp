@@ -8,7 +8,7 @@ namespace agent {
 SelfReflector::SelfReflector(LLMClient& llm) : llm_(llm) {}
 
 std::string SelfReflector::reflection_system_prompt() {
-    return R"(You are a quality reviewer. Critique the following output against the task description.
+    return u8R"(You are a quality reviewer. Critique the following output against the task description.
 
 Respond in JSON format:
 {

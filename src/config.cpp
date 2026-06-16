@@ -100,6 +100,7 @@ Config Config::load(const std::string& ini_path) {
     auto data = IniParser::parse(ini_path);
     if (data.empty()) {
         std::cout << "[Config] No INI file found at '" << ini_path << "', using defaults." << std::endl;
+        Config::save(cfg, ini_path);
         return cfg;
     }
 
@@ -225,6 +226,122 @@ Config Config::load(const std::string& ini_path) {
               << ", max_reflection_retries=" << std::to_string(cfg.features.max_reflection_retries) << std::endl;
 
     return cfg;
+}
+
+bool Config::save(const Config& cfg, const std::string& ini_path) {
+    std::ofstream out(ini_path);
+    if (!out.is_open()) {
+        std::cerr << "[Config] Failed to write config to '" << ini_path << "'." << std::endl;
+        return false;
+    }
+
+    bool first_section = true;
+
+    auto write_section = [&](const char* name, const std::map<std::string, std::string>& kvs) {
+        if (!first_section) out << "\n";
+        out << "[" << name << "]\n";
+        for (const auto& [k, v] : kvs) {
+            out << k << " = " << v << "\n";
+        }
+        first_section = false;
+    };
+
+    // [llm]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["url"]         = cfg.llm.url;
+        kvs["model"]       = cfg.llm.model;
+        kvs["temperature"] = std::to_string(cfg.llm.temperature);
+        kvs["max_tokens"]  = std::to_string(cfg.llm.max_tokens);
+        write_section("llm", kvs);
+    }
+
+    // [memory]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["max_messages"]           = std::to_string(cfg.memory.max_messages);
+        kvs["long_term_enabled"]      = cfg.memory.long_term_enabled ? "true" : "false";
+        kvs["store_dir"]              = cfg.memory.store_dir;
+        kvs["max_sessions"]           = std::to_string(cfg.memory.max_sessions);
+        kvs["inject_facts_to_prompt"] = cfg.memory.inject_facts_to_prompt ? "true" : "false";
+        kvs["auto_extract_facts"]     = cfg.memory.auto_extract_facts ? "true" : "false";
+        write_section("memory", kvs);
+    }
+
+    // [agent]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["max_iterations"]       = std::to_string(cfg.agent_.max_iterations);
+        kvs["language"]             = cfg.agent_.language;
+        kvs["auto_detect_language"] = cfg.agent_.auto_detect_language ? "true" : "false";
+        kvs["prompt_file"]          = cfg.agent_.prompt_file;
+        write_section("agent", kvs);
+    }
+
+    // [features]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["task_planning"]          = cfg.features.task_planning ? "true" : "false";
+        kvs["self_reflection"]        = cfg.features.self_reflection ? "true" : "false";
+        kvs["multi_agent"]            = cfg.features.multi_agent ? "true" : "false";
+        kvs["max_reflection_retries"] = std::to_string(cfg.features.max_reflection_retries);
+        write_section("features", kvs);
+    }
+
+    // [plugins]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["directory"] = cfg.plugins.directory;
+        write_section("plugins", kvs);
+    }
+
+    // [local_tools]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"] = cfg.local_tools.enabled ? "true" : "false";
+        write_section("local_tools", kvs);
+    }
+
+    // [safety]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["dangerous_tool_confirmation"] = cfg.safety.dangerous_tool_confirmation ? "true" : "false";
+        if (!cfg.safety.path_whitelist.empty()) {
+            std::string wl;
+            for (const auto& d : cfg.safety.path_whitelist) {
+                if (!wl.empty()) wl += ", ";
+                wl += d;
+            }
+            kvs["path_whitelist"] = wl;
+        }
+        kvs["skill_content_check"] = cfg.safety.skill_content_check ? "true" : "false";
+        kvs["input_filter"]        = cfg.safety.input_filter ? "true" : "false";
+        write_section("safety", kvs);
+    }
+
+    // [rag]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"]           = cfg.rag.enabled ? "true" : "false";
+        kvs["embedding_backend"] = cfg.rag.embedding_backend;
+        kvs["embedding_mode"]   = cfg.rag.embedding_model;
+        kvs["store_path"]       = cfg.rag.store_path;
+        kvs["top_k"]            = std::to_string(cfg.rag.top_k);
+        kvs["min_score"]        = std::to_string(cfg.rag.min_score);
+        if (!cfg.rag.knowledge_dirs.empty()) {
+            std::string dirs;
+            for (const auto& d : cfg.rag.knowledge_dirs) {
+                if (!dirs.empty()) dirs += ", ";
+                dirs += d;
+            }
+            kvs["knowledge_dirs"] = dirs;
+        }
+        write_section("rag", kvs);
+    }
+
+    out.close();
+    std::cout << "[Config] Default config saved to: " << ini_path << std::endl;
+    return true;
 }
 
 } // namespace agent
