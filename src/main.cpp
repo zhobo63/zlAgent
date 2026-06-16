@@ -378,6 +378,9 @@ int main() {
             std::cout << "\033[0m";
         }
 
+        // Remember whether the user pressed ESC before stopping the watcher.
+        bool was_interrupted = interrupted.load();
+
         // Stop the ESC watcher thread.
         interrupted.store(true);
         if (esc_thread.joinable()) esc_thread.join();
@@ -390,7 +393,7 @@ int main() {
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
 
-        if (interrupted.load()) {
+        if (was_interrupted) {
             std::cout << u8"⚠  Interrupted by user." << std::endl;
         } else {
             std::cout << "\n";
