@@ -120,7 +120,7 @@ bool Agent::needs_planning(const std::string& input) {
 }
 
 // Streaming version: tokens are printed as they arrive via on_token callback
-std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token) {
+std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token, ChatResponse* usage_out) {
     // Lazy discover local tools on first chat.
     discover_local_tools();
 
@@ -135,6 +135,12 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
 
     // Run streaming reasoning loop
     ChatResponse response = reasoning_loop_stream(on_token);
+
+    // Pass usage info back if requested
+    if (usage_out) {
+        usage_out->prompt_tokens     = response.prompt_tokens;
+        usage_out->completion_tokens = response.completion_tokens;
+    }
 
     // Add assistant response to memory
     memory_.add(ChatMessage{"assistant", response.content, ""});
@@ -193,6 +199,7 @@ ChatResponse Agent::reasoning_loop() {
 // Streaming reasoning loop: same logic but uses chat_stream with token callback.
 ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
     int iteration = 0;
+    size_t total_prompt = 0, total_completion = 0;  // accumulate across iterations
 
     while (iteration < max_iterations_) {
         iteration++;
@@ -208,8 +215,14 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         // Call LLM with streaming
         ChatResponse resp = llm_.chat_stream(messages, on_token, tool_defs);
 
+        // Accumulate token usage across iterations
+        total_prompt += resp.prompt_tokens;
+        total_completion += resp.completion_tokens;
+
         // If no tool calls, return the response
         if (!resp.has_tool_calls || resp.tool_calls.empty()) {
+            resp.prompt_tokens = total_prompt;
+            resp.completion_tokens = total_completion;
             return resp;
         }
 
@@ -236,7 +249,10 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
     }
 
     // Safety fallback after max iterations
-    return ChatResponse{"[Max iterations reached. Stopping.]"};
+    ChatResponse fallback{"[Max iterations reached. Stopping.]"};
+    fallback.prompt_tokens = total_prompt;
+    fallback.completion_tokens = total_completion;
+    return fallback;
 }
 
 // ── Advanced Pipeline: Plan → Execute (with Reflection + Multi-Agent) ──

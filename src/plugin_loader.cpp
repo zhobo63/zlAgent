@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "plugin_loader.h"
 #include "wide_string.h"

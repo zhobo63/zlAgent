@@ -1,7 +1,10 @@
 ﻿#include "pch.h"
 
+#include <atomic>
+#include <conio.h>
 #include <clocale>
 #include <thread>
+#include "llm_client.h"
 #include "config.h"
 #include "safety_guard.h"
 #include "language_detector.h"
@@ -326,8 +329,34 @@ int main() {
         //// Erase the last spinner character (1 display cell)
         //std::cout << " \b";
 
+        // ── ESC interrupt support ────────────────────────────────
+        std::atomic<bool> interrupted{false};
+
+        // Background thread: watch for ESC keypress during streaming.
+        // _kbhit() is non-blocking; returns true if a key was pressed.
+        auto esc_watcher = [&]() {
+            while (!interrupted.load()) {
+                if (_kbhit()) {
+                    char ch = _getch();
+                    if (ch == 27) {  // ESC
+                        interrupted.store(true);
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        };
+        auto esc_thread = std::thread{esc_watcher};
+
+        // Capture token usage from the LLM response
+        agent::ChatResponse usage_info{};
+
         bool in_reasoning = false;
         ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
+            // Check interrupt flag — return false to abort streaming.
+            if (interrupted.load()) {
+                return false;
+            }
+
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
@@ -341,13 +370,31 @@ int main() {
 
             std::cout << token << std::flush;
             return true;  // keep streaming
-        });
+        }, &usage_info);
+
         // Ensure terminal is back to normal even if reasoning was the last output.
         if (in_reasoning) {
             in_reasoning = false;
             std::cout << "\033[0m";
         }
-        std::cout << "\n\n";
+
+        // Stop the ESC watcher thread.
+        interrupted.store(true);
+        if (esc_thread.joinable()) esc_thread.join();
+
+        // Display token usage if available
+        if (usage_info.total_tokens() > 0) {
+            std::cout << u8"\n\n⏱  Tokens: ";
+            std::cout << "prompt=" << usage_info.prompt_tokens;
+            std::cout << ", completion=" << usage_info.completion_tokens;
+            std::cout << ", total=" << usage_info.total_tokens() << std::endl;
+        }
+
+        if (interrupted.load()) {
+            std::cout << u8"⚠  Interrupted by user." << std::endl;
+        } else {
+            std::cout << "\n";
+        }
     }
 
     return 0;

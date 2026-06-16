@@ -138,6 +138,13 @@ void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp)
     try {
         json data = json::parse(data_line);
 
+        // Extract usage from the final SSE chunk (before [DONE])
+        if (data.contains("usage")) {
+            auto& u = data["usage"];
+            resp.prompt_tokens      = u.value("prompt_tokens", 0u);
+            resp.completion_tokens  = u.value("completion_tokens", 0u);
+        }
+
         // Extract choices[0].delta.content
         if (data.contains("choices") && !data["choices"].empty()) {
             auto& choice = data["choices"][0];
@@ -310,7 +317,8 @@ ChatResponse chat_stream_impl(
     std::string buffer;
 
     char read_buf[4096] = {0};
-    while (true) {
+    bool aborted = false;
+    while (!aborted) {
         ssize_t n = handle.read(read_buf, sizeof(read_buf));
         if (n <= 0) break;
 
@@ -340,13 +348,13 @@ ChatResponse chat_stream_impl(
                             // Reasoning/thinking tokens first
                             if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
                                 std::string token = delta["reasoning_content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, true)) break;
+                                if (!token.empty() && !on_token(token, true)) { aborted = true; break; }
                             }
 
                             // Normal content tokens
                             if (delta.contains("content") && !delta["content"].is_null()) {
                                 std::string token = delta["content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, false)) break;
+                                if (!token.empty() && !on_token(token, false)) { aborted = true; break; }
                             }
                         }
                     }
@@ -354,9 +362,17 @@ ChatResponse chat_stream_impl(
             }
         }
 
+        if (aborted) break;
+
         if (line_start > 0) {
             buffer = buffer.substr(line_start);
         }
+    }
+
+    // If aborted by user, discard any partial tool calls — the response is incomplete.
+    if (aborted) {
+        resp.has_tool_calls = false;
+        resp.tool_calls.clear();
     }
 
     return resp;

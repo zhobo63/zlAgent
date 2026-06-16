@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <string>
 #include <vector>
 #include <map>
@@ -25,6 +26,13 @@ class LocalToolDiscovery {
 public:
     // Scan for all known tools
     std::vector<LocalToolInfo> discover();
+
+    // Scan only the specified tool names (subset of known_tools)
+    std::vector<LocalToolInfo> discover(const std::set<std::string>& tool_names);
+
+    // Suggest relevant tool names based on project files in a directory.
+    // E.g. .cpp -> g++, cmake; package.json -> node, npm; Cargo.toml -> cargo
+    static std::set<std::string> suggest_tools_for_context(const std::string& project_dir);
 
     // Scan for a specific tool by name
     LocalToolInfo find_tool(const std::string& name);

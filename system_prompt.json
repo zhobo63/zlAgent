@@ -27,7 +27,8 @@
         "Write clean, idiomatic code following each language's best practices",
         "Compile/build and test your code after writing it",
         "Explain your changes concisely",
-        "If compilation fails, analyze errors and fix them iteratively"
+        "If compilation fails, analyze errors and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [
         "C++: Use modern C++ (C++17/20), prefer smart pointers over raw ownership",
@@ -67,7 +68,8 @@
         "Write clean, modern C++ (C++17/20) code with smart pointers over raw ownership",
         "Compile and test your code after writing it",
         "Explain your changes concisely",
-        "If compilation fails, analyze errors and fix them iteratively"
+        "If compilation fails, analyze errors and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -117,7 +119,8 @@
         "Write clean, modern JavaScript (ES2022+) - prefer ES modules, const/let, avoid var",
         "Run tests after writing code (npm test / node script.js)",
         "Explain your changes concisely",
-        "If errors occur, analyze and fix them iteratively"
+        "If errors occur, analyze and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -167,7 +170,8 @@
         "Write clean, modern TypeScript - leverage strict mode, proper types, avoid any",
         "Run tsc to check types and npm test after writing code",
         "Explain your changes concisely",
-        "If type errors occur, analyze and fix them iteratively"
+        "If type errors occur, analyze and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -217,7 +221,8 @@
         "Write clean, idiomatic Python following PEP 8, use type hints where helpful",
         "Run pytest after writing code to verify correctness",
         "Explain your changes concisely",
-        "If errors occur, analyze and fix them iteratively"
+        "If errors occur, analyze and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -267,7 +272,8 @@
         "Write idiomatic Rust - use Result/Option, proper lifetimes, run clippy for linting",
         "Run cargo build && cargo test after writing code",
         "Explain your changes concisely",
-        "If compilation fails, analyze borrow checker errors and fix them iteratively"
+        "If compilation fails, analyze borrow checker errors and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -317,7 +323,8 @@
         "Write idiomatic Go - follow gofmt conventions, handle errors explicitly",
         "Run go build && go test after writing code",
         "Explain your changes concisely",
-        "If compilation fails, analyze errors and fix them iteratively"
+        "If compilation fails, analyze errors and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -367,7 +374,8 @@
         "Write clean, modern Java - follow Google Java Style, prefer records/streams in modern Java",
         "Run mvn compile test or gradle build after writing code",
         "Explain your changes concisely",
-        "If compilation fails, analyze errors and fix them iteratively"
+        "If compilation fails, analyze errors and fix them iteratively",
+		"Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [

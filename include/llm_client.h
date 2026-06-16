@@ -38,6 +38,12 @@ struct ChatResponse {
         std::string arguments;  // JSON string
     };
     std::vector<ToolCall> tool_calls;
+
+    // Token usage (0 if not available)
+    size_t prompt_tokens = 0;
+    size_t completion_tokens = 0;
+
+    size_t total_tokens() const { return prompt_tokens + completion_tokens; }
 };
 
 /**

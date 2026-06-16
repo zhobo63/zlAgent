@@ -4,6 +4,9 @@
 #include "encoding.h"
 #include "wide_string.h"
 
+#include <set>
+#include <filesystem>
+
 #ifndef _WIN32
 #include <cstdlib>
 #include <cstdio>
@@ -19,7 +22,8 @@ namespace agent {
 
 const std::map<std::string, std::string>& LocalToolDiscovery::known_tools() {
     static const std::map<std::string, std::string> tools = {
-        // ── C++ Compilers ───────────────────────────────────
+        // ── C/C++ Compilers ─────────────────────────────────
+        {"gcc",       "GNU GCC compiler. Compile and link C source files."},
         {"g++",       "GNU G++ compiler. Compile and link C++ source files."},
         {"clang++",   "Clang C++ compiler (LLVM). Compile and link C++ source files with better diagnostics."},
         {"cl",        "Microsoft Visual C++ compiler (MSVC). Compile C++ on Windows."},
@@ -209,6 +213,97 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
 #endif
 }
 
+// ============================================================================
+// LocalToolDiscovery - suggest tools based on project context
+// ============================================================================
+
+std::set<std::string> LocalToolDiscovery::suggest_tools_for_context(const std::string& project_dir) {
+    std::set<std::string> suggested;
+
+    // Mapping: file indicator -> set of relevant tool names
+    static const std::map<std::string, std::vector<std::string>> indicators = {
+        // C++
+        {".cpp",     {"g++", "clang++", "cmake", "make", "ninja", "vcpkg", "conan", "clang-format", "clang-tidy", "cppcheck", "gdb", "lldb"}},
+        {".c",       {"gcc", "cmake", "make", "ninja", "clang-format", "clang-tidy", "cppcheck", "gdb", "lldb"}},
+        {".h",       {}},  // header-only, no specific tools
+        {"CMakeLists.txt", {"cmake", "make", "ninja"}},
+        {"Makefile",   {"make"}},
+        {"build.ninja", {"ninja"}},
+        {"vcpkg.json",  {"vcpkg"}},
+        {"conanfile.txt", {"conan"}},
+        {"conanfile.py",  {"conan"}},
+
+        // JavaScript / TypeScript
+        {"package.json",   {"node", "npm", "npx", "tsc", "webpack", "vite"}},
+        {"tsconfig.json",  {"tsc", "node", "npm"}},
+        {".js",            {"node", "npm"}},
+        {".ts",            {"node", "npm", "tsc"}},
+
+        // Python
+        {"requirements.txt", {"python3", "pip3", "pytest"}},
+        {"setup.py",         {"python3", "pip3"}},
+        {"pyproject.toml",   {"python3", "pip3", "pytest"}},
+        {".py",              {"python3", "pip3", "pytest"}},
+
+        // Rust
+        {"Cargo.toml",       {"cargo", "rustc"}},
+        {".rs",              {"cargo", "rustc"}},
+
+        // Go
+        {"go.mod",           {"go"}},
+        {".go",              {"go"}},
+
+        // Java
+        {"pom.xml",          {"javac", "java", "mvn"}},
+        {"build.gradle",     {"gradle", "javac", "java"}},
+        {"build.gradle.kts", {"gradle", "javac", "java"}},
+        {".java",            {"javac", "java"}},
+
+        // Version control (always useful)
+        {".git",             {"git"}},
+    };
+
+    namespace fs = std::filesystem;
+
+    try {
+        if (!fs::exists(project_dir) || !fs::is_directory(project_dir)) {
+            return suggested;
+        }
+
+        // Scan top-level files and directories (non-recursive for speed)
+        for (const auto& entry : fs::directory_iterator(project_dir)) {
+            std::string name = entry.path().filename().string();
+
+            // Check exact filename matches first
+            if (indicators.count(name)) {
+                for (const auto& tool : indicators.at(name)) {
+                    suggested.insert(tool);
+                }
+                continue;
+            }
+
+            // Check extension-based matches
+            std::string ext = entry.path().extension().string();
+            if (!ext.empty() && indicators.count(ext)) {
+                for (const auto& tool : indicators.at(ext)) {
+                    suggested.insert(tool);
+                }
+            }
+        }
+    } catch (...) {
+        // If filesystem operations fail, return empty set
+    }
+
+    // Always include git if it's available — it's universally useful
+    suggested.insert("git");
+
+    return suggested;
+}
+
+// ============================================================================
+// LocalToolDiscovery - find installed tools
+// ============================================================================
+
 std::vector<LocalToolInfo> LocalToolDiscovery::discover() {
     std::vector<LocalToolInfo> found;
 
@@ -220,6 +315,36 @@ std::vector<LocalToolInfo> LocalToolDiscovery::discover() {
             info.display_name = name + " (" + path.substr(path.find_last_of("/\\") + 1) + ")";
             info.path = path;
             info.description = desc;
+
+            // Get version (with timeout protection)
+            try {
+                info.version = get_version(path);
+            } catch (...) {
+                info.version = "unknown";
+            }
+
+            found.push_back(info);
+        }
+    }
+
+    return found;
+}
+
+std::vector<LocalToolInfo> LocalToolDiscovery::discover(const std::set<std::string>& tool_names) {
+    std::vector<LocalToolInfo> found;
+    auto& all_tools = known_tools();
+
+    for (const auto& name : tool_names) {
+        auto it = all_tools.find(name);
+        if (it == all_tools.end()) continue;  // Not a known tool, skip
+
+        std::string path = resolve_path(name);
+        if (!path.empty()) {
+            LocalToolInfo info;
+            info.name = name;
+            info.display_name = name + " (" + path.substr(path.find_last_of("/\\") + 1) + ")";
+            info.path = path;
+            info.description = it->second;
 
             // Get version (with timeout protection)
             try {
@@ -428,7 +553,19 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
 
 std::vector<ToolPtr> create_local_tools() {
     LocalToolDiscovery discovery;
-    auto found = discovery.discover();
+
+    // Suggest relevant tools based on current working directory context,
+    // so we only scan the subset that matters instead of all known tools.
+    namespace fs = std::filesystem;
+    auto suggested = LocalToolDiscovery::suggest_tools_for_context(fs::current_path().string());
+
+    if (!suggested.empty()) {
+        std::cout << "[LocalTools] Context suggests: ";
+        for (const auto& t : suggested) std::cout << t << ' ';
+        std::cout << std::endl;
+    }
+
+    auto found = discovery.discover(suggested);
 
     std::cout << "[LocalTools] Scanning for installed tools..." << std::endl;
 

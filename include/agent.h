@@ -38,9 +38,11 @@ public:
 
     // Streaming version: on_token is called for each token chunk as it arrives.
     // Returns the final response content after streaming completes.
+    // If usage_out is provided, it will be filled with cumulative token counts.
     std::string run_stream(
         const std::string& user_input,
-        TokenCallback on_token);
+        TokenCallback on_token,
+        ChatResponse* usage_out = nullptr);
 
     // ── Advanced feature toggles ────────────────────────────
 
