@@ -293,7 +293,7 @@ int main() {
         std::cout << "You: [" << ag.get_llm().get_model() << "] ";
         if (!std::getline(std::cin, input)) break;
 
-        if (input == "quit" || input == "exit") {
+        if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
             // Save session to long-term memory before exiting.
             if (long_term_memory) {
                 std::cout << "\nSaving session to long-term memory..." << std::endl;

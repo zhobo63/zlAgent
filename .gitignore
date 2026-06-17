@@ -2,3 +2,4 @@ build/
 node_modules/
 __cmake_systeminformation/
 nul
+tool_test/

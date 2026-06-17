@@ -124,8 +124,18 @@ std::string LLMClient::build_chat_json(
         req["tools"] = tools_arr;
         req["tool_choice"] = "auto";
     }
+    std::string req_str;
+    try
+    {
+        req_str=req.dump();
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
 
-    return req.dump();
+    return req_str;
 }
 
 // ---------------------------------------------------------------------------

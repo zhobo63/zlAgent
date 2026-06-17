@@ -22,7 +22,8 @@ namespace fs = std::filesystem;
 // -----------------------------------------------------------------------
 static std::string execute_shell_command(const std::string& cmd, const std::string& cwd) {
 #ifdef _WIN32
-    std::string full_cmd = "cmd.exe /c \"" + cmd + "\"";
+    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
+    std::string full_cmd = "cmd.exe /c chcp 65001 >nul && \"" + cmd + "\"";
 
     wchar_t cwd_wide[1024] = L".";
     if (!cwd.empty()) {
@@ -76,8 +77,8 @@ static std::string execute_shell_command(const std::string& cmd, const std::stri
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
-    return agent::big5_to_utf8(raw_output);
+    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
+    return raw_output;
 #else
     std::string shell_cmd = cmd;
     if (!cwd.empty()) {

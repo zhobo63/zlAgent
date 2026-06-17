@@ -159,7 +159,8 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
     si.hStdError = hWritePipe;
     si.dwFlags |= STARTF_USESTDHANDLES;
 
-    std::string full_cmd = "cmd.exe /c " + cmd;
+    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
+    std::string full_cmd = "cmd.exe /c chcp 65001 >nul && " + cmd;
     std::wstring wcmd = agent::utf8_to_wide(full_cmd);
 
     if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
@@ -187,8 +188,8 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
-    std::string output = agent::big5_to_utf8(raw_output);
+    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
+    std::string output = raw_output;
 
     // Extract first line as version
     size_t nl = output.find('\n');
@@ -488,7 +489,8 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
         cwd_wide = agent::utf8_to_wide(cwd);
     }
 
-    std::string full_cmd_win = "cmd.exe /c " + full_cmd;
+    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
+    std::string full_cmd_win = "cmd.exe /c chcp 65001 >nul && " + full_cmd;
     std::wstring wcmd = agent::utf8_to_wide(full_cmd_win);
 
     if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
@@ -516,9 +518,8 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    // Convert from BIG5 to UTF-8 (cmd.exe output uses system code page).
-    std::string output = agent::big5_to_utf8(raw_output);
-    return output.empty() ? "(no output)" : output;
+    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
+    return raw_output.empty() ? "(no output)" : raw_output;
 #else
     // Linux/macOS implementation using popen
     std::string cmd = full_cmd;
