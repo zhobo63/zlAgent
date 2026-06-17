@@ -173,6 +173,13 @@ ChatResponse Agent::reasoning_loop() {
 
         // Execute each tool call and add results to memory
         for (const auto& tc : resp.tool_calls) {
+            // Guard: skip if LLM returned empty arguments (streaming truncation)
+            if (tc.arguments.empty()) {
+                std::cout << "[Tool] Skipping '" << tc.name
+                          << "' — empty arguments from LLM" << std::endl;
+                continue;
+            }
+
             std::cout << "[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
@@ -228,6 +235,13 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
         // Execute each tool call and add results to memory (non-streaming for tools)
         for (const auto& tc : resp.tool_calls) {
+            // Guard: skip if LLM returned empty arguments (streaming truncation)
+            if (tc.arguments.empty()) {
+                std::cout << "\n[Tool] Skipping '" << tc.name
+                          << "' — empty arguments from LLM" << std::endl;
+                continue;
+            }
+
             std::cout << "\n[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
