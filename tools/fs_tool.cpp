@@ -120,6 +120,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No directory path provided.";
@@ -166,6 +167,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No path provided.";
@@ -220,6 +222,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string source = args.value("source_path", "");
             std::string dest   = args.value("destination_path", "");
@@ -277,6 +280,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string source = args.value("source_path", "");
             std::string dest   = args.value("destination_path", "");
@@ -1118,6 +1122,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path   = args.value("path", ".");
             bool staged        = args.value("staged", false);
@@ -1181,6 +1186,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string url = args.value("url", "");
 

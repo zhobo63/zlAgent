@@ -48,6 +48,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string name = args.value("name", "");
             std::string description = args.value("description", "");
@@ -140,6 +141,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string name = args.value("name", "");
 

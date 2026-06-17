@@ -292,6 +292,7 @@ std::set<std::string> LocalToolDiscovery::suggest_tools_for_context(const std::s
             }
         }
     } catch (...) {
+        std::cerr << "[LocalTools] Failed to scan directory '" << project_dir << "' for tool suggestions" << std::endl;
         // If filesystem operations fail, return empty set
     }
 
@@ -321,6 +322,7 @@ std::vector<LocalToolInfo> LocalToolDiscovery::discover() {
             try {
                 info.version = get_version(path);
             } catch (...) {
+                std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
                 info.version = "unknown";
             }
 
@@ -351,6 +353,7 @@ std::vector<LocalToolInfo> LocalToolDiscovery::discover(const std::set<std::stri
             try {
                 info.version = get_version(path);
             } catch (...) {
+                std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
                 info.version = "unknown";
             }
 
@@ -382,6 +385,7 @@ LocalToolInfo LocalToolDiscovery::find_tool(const std::string& name) {
     try {
         info.version = get_version(path);
     } catch (...) {
+        std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
         info.version = "unknown";
     }
 

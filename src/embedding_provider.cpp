@@ -69,7 +69,10 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
         if (port_pos != std::string::npos && port_pos > 0) {
             parts.host = u.substr(0, port_pos);
             try { parts.port = std::stoi(u.substr(port_pos + 1)); }
-            catch (...) { parts.port = parts.is_ssl ? 443 : 80; }
+            catch (...) {
+                std::cerr << "[EmbeddingProvider] Failed to parse port from URL, using default" << std::endl;
+                parts.port = parts.is_ssl ? 443 : 80;
+            }
         } else {
             parts.host = u;
             parts.port = parts.is_ssl ? 443 : 80;
@@ -103,6 +106,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
             }
         }
     } catch (...) {
+        std::cerr << "[EmbeddingProvider] Failed to parse embedding API response" << std::endl;
         return {}; // parse error - fallback to empty
     }
 

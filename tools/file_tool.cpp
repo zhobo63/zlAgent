@@ -31,6 +31,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No file path provided.";
@@ -67,6 +68,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             std::string content = args.value("content", "");
@@ -121,6 +123,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             std::string old_text = args.value("old_text", "");
@@ -197,6 +200,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No directory path provided.";

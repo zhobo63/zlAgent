@@ -160,7 +160,9 @@ void register_command_handlers(
 
         // Parse number.
         int num = -1;
-        try { num = std::stoi(input); } catch (...) {}
+        try { num = std::stoi(input); } catch (...) {
+            std::cerr << "[Command] Failed to parse model number from input: '" << input << "'" << std::endl;
+        }
 
         if (num < 1 || static_cast<size_t>(num) > models.size()) {
             std::cout << "  Invalid selection. Kept current model: " << current_model << "\n";
@@ -263,7 +265,10 @@ void register_command_handlers(
 
         int n = 5;
         if (!args.empty()) {
-            try { n = std::stoi(args[0]); } catch (...) { n = 5; }
+            try { n = std::stoi(args[0]); } catch (...) {
+                std::cerr << "[Command] Failed to parse session count from: '" << args[0] << "', using default (5)" << std::endl;
+                n = 5;
+            }
         }
 
         auto sessions = ltm->get_recent_sessions(n);
@@ -439,7 +444,9 @@ void register_command_handlers(
         bool is_dir = false;
         try {
             is_dir = std::filesystem::is_directory(path);
-        } catch (...) {}
+        } catch (...) {
+            std::cerr << "[Command] Failed to check if path is directory: '" << path << "'" << std::endl;
+        }
 
         if (is_dir) {
             rag->add_directory(path);

@@ -30,6 +30,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string query = args.value("query", "");
             int top_k = args.value("top_k", 3);
@@ -132,6 +133,7 @@ public:
 
     std::string execute(const std::string& json_args) override {
         try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string prefix = args.value("prefix", "");
 

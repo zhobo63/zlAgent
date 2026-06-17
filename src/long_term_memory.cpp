@@ -140,6 +140,7 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
             }
         }
     } catch (...) {
+        std::cerr << "[LongTermMemory] JSON parse failed - no facts extracted from conversation" << std::endl;
         // JSON parse failed - no facts extracted.
     }
 

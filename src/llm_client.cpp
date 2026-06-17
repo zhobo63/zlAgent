@@ -301,6 +301,8 @@ ChatResponse chat_stream_impl(
             try {
                 func["parameters"] = json::parse(t.parameters_schema);
             } catch (...) {
+                std::cerr << "[LLMClient] Failed to parse tool parameters schema for '" 
+                          << t.name << "' in streaming request, using empty object" << std::endl;
                 func["parameters"] = json::object();
             }
             tool_def["function"] = func;
@@ -310,11 +312,13 @@ ChatResponse chat_stream_impl(
         req["tool_choice"] = "auto";
     }
 
-	std::string json_body;
+    std::string json_body;
 	try {
         json_body = req.dump();
 	}
-	catch (...) {}
+	catch (...) {
+        std::cerr << "[LLMClient] Failed to serialize chat request JSON" << std::endl;
+	}
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
@@ -368,7 +372,9 @@ ChatResponse chat_stream_impl(
                             }
                         }
                     }
-                } catch (...) {}
+                } catch (...) {
+                    std::cerr << "[LLMClient] Failed to parse SSE token data for callback" << std::endl;
+                }
             }
         }
 
@@ -432,10 +438,16 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
 
                 // Try to read context_length from various API fields.
                 if (item.contains("max_model_len")) {
-                    try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {}
+                    try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {
+                        std::cerr << "[LLMClient] Failed to parse max_model_len for model '" 
+                                  << mi.id << "'" << std::endl;
+                    }
                 }
                 if (mi.context_length == 0 && item.contains("context_length")) {
-                    try { mi.context_length = item["context_length"].get<int>(); } catch (...) {}
+                    try { mi.context_length = item["context_length"].get<int>(); } catch (...) {
+                        std::cerr << "[LLMClient] Failed to parse context_length for model '" 
+                                  << mi.id << "'" << std::endl;
+                    }
                 }
 
                 // If API didn't provide it, fall back to our built-in table.
@@ -445,7 +457,9 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
                 models.push_back(mi);
             }
         }
-    } catch (...) {}
+    } catch (...) {
+        std::cerr << "[LLMClient] Failed to parse /v1/models API response" << std::endl;
+    }
 
     return models;
 }

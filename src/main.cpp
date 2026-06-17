@@ -130,7 +130,7 @@ int main() {
     auto native_skills = agent::SkillLoader::scan_directory("zlagent/skills", "native");
     for (auto& skill : native_skills) {
         skill_registry.register_skill(skill);
-        std::cout << "  \u2713 " << skill->name
+        std::cout << u8"  \u2713 " << skill->name
                   << " (" << skill->source_path << ")" << std::endl;
     }
 
@@ -361,6 +361,7 @@ int main() {
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
                 std::cout << "\033[2m";  // dim for thinking content
+                std::cout << u8"[🤔 thinking]" << std::endl;
             }
             // Transition from reasoning to content: restore normal brightness
             else if (!is_reasoning_flag && in_reasoning) {
