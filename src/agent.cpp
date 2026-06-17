@@ -160,7 +160,7 @@ ChatResponse Agent::reasoning_loop() {
         }
 
         // Get current conversation history + tools
-        auto messages = memory_.get_messages();
+        const auto& messages = memory_.get_messages();
         auto tool_defs = registry_.get_definitions();
 
         // Call LLM
@@ -209,7 +209,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
             std::cout << "\n[Memory] Context compressed via summarization.\n" << std::endl;
         }
 
-        auto messages = memory_.get_messages();
+        const auto& messages = memory_.get_messages();
         auto tool_defs = registry_.get_definitions();
 
         // Call LLM with streaming
@@ -264,7 +264,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
 
     // Step 1: Generate a plan
     std::cout << "\n[Planner] Generating task plan..." << std::endl;
-    auto context = memory_.get_messages();
+    const auto& context = memory_.get_messages();
     Plan plan = planner.generate_plan(user_input, context);
 
     if (plan.steps.empty()) {

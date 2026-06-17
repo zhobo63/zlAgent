@@ -309,7 +309,7 @@ void register_command_handlers(
         if (!ag) return;
 
         auto& memory = ag->get_memory();
-        auto messages = memory.get_messages();
+        const auto& messages = memory.get_messages();
 
         // Need at least one non-system message to summarize.
         bool has_content = false;

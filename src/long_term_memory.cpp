@@ -148,7 +148,7 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
 }
 
 void LongTermMemory::save_session(Memory& working_memory, LLMClient& llm) {
-    auto messages = working_memory.get_messages();
+    const auto& messages = working_memory.get_messages();
     if (messages.empty()) return;
 
     std::string ts = current_timestamp();

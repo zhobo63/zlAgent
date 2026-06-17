@@ -57,7 +57,7 @@ ChatResponse SubAgent::run_loop(const std::string& task) {
     while (iteration < max_iter) {
         iteration++;
 
-        auto messages = memory_.get_messages();
+        const auto& messages = memory_.get_messages();
         std::vector<ToolDefinition> tool_defs;
         if (registry_) {
             tool_defs = registry_->get_definitions();
