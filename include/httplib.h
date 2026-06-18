@@ -2085,6 +2085,11 @@ public:
     bool is_valid() const {
       return response != nullptr && error == Error::Success;
     }
+	void close() {
+		connection_.reset();
+		response.reset();
+		error = Error::Success;
+	}
 
     ssize_t read(char *buf, size_t len);
     void parse_trailers_if_needed();

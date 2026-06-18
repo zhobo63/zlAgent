@@ -19,6 +19,58 @@
 #include "local_tools.h"
 #include "wide_string.h"
 
+#ifdef _WIN32
+#include <conio.h>
+#endif
+
+/// Read multi-line input from the console.
+/// - Enter alone: submit the current buffer
+/// - Shift+Enter: insert a newline (multi-line mode)
+static std::string read_multiline_input() {
+    std::wstring wresult;
+#ifdef _WIN32
+    while (true) {
+        wchar_t ch = _getwch();
+
+        // Enter key
+        if (ch == L'\r') {
+            if (GetKeyState(VK_SHIFT) < 0) {
+                // Shift+Enter: insert newline
+                wresult += L'\n';
+                std::cout << "\n";
+            } else {
+                // Enter alone: submit
+                break;
+            }
+        }
+        // Backspace
+        else if (ch == 8) {
+            if (!wresult.empty()) {
+                wresult.pop_back();
+                std::cout << "\b \b";
+            }
+        }
+        // Printable character (including CJK via IME)
+        else {
+            wresult += ch;
+            std::wcout << ch;
+        }
+    }
+
+    // Convert wide string to UTF-8 narrow string
+    int len = WideCharToMultiByte(CP_UTF8, 0, wresult.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return "";
+    std::string result(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wresult.c_str(), -1, &result[0], len - 1, nullptr, nullptr);
+    return result;
+#else
+    // Fallback: single-line for non-Windows
+    std::string fallback;
+    std::getline(std::cin, fallback);
+    return fallback;
+#endif
+}
+
 int main() {
 #ifdef _WIN32
     // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
@@ -295,7 +347,8 @@ int main() {
     std::string input;
     while (true) {
         std::cout << "You: [" << ag.get_llm().get_model() << "] ";
-        if (!std::getline(std::cin, input)) break;
+        input = read_multiline_input();
+        if (input.empty()) continue;
 
         if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
             // Save session to long-term memory before exiting.
@@ -342,7 +395,7 @@ int main() {
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
                 std::cout << "\033[2m";  // dim for thinking content
-                std::cout << u8"[🤔 thinking]" << std::endl;
+                std::cout << u8"\n[🤔 thinking]" << std::endl;
             }
             // Transition from reasoning to content: restore normal brightness
             else if (!is_reasoning_flag && in_reasoning) {

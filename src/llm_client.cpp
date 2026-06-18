@@ -358,9 +358,29 @@ ChatResponse chat_stream_impl(
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
 
+    std::atomic<bool> interrupted{ false };
+    std::unique_ptr<httplib::ClientImpl::StreamHandle> handle;
+
+    auto esc_watcher = [&]() {
+        while (!interrupted.load()) {
+            if (_kbhit()) {
+                char ch = _getch();
+                if (ch == 27) {  // ESC
+                    if (handle) {
+                        handle->close();  // release our reference; main thread may still hold one via local_handle
+                    }
+                    interrupted.store(true);
+                    std::cout << u8"\n⚠  Interrupted by user." << std::endl;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        };
+    auto esc_thread = std::thread{ esc_watcher };
+
     // Wrap StreamHandle in unique_ptr so we can close the socket immediately
     // when ESC is pressed — this notifies the LLM server to stop generating.
-    auto handle = std::make_unique<httplib::ClientImpl::StreamHandle>(
+    handle = std::make_unique<httplib::ClientImpl::StreamHandle>(
         client.open_stream("POST", "/v1/chat/completions",
             {}, headers, json_body));
 
@@ -369,31 +389,10 @@ ChatResponse chat_stream_impl(
     ChatResponse resp;
     std::string buffer;
 
-    std::atomic<bool> interrupted{ false };
-    std::mutex handle_mtx;
-
-    auto esc_watcher = [&]() {
-        while (!interrupted.load()) {
-            if (_kbhit()) {
-                char ch = _getch();
-                if (ch == 27) {  // ESC
-                    std::lock_guard<std::mutex> lock(handle_mtx);
-                    handle.reset();  // release our reference; main thread may still hold one via local_handle
-                    interrupted.store(true);
-                    std::cout << u8"\n⚠  Interrupted by user." << std::endl;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-    };
-    auto esc_thread = std::thread{ esc_watcher };
-
-
     char read_buf[4096] = {0};
     while (handle && handle->is_valid()) {
         ssize_t n = 0;
         {
-            std::lock_guard<std::mutex> lock(handle_mtx);
             n = handle->read(read_buf, sizeof(read_buf));
         }
         if (n <= 0) break;
