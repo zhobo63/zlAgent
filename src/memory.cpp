@@ -6,12 +6,12 @@ namespace agent {
 
 Memory::Memory(int max_messages) : max_messages_(max_messages) {}
 
-void Memory::add(const ChatMessage& msg) {
+void Memory::add(ChatMessage msg) {
     cached_tokens_ += TokenCounter::estimate_message(msg);
-    history_.push_back(msg);
+    history_.push_back(std::move(msg));
 }
 
-std::vector<ChatMessage> Memory::get_messages() const {
+const std::vector<ChatMessage>& Memory::get_messages() const {
     return history_;
 }
 

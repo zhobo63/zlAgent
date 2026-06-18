@@ -124,6 +124,104 @@ struct TokenUsage {
 - `summarize()` 後更新緩存值
 - 提供 `get_cached_token_count()` 避免 O(n) 重算
 
+### 3.2.2 LongTermMemory (`long_term_memory.h/cpp`)
+
+**核心概念：** 跨會話持久化記憶系統。將對話摘要（Episodic）和結構化事實（Semantic）儲存到 JSON，啟動時載入並可注入系統提示詞。與 RAG 整合，使歷史會話可被語意搜尋。
+
+| 項目 | 要求 |
+|------|------|
+| **Session Summary** | `save_session()` — 通過 LLM 生成會話摘要（主題 + 精簡內容），儲存到 `.zlagent_memory/` |
+| **Semantic Facts** | `add_fact(key, value)` — 結構化 key-value 事實，支援 prefix 查詢、刪除 |
+| **Auto Extract** | 儲存會話時自動通過 LLM 提取關鍵事實（如專案構建系統、技術棧等） |
+| **JSON Persistence** | `load()` / `save()` — JSON 格式持久化到 `.zlagent_memory/` 目錄 |
+| **Prompt Injection** | `build_context_string()` — 將近期會話 + 相關事實組合成文字，注入系統提示詞 |
+| **RAG Integration** | `integrate_with_rag()` — 將會話摘要寫入 RAG 知識庫，支援語意搜尋 |
+| **CLI Tools** | `search_memories` / `recall_facts` — LLM 可調用的工具，從長期記憶中檢索資訊 |
+
+**Config（INI `[memory]` section）：**
+
+| Key | 類型 | 預設值 | 說明 |
+|-----|------|--------|------|
+| `long_term_enabled` | bool | `false` | 長期記憶開關 |
+| `store_dir` | string | `.zlagent_memory` | 儲存目錄路徑 |
+| `max_sessions` | int | `100` | 最大會話摘要數量 |
+| `inject_facts_to_prompt` | bool | `true` | 啟動時將事實注入系統提示詞 |
+| `auto_extract_facts` | bool | `true` | 儲存會話時自動提取事實 |
+
+**CLI 命令：**
+
+| 命令 | 說明 |
+|------|------|
+| `/facts [prefix]` | 查詢語意事實（可選 prefix 過濾） |
+| `/sessions [n]` | 列出近期會話摘要（預設 5 筆） |
+| `/save-session` | 立即將當前會話儲存到長期記憶 |
+
+---
+
+### 3.2.3 RAG System (`rag_manager.h/cpp`, `embedding_provider.h/cpp`, `vector_store.h/cpp`, `document_chunker.h/cpp`)
+
+**核心概念：** Retrieval Augmented Generation（檢索增強生成）。將文件切分為 chunk，通過 Embedding 轉換為向量存入 Vector Store，查詢時計算 Cosine Similarity 返回最相關的片段。支援 LM Studio API 和 TF-IDF 雙路徑 Embedding。
+
+#### RAGManager (`rag_manager.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| **Knowledge Ingestion** | `add_document()` / `add_file()` / `add_directory()` — 支援單文件、多文件類型、遞迴目錄導入 |
+| **Semantic Search** | `search(query, top_k)` — 自然語言查詢，返回最相關的 chunk（含 score） |
+| **Persistence** | `save(path)` / `load_store(path)` — JSON 格式持久化 Vector Store |
+| **TF-IDF Auto-fit** | 首次導入文件時自動 fit TF-IDF 詞彙表 |
+
+#### EmbeddingProvider (`embedding_provider.h/cpp`)
+
+| Provider | 說明 |
+|----------|------|
+| **LLMEmbeddingProvider** | POST `/v1/embeddings`，使用 LM Studio API 產生語意嵌入向量（預設 `text-embedding-3-small`, dim=1536） |
+| **TfidfEmbeddingProvider** | 純 C++ TF-IDF 實現，無外部依賴。需先 `fit()` 詞彙表再 `embed()`，支援 L2-normalize |
+
+#### VectorStore (`vector_store.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| **Insert** | `insert(embedding, content, metadata)` — 插入向量 + 內容 + ChunkMetadata |
+| **Search** | `search(query_embedding, top_k, min_score)` — Cosine Similarity top-K 搜尋，`partial_sort` 實現 |
+| **Persistence** | `save(path)` / `load(path)` — JSON 格式持久化 |
+
+#### DocumentChunker (`document_chunker.h/cpp`)
+
+| 項目 | 要求 |
+|------|------|
+| **Sliding Window** | `chunk_size` + `overlap` 滑動視窗切分 |
+| **Paragraph-Aware** | `respect_paragraphs = true` 時優先按段落邊界切分 |
+| **Multi-Format Support** | 支援 16+ 副檔名（.cpp, .h, .py, .js, .ts, .rs, .go, .java, .md, .txt, .json, .yaml, .toml, .html, .css, .sql） |
+
+#### SearchKnowledgeBaseTool (`rag_tool.cpp`)
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `query` | string | ✅ | 自然語言查詢 |
+| `top_k` | int | ❌ | 返回結果數量（預設取 INI 配置值） |
+
+#### INI RAG Config (`[rag]` section)
+
+| Key | 類型 | 預設值 | 說明 |
+|-----|------|--------|------|
+| `enabled` | bool | `false` | RAG 開關 |
+| `embedding_backend` | string | `tfidf` | Embedding 後端：`lm_studio` / `tfidf` |
+| `embedding_model` | string | `text-embedding-3-small` | LM Studio embedding 模型名稱 |
+| `store_path` | string | `knowledge_base.json` | Vector Store 持久化路徑 |
+| `top_k` | int | `5` | 預設搜尋結果數量 |
+| `min_score` | float | `0.3` | 最低 Cosine Similarity 閾值 |
+| `knowledge_dirs` | string | *(空)* | 啟動時自動導入的知識庫目錄列表（逗號分隔） |
+
+#### CLI RAG Commands
+
+| 命令 | 說明 |
+|------|------|
+| `/search-kb query` | 直接從 CLI 搜尋知識庫 |
+| `/add-doc path` | 將文件或目錄添加到知識庫 |
+
+---
+
 ### 3.3 Agent (`agent.h/cpp`)
 
 | 項目 | 要求 |
@@ -679,6 +777,8 @@ The skill is now available for use.
 | 退出命令 | `quit` / `exit` / EOF |
 | 輸出格式 | `Agent: <回應內容>` |
 | CLI 選項 | `--no-auto-import-skills`、`--extra-skill-path`、`--rescan-skills`、`--no-dynamic-skills` |
+| ESC 中斷串流 | 按 ESC 鍵可中斷正在串流的 LLM 輸出 |
+| Token 使用量顯示 | 每次回應後顯示 prompt/completion/total token 數 |
 
 ---
 

@@ -35,3 +35,18 @@ cmake --build build --target tests
 
 - **MockEmbeddingProvider** — 返回確定性向量（"hello" → [1.0, 0.0]）
 - **臨時目錄** — filesystem tests 使用 `std::filesystem::temp_directory_path()`
+
+使用檔案:test_write.cpp 測試寫檔工具
+
+測試 WriteFileTool 工具 到
+1. **文字寫入** - 基本文字寫入
+2. **二進位寫入** - 二進位資料寫入
+3. **覆蓋寫入** - 覆蓋現有檔案內容
+4. **追加寫入** - 在現有檔案末尾追加內容
+5. **空檔案寫入** - 寫入空內容
+6. **大檔案寫入** - 大量資料寫入
+7. **特殊字元處理** - 包含特殊字元的文字
+8. **多行文字寫入** - 多行內容
+9. **UTF-8/Big5 編碼測試** - 不同編碼的寫入
+10. **路徑安全檢查** - 測試 SafetyGuard 的路徑白名單
+

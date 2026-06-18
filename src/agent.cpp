@@ -160,7 +160,7 @@ ChatResponse Agent::reasoning_loop() {
         }
 
         // Get current conversation history + tools
-        auto messages = memory_.get_messages();
+        const auto& messages = memory_.get_messages();
         auto tool_defs = registry_.get_definitions();
 
         // Call LLM
@@ -173,6 +173,13 @@ ChatResponse Agent::reasoning_loop() {
 
         // Execute each tool call and add results to memory
         for (const auto& tc : resp.tool_calls) {
+            // Guard: skip if LLM returned empty arguments (streaming truncation)
+            if (tc.arguments.empty()) {
+                std::cout << "[Tool] Skipping '" << tc.name
+                          << "' — empty arguments from LLM" << std::endl;
+                continue;
+            }
+
             std::cout << "[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
@@ -209,7 +216,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
             std::cout << "\n[Memory] Context compressed via summarization.\n" << std::endl;
         }
 
-        auto messages = memory_.get_messages();
+        const auto& messages = memory_.get_messages();
         auto tool_defs = registry_.get_definitions();
 
         // Call LLM with streaming
@@ -228,6 +235,13 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
         // Execute each tool call and add results to memory (non-streaming for tools)
         for (const auto& tc : resp.tool_calls) {
+            // Guard: skip if LLM returned empty arguments (streaming truncation)
+            if (tc.arguments.empty()) {
+                std::cout << "\n[Tool] Skipping '" << tc.name
+                          << "' — empty arguments from LLM" << std::endl;
+                continue;
+            }
+
             std::cout << "\n[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
@@ -264,7 +278,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
 
     // Step 1: Generate a plan
     std::cout << "\n[Planner] Generating task plan..." << std::endl;
-    auto context = memory_.get_messages();
+    const auto& context = memory_.get_messages();
     Plan plan = planner.generate_plan(user_input, context);
 
     if (plan.steps.empty()) {

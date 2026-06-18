@@ -107,8 +107,17 @@ public:
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
 
-            // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
-            return raw_output.empty() ? "(no output)" : raw_output;
+            // Sanitize: remove null bytes and control characters that would break JSON serialization.
+            std::string sanitized;
+            sanitized.reserve(raw_output.size());
+            for (unsigned char c : raw_output) {
+                if (c == 0) continue;                          // drop null bytes
+                if (c >= 0x20 || c == '\n' || c == '\r')     // printable + newline / carriage return
+                    sanitized += static_cast<char>(c);
+            }
+
+            // cmd.exe is forced to UTF-8 via chcp 65001, so output is already valid UTF-8.
+            return sanitized.empty() ? "(no output)" : sanitized;
 #else
             // Linux/macOS: popen with timeout via fork+exec
             std::string shell_cmd = command;
@@ -135,7 +144,16 @@ public:
                 }
             }
 
-            return output;
+            // Sanitize: remove null bytes and control characters that would break JSON serialization.
+            std::string sanitized;
+            sanitized.reserve(output.size());
+            for (unsigned char c : output) {
+                if (c == 0) continue;                          // drop null bytes
+                if (c >= 0x20 || c == '\n' || c == '\r')     // printable + newline / carriage return
+                    sanitized += static_cast<char>(c);
+            }
+
+            return sanitized.empty() ? "(no output)" : sanitized;
 #endif
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());

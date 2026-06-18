@@ -337,6 +337,7 @@ ChatResponse chat_stream_impl(
         if (n <= 0) break;
 
         buffer.append(read_buf, static_cast<size_t>(n));
+        // OutputDebugStringA(buffer.c_str());
 
         size_t line_start = 0;
         while (true) {
@@ -373,7 +374,7 @@ ChatResponse chat_stream_impl(
                         }
                     }
                 } catch (...) {
-                    std::cerr << "[LLMClient] Failed to parse SSE token data for callback" << std::endl;
+                    //std::cerr << "[LLMClient] Failed to parse SSE token data for callback" << std::endl;
                 }
             }
         }
