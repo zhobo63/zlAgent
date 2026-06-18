@@ -36,6 +36,8 @@ set(CORE_SOURCES
     # CLI command system
     src/command_dispatcher.cpp
     src/command_handlers.cpp
+    # Remote logging
+    src/remote_log.cpp
 )
 
 # Tool source files
@@ -103,9 +105,10 @@ endif()
 # Platform-specific settings
 if(MSVC)
     add_compile_options(/utf-8 /wd4566)
+    target_link_libraries(zlagent PRIVATE ws2_32)
 elseif(UNIX AND NOT APPLE)
-    # Linux: link dl for dlopen/dlsym
-    target_link_libraries(zlagent PRIVATE dl)
+    # Linux: link dl for dlopen/dlsym, pthread for threading
+    target_link_libraries(zlagent PRIVATE dl pthread)
 elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
