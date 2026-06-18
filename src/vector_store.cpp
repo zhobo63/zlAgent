@@ -7,6 +7,16 @@
 namespace agent {
 using json = nlohmann::json;
 
+// Unified helper: dump JSON to a file, throw on failure.
+static void write_json_file(const std::string& path, const json& j) {
+    std::ofstream ofs(path);
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file for writing: " + path;
+        return;
+    }
+    ofs << j.dump(2);
+}
+
 // ============================================================================
 // VectorStore
 // ============================================================================
@@ -71,13 +81,7 @@ void VectorStore::save(const std::string& path) const {
         root["entries"].push_back(e);
     }
 
-    std::ofstream out(path);
-    if (!out.is_open()) {
-        std::cerr << "[VectorStore] Failed to save to: " << path << std::endl;
-        return;
-    }
-    out << root.dump(2);
-    out.close();
+    write_json_file(path, root);
 }
 
 VectorStore VectorStore::load(const std::string& path) {

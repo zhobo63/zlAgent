@@ -68,6 +68,7 @@ private:
 
     static constexpr size_t MAX_BUFFER_SIZE = 1024;
     static constexpr int    UDP_PORT        = 995;
+    static RemoteLog* gInstance;
 
     void InitSocket();
     void CloseSocket();

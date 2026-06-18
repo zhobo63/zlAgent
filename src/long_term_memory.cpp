@@ -277,6 +277,16 @@ bool LongTermMemory::load() {
     return !sessions_.empty() || !facts_.empty();
 }
 
+// Unified helper: dump JSON to a file, throw on failure.
+static void write_json_file(const std::string& path, const json& j) {
+    std::ofstream ofs(path);
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file for writing: " + path;
+        return;
+    }
+    ofs << j.dump(2);
+}
+
 void LongTermMemory::save() const {
     // Ensure directory exists.
     fs::create_directories(cfg_.store_dir);
@@ -292,12 +302,7 @@ void LongTermMemory::save() const {
         sessions_json["sessions"].push_back(sj);
     }
 
-    auto sessions_path = cfg_.store_dir + "/sessions.json";
-    std::ofstream out_sessions(sessions_path);
-    if (out_sessions.is_open()) {
-        out_sessions << sessions_json.dump(2);
-        out_sessions.close();
-    }
+    write_json_file(cfg_.store_dir + "/sessions.json", sessions_json);
 
     // Save facts.
     json facts_json;
@@ -310,12 +315,7 @@ void LongTermMemory::save() const {
         facts_json["facts"].push_back(fj);
     }
 
-    auto facts_path = cfg_.store_dir + "/facts.json";
-    std::ofstream out_facts(facts_path);
-    if (out_facts.is_open()) {
-        out_facts << facts_json.dump(2);
-        out_facts.close();
-    }
+    write_json_file(cfg_.store_dir + "/facts.json", facts_json);
 }
 
 std::string LongTermMemory::build_context_string(int recent_n) const {

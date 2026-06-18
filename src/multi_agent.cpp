@@ -69,6 +69,17 @@ ChatResponse SubAgent::run_loop(const std::string& task) {
             return resp;
         }
 
+        // Add assistant message with tool_calls to memory (required by OpenAI API)
+        ChatMessage assistant_msg{"assistant", resp.content};
+        for (const auto& tc : resp.tool_calls) {
+            ToolCallInfo tci{};
+            tci.id = tc.id;
+            tci.name = tc.name;
+            tci.arguments = tc.arguments;
+            assistant_msg.tool_calls.push_back(std::move(tci));
+        }
+        memory_.add(assistant_msg);
+
         for (const auto& tc : resp.tool_calls) {
             std::cout << "  [" << agent_role_to_string(role_) << "] Tool: " << tc.name
                        << " args: " << tc.arguments.substr(0, 120) << std::endl;

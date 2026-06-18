@@ -171,6 +171,17 @@ ChatResponse Agent::reasoning_loop() {
             return resp;
         }
 
+        // Add assistant message with tool_calls to memory (required by OpenAI API)
+        ChatMessage assistant_msg{"assistant", resp.content};
+        for (const auto& tc : resp.tool_calls) {
+            ToolCallInfo tci{};
+            tci.id = tc.id;
+            tci.name = tc.name;
+            tci.arguments = tc.arguments;
+            assistant_msg.tool_calls.push_back(std::move(tci));
+        }
+        memory_.add(assistant_msg);
+
         // Execute each tool call and add results to memory
         for (const auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
@@ -232,6 +243,17 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
             resp.completion_tokens = total_completion;
             return resp;
         }
+
+        // Add assistant message with tool_calls to memory (required by OpenAI API)
+        ChatMessage assistant_msg{"assistant", resp.content};
+        for (const auto& tc : resp.tool_calls) {
+            ToolCallInfo tci{};
+            tci.id = tc.id;
+            tci.name = tc.name;
+            tci.arguments = tc.arguments;
+            assistant_msg.tool_calls.push_back(std::move(tci));
+        }
+        memory_.add(assistant_msg);
 
         // Execute each tool call and add results to memory (non-streaming for tools)
         for (const auto& tc : resp.tool_calls) {

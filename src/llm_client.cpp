@@ -97,8 +97,25 @@ std::string LLMClient::build_chat_json(
     for (const auto& m : messages) {
         json msg;
         msg["role"] = m.role;
-        msg["content"] = m.content;
+        if (!m.content.empty())
+            msg["content"] = m.content;
+        else
+            msg["content"] = nullptr;  // null content for assistant with tool_calls only
         if (!m.name.empty()) msg["name"] = m.name;
+        if (!m.tool_calls.empty()) {
+            json tc_arr = json::array();
+            for (const auto& tc : m.tool_calls) {
+                json tc_obj;
+                tc_obj["id"] = tc.id;
+                tc_obj["type"] = "function";
+                json func_obj;
+                func_obj["name"] = tc.name;
+                func_obj["arguments"] = tc.arguments;
+                tc_obj["function"] = func_obj;
+                tc_arr.push_back(tc_obj);
+            }
+            msg["tool_calls"] = tc_arr;
+        }
         messages_arr.push_back(msg);
     }
     req["messages"] = messages_arr;
@@ -127,13 +144,12 @@ std::string LLMClient::build_chat_json(
     std::string req_str;
     try
     {
-        req_str=req.dump();
+        req_str = req.dump();
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        std::cerr << "Failed to serialize chat request: " + std::string(e.what());
     }
-    
 
     return req_str;
 }
@@ -283,8 +299,25 @@ ChatResponse chat_stream_impl(
     for (const auto& m : messages) {
         json msg;
         msg["role"] = m.role;
-        msg["content"] = m.content;
+        if (!m.content.empty())
+            msg["content"] = m.content;
+        else
+            msg["content"] = nullptr;  // null content for assistant with tool_calls only
         if (!m.name.empty()) msg["name"] = m.name;
+        if (!m.tool_calls.empty()) {
+            json tc_arr = json::array();
+            for (const auto& tc : m.tool_calls) {
+                json tc_obj;
+                tc_obj["id"] = tc.id;
+                tc_obj["type"] = "function";
+                json func_obj;
+                func_obj["name"] = tc.name;
+                func_obj["arguments"] = tc.arguments;
+                tc_obj["function"] = func_obj;
+                tc_arr.push_back(tc_obj);
+            }
+            msg["tool_calls"] = tc_arr;
+        }
         messages_arr.push_back(msg);
     }
     req["messages"] = messages_arr;
@@ -316,9 +349,10 @@ ChatResponse chat_stream_impl(
 	try {
         json_body = req.dump();
 	}
-	catch (...) {
-        std::cerr << "[LLMClient] Failed to serialize chat request JSON" << std::endl;
+	catch (const std::exception& e) {
+        std::cerr << "Failed to serialize chat request: " + std::string(e.what());
 	}
+    LOG(Color::CYAN, "JSON_BODY:%s", json_body.c_str());
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
@@ -337,7 +371,7 @@ ChatResponse chat_stream_impl(
         if (n <= 0) break;
 
         buffer.append(read_buf, static_cast<size_t>(n));
-        // OutputDebugStringA(buffer.c_str());
+        LOG(Color::GRAY, "%s", buffer.c_str());
 
         size_t line_start = 0;
         while (true) {

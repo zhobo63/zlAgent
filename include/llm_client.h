@@ -10,10 +10,17 @@ namespace agent {
 /**
  * OpenAI-compatible chat message.
  */
+struct ToolCallInfo {
+    std::string id;
+    std::string name;
+    std::string arguments;  // JSON string
+};
+
 struct ChatMessage {
     std::string role;       // "system" | "user" | "assistant" | "tool"
     std::string content;
     std::string name;       // tool name (for tool messages)
+    std::vector<ToolCallInfo> tool_calls;  // assistant's tool calls
 };
 
 /**
