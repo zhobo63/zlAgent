@@ -38,6 +38,9 @@ set(CORE_SOURCES
     src/command_handlers.cpp
     # Remote logging
     src/remote_log.cpp
+    # User reply (intervention during reasoning loop)
+    src/user_reply.cpp
+    src/reply_mode_command.cpp
 )
 
 # Tool source files

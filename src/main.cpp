@@ -1,9 +1,6 @@
 ﻿#include "pch.h"
 
 #include <atomic>
-#include <conio.h>
-#include <clocale>
-#include <thread>
 #include "llm_client.h"
 #include "config.h"
 #include "safety_guard.h"
@@ -99,6 +96,10 @@ int main() {
     ag.set_multi_agent(cfg.features.multi_agent);
     ag.set_max_reflection_retries(cfg.features.max_reflection_retries);
     ag.set_local_tools_enabled(cfg.local_tools.enabled);
+
+    // User Reply mode: allow user intervention during reasoning loop.
+    ag.set_user_reply_mode(agent::parse_reply_mode(cfg.agent_.user_reply_mode));
+    std::cout << "[Config] User reply mode: " << agent::reply_mode_to_string(ag.get_user_reply_mode()) << std::endl;
 
     // Register built-in tools
     std::cout << "Registering built-in tools..." << std::endl;
@@ -285,6 +286,9 @@ int main() {
         agent::get_global_rag_manager(),
         agent::get_global_long_term_memory());
 
+    // Register the /reply-mode command for user intervention control.
+    register_reply_mode_command(dispatcher, &ag);
+
     std::cout << "\nReady. Type your request (or '/help' for commands):\n" << std::endl;
 
     // Interactive loop with streaming output.
@@ -329,34 +333,11 @@ int main() {
         //// Erase the last spinner character (1 display cell)
         //std::cout << " \b";
 
-        // ── ESC interrupt support ────────────────────────────────
-        std::atomic<bool> interrupted{false};
-
-        // Background thread: watch for ESC keypress during streaming.
-        // _kbhit() is non-blocking; returns true if a key was pressed.
-        auto esc_watcher = [&]() {
-            while (!interrupted.load()) {
-                if (_kbhit()) {
-                    char ch = _getch();
-                    if (ch == 27) {  // ESC
-                        interrupted.store(true);
-                    }
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-        };
-        auto esc_thread = std::thread{esc_watcher};
-
         // Capture token usage from the LLM response
         agent::ChatResponse usage_info{};
 
         bool in_reasoning = false;
         ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
-            // Check interrupt flag — return false to abort streaming.
-            if (interrupted.load()) {
-                return false;
-            }
-
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
@@ -380,11 +361,10 @@ int main() {
         }
 
         // Remember whether the user pressed ESC before stopping the watcher.
-        bool was_interrupted = interrupted.load();
 
         // Stop the ESC watcher thread.
-        interrupted.store(true);
-        if (esc_thread.joinable()) esc_thread.join();
+        //interrupted.store(true);
+        //if (esc_thread.joinable()) esc_thread.join();
 
         // Display token usage if available
         if (usage_info.total_tokens() > 0) {
@@ -394,11 +374,7 @@ int main() {
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
 
-        if (was_interrupted) {
-            std::cout << u8"⚠  Interrupted by user." << std::endl;
-        } else {
-            std::cout << "\n";
-        }
+        std::cout << "\n";
     }
 
     return 0;

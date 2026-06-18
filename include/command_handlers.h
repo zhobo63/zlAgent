@@ -20,4 +20,9 @@ void register_command_handlers(
     RAGManager* rag_manager,
     LongTermMemory* long_term_memory);
 
+/**
+ * Registers the /reply-mode CLI command with a CommandDispatcher.
+ */
+void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag);
+
 } // namespace agent

@@ -4,6 +4,7 @@
 #include "encoding.h"
 #include "httplib.h"
 #include "json.hpp"
+#include <mutex>
 
 namespace agent {
 using json = nlohmann::json;
@@ -334,7 +335,7 @@ ChatResponse chat_stream_impl(
             try {
                 func["parameters"] = json::parse(t.parameters_schema);
             } catch (...) {
-                std::cerr << "[LLMClient] Failed to parse tool parameters schema for '" 
+                std::cerr << "[LLMClient] Failed to parse tool parameters schema for '"
                           << t.name << "' in streaming request, using empty object" << std::endl;
                 func["parameters"] = json::object();
             }
@@ -356,25 +357,58 @@ ChatResponse chat_stream_impl(
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
-    auto handle = client.open_stream("POST", "/v1/chat/completions",
-        {}, headers, json_body);
 
-    if (!handle.is_valid()) return {};
+    // Wrap StreamHandle in unique_ptr so we can close the socket immediately
+    // when ESC is pressed — this notifies the LLM server to stop generating.
+    auto handle = std::make_unique<httplib::ClientImpl::StreamHandle>(
+        client.open_stream("POST", "/v1/chat/completions",
+            {}, headers, json_body));
+
+    if (!handle->is_valid()) return {};
 
     ChatResponse resp;
     std::string buffer;
 
+    std::atomic<bool> interrupted{ false };
+    std::mutex handle_mtx;
+
+    auto esc_watcher = [&]() {
+        while (!interrupted.load()) {
+            if (_kbhit()) {
+                char ch = _getch();
+                if (ch == 27) {  // ESC
+                    std::lock_guard<std::mutex> lock(handle_mtx);
+                    handle.reset();  // release our reference; main thread may still hold one via local_handle
+                    interrupted.store(true);
+                    std::cout << u8"\n⚠  Interrupted by user." << std::endl;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    };
+    auto esc_thread = std::thread{ esc_watcher };
+
+
     char read_buf[4096] = {0};
-    bool aborted = false;
-    while (!aborted) {
-        ssize_t n = handle.read(read_buf, sizeof(read_buf));
+    while (handle && handle->is_valid()) {
+        ssize_t n = 0;
+        {
+            std::lock_guard<std::mutex> lock(handle_mtx);
+            n = handle->read(read_buf, sizeof(read_buf));
+        }
         if (n <= 0) break;
+
+        bool was_interrupted = interrupted.load();
+        if (was_interrupted) {
+            break;
+        }
+        //char* kb = keyboard_getstate();
 
         buffer.append(read_buf, static_cast<size_t>(n));
         LOG(Color::GRAY, "%s", buffer.c_str());
 
         size_t line_start = 0;
-        while (true) {
+        while (!was_interrupted) {
             size_t nl_pos = buffer.find('\n', line_start);
             if (nl_pos == std::string::npos) break;
 
@@ -397,13 +431,21 @@ ChatResponse chat_stream_impl(
                             // Reasoning/thinking tokens first
                             if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
                                 std::string token = delta["reasoning_content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, true)) { aborted = true; break; }
+                                if (!token.empty() && !on_token(token, true)) {
+                                    // ESC pressed — release handle immediately to stop generation
+                                    interrupted.store(true);
+                                    break;
+                                }
                             }
 
                             // Normal content tokens
                             if (delta.contains("content") && !delta["content"].is_null()) {
                                 std::string token = delta["content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, false)) { aborted = true; break; }
+                                if (!token.empty() && !on_token(token, false)) {
+                                    // ESC pressed — release handle immediately to stop generation
+                                    interrupted.store(true);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -413,15 +455,17 @@ ChatResponse chat_stream_impl(
             }
         }
 
-        if (aborted) break;
+        if (!handle) break;  // handle was released by ESC interrupt
 
         if (line_start > 0) {
             buffer = buffer.substr(line_start);
         }
     }
+    interrupted.store(true);
+    if (esc_thread.joinable()) esc_thread.join();
 
-    // If aborted by user, discard any partial tool calls — the response is incomplete.
-    if (aborted) {
+    // If handle was released early (ESC), discard any partial tool calls — the response is incomplete.
+    if (!handle) {
         resp.has_tool_calls = false;
         resp.tool_calls.clear();
     }
@@ -474,13 +518,13 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
                 // Try to read context_length from various API fields.
                 if (item.contains("max_model_len")) {
                     try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {
-                        std::cerr << "[LLMClient] Failed to parse max_model_len for model '" 
+                        std::cerr << "[LLMClient] Failed to parse max_model_len for model '"
                                   << mi.id << "'" << std::endl;
                     }
                 }
                 if (mi.context_length == 0 && item.contains("context_length")) {
                     try { mi.context_length = item["context_length"].get<int>(); } catch (...) {
-                        std::cerr << "[LLMClient] Failed to parse context_length for model '" 
+                        std::cerr << "[LLMClient] Failed to parse context_length for model '"
                                   << mi.id << "'" << std::endl;
                     }
                 }

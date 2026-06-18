@@ -36,6 +36,11 @@ void register_command_handlers(
                   << "\nRAG commands:\n"
                   << "  /search-kb query   Search knowledge base directly from CLI\n"
                   << "  /add-doc path      Add a file or directory to the knowledge base\n"
+                  << "\nUser Reply (intervention):\n"
+                  << "  /reply-mode        Show current user reply mode\n"
+                  << "  /reply-mode off    Disable intervention (fully automatic)\n"
+                  << "  /reply-mode on_error  Pause when a tool call fails\n"
+                  << "  /reply-mode always   Pause before every tool call\n"
                   << "\nSession control:\n"
                   << "  /quit, /exit       Exit (same as typing 'quit')\n"
                   << std::endl;

@@ -133,6 +133,7 @@ Config Config::load(const std::string& ini_path) {
         if (s.count("language"))             cfg.agent_.language = s["language"];
         if (s.count("auto_detect_language")) cfg.agent_.auto_detect_language = parse_bool(s["auto_detect_language"], true);
         if (s.count("prompt_file"))          cfg.agent_.prompt_file = s["prompt_file"];
+        if (s.count("user_reply_mode"))      cfg.agent_.user_reply_mode = s["user_reply_mode"];
     }
 
     // --- [features] section ---
@@ -275,6 +276,7 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
         kvs["language"]             = cfg.agent_.language;
         kvs["auto_detect_language"] = cfg.agent_.auto_detect_language ? "true" : "false";
         kvs["prompt_file"]          = cfg.agent_.prompt_file;
+        kvs["user_reply_mode"]      = cfg.agent_.user_reply_mode;
         write_section("agent", kvs);
     }
 

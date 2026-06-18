@@ -56,6 +56,8 @@ struct Config {
         bool auto_detect_language = true;
         // Optional: path to an external system prompt file (.md / .txt). Overrides built-in.
         std::string prompt_file = "";
+        // User reply mode: "off", "on_error", or "always"
+        std::string user_reply_mode = "off";
     } agent_;
 
     // ── Features (advanced toggles) ────────────────────────

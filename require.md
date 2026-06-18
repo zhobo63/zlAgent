@@ -53,6 +53,14 @@ ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透
 │  │  │(危險操作確認)│ (路徑白名單) │ (輸入過濾) │  │    │
 │  │  └───────────┘ └──────────┘ └────────────┘  │    │
 │  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │           UserReply (使用者介入)                │    │
+│  │  ┌───────────┐ ┌──────────┐ ┌────────────┐  │    │
+│  │  │PreCheck   │ │PostError │ │EditArgs    │  │    │
+│  │  │(執行前確認)│ (錯誤介入) │ (修改參數)   │  │    │
+│  │  └───────────┘ └──────────┘ └────────────┘  │    │
+│  └──────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -435,6 +443,7 @@ extern "C" {
 | | `language` | string | `multi` | 語言模式：multi/cpp/js/ts/python/rust/go/java |
 | | `auto_detect_language` | bool | `true` | 自動偵測工作目錄的程式語言 |
 | | `prompt_file` | string | *(空)* | 外部系統提示詞檔案路徑（覆蓋內建） |
+| | `user_reply_mode` | string | `off` | 使用者介入模式：off/on_error/always |
 | `[features]` | `task_planning` | bool | `true` | 任務規劃開關 |
 | | `self_reflection` | bool | `true` | 自我反思/糾錯開關 |
 | | `multi_agent` | bool | `false` | 多 Agent 協作開關 |
@@ -512,7 +521,43 @@ input_filter = true                  ; 輸入過濾開關
 
 ---
 
-### 3.8 技能系統 (`skill_system.h/cpp`, `zlagent/skills/`)
+### 3.8 UserReply（使用者介入）(`user_reply.h/cpp`, `reply_mode_command.cpp`)
+
+**核心概念：** 在 Agent 推理循環中允許使用者即時介入。當工具調用即將執行或已失敗時，Agent 暫停並等待使用者指示，而非盲目繼續。
+
+| 項目 | 要求 |
+|------|------|
+| **三種介入模式** | `off`（預設，完全自動）、`on_error`（工具失敗時暫停）、`always`（每次工具調用前暫停） |
+| **使用者回復選項** | `y/yes` 繼續、`n/no/skip` 跳過、`abort` 終止、`edit:{json}` 修改參數後執行、自由文字注入對話記憶 |
+| **Always 模式介入點** | 工具調用前，顯示工具名稱與參數，等待使用者確認 |
+| **OnError 模式介入點** | 工具執行後，偵測結果包含 "error" / "fail" 時暫停，顯示錯誤訊息並等待指示 |
+| **Edit 動作** | 使用者輸入 `edit:{json}` 可修改工具參數後重新執行 |
+| **Custom 動作** | 自由文字作為新的使用者訊息注入對話記憶，然後重啟推理循環 |
+
+**INI 配置項：**
+
+```ini
+[agent]
+user_reply_mode = off    ; 介入模式：off / on_error / always
+```
+
+**CLI 命令：**
+
+| 命令 | 說明 |
+|------|------|
+| `/reply-mode` | 顯示當前介入模式 |
+| `/reply-mode off` | 關閉介入（完全自動） |
+| `/reply-mode on_error` | 工具失敗時暫停 |
+| `/reply-mode always` | 每次工具調用前暫停 |
+
+**串接點：**
+- `reasoning_loop()` / `reasoning_loop_stream()` → 工具執行前後檢查 `user_reply_mode_`
+- CLI 互動循環 → `/reply-mode` 命令動態切換模式
+- INI `[agent] user_reply_mode` → 啟動時載入預設模式
+
+---
+
+### 3.9 技能系統 (`skill_system.h/cpp`, `zlagent/skills/`)
 
 **核心概念：**
 

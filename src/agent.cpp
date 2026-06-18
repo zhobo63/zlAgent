@@ -183,7 +183,7 @@ ChatResponse Agent::reasoning_loop() {
         memory_.add(assistant_msg);
 
         // Execute each tool call and add results to memory
-        for (const auto& tc : resp.tool_calls) {
+        for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
                 std::cout << "[Tool] Skipping '" << tc.name
@@ -191,10 +191,59 @@ ChatResponse Agent::reasoning_loop() {
                 continue;
             }
 
+            // ── User Reply: pre-execution check (Always mode) ──
+            if (user_reply_mode_ == UserReplyMode::Always) {
+                auto reply = prompt_user_reply(tc.name, tc.arguments);
+                switch (reply.action) {
+                    case ReplyAction::Abort:
+                        return ChatResponse{"[User aborted]"};
+                    case ReplyAction::Skip:
+                        std::cout << "[Tool] Skipped: " << tc.name << std::endl;
+                        continue;
+                    case ReplyAction::Edit:
+                        tc.arguments = reply.modified_args;
+                        break;
+                    case ReplyAction::Custom:
+                        memory_.add(ChatMessage{"user", reply.custom_message});
+                        return reasoning_loop();
+                    default: // Continue
+                        break;
+                }
+            }
+
             std::cout << "[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
+
+            // ── User Reply: post-execution check (OnError mode) ──
+            if (user_reply_mode_ == UserReplyMode::OnError) {
+                auto lower_result = result;
+                std::transform(lower_result.begin(), lower_result.end(), lower_result.begin(),
+                               [](unsigned char c){ return std::tolower(c); });
+                bool is_error = lower_result.find("error") != std::string::npos
+                             || lower_result.find("fail") != std::string::npos;
+                if (is_error) {
+                    auto reply = prompt_user_reply(tc.name, tc.arguments, result);
+                    switch (reply.action) {
+                        case ReplyAction::Abort:
+                            return ChatResponse{"[User aborted]"};
+                        case ReplyAction::Skip:
+                            std::cout << "[Tool] Skipped: " << tc.name << std::endl;
+                            continue;
+                        case ReplyAction::Edit:
+                            tc.arguments = reply.modified_args;
+                            result = registry_.execute(tc.name, tc.arguments);
+                            break;
+                        case ReplyAction::Custom:
+                            memory_.add(ChatMessage{"user", reply.custom_message});
+                            return reasoning_loop();
+                        default: // Continue (retry)
+                            result = registry_.execute(tc.name, tc.arguments);
+                            break;
+                    }
+                }
+            }
 
             // Add tool response to memory
             ChatMessage tool_msg{"tool", result, tc.name};
@@ -256,7 +305,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         memory_.add(assistant_msg);
 
         // Execute each tool call and add results to memory (non-streaming for tools)
-        for (const auto& tc : resp.tool_calls) {
+        for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
                 std::cout << "\n[Tool] Skipping '" << tc.name
@@ -264,10 +313,63 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
                 continue;
             }
 
+            // ── User Reply: pre-execution check (Always mode) ──
+            if (user_reply_mode_ == UserReplyMode::Always) {
+                auto reply = prompt_user_reply(tc.name, tc.arguments);
+                switch (reply.action) {
+                    case ReplyAction::Abort:
+                        resp.prompt_tokens = total_prompt;
+                        resp.completion_tokens = total_completion;
+                        return ChatResponse{"[User aborted]"};
+                    case ReplyAction::Skip:
+                        std::cout << "\n[Tool] Skipped: " << tc.name << std::endl;
+                        continue;
+                    case ReplyAction::Edit:
+                        tc.arguments = reply.modified_args;
+                        break;
+                    case ReplyAction::Custom:
+                        memory_.add(ChatMessage{"user", reply.custom_message});
+                        return reasoning_loop_stream(on_token);
+                    default: // Continue
+                        break;
+                }
+            }
+
             std::cout << "\n[Tool] Executing: " << tc.name
                       << " with args: " << tc.arguments << std::endl;
 
             std::string result = registry_.execute(tc.name, tc.arguments);
+
+            // ── User Reply: post-execution check (OnError mode) ──
+            if (user_reply_mode_ == UserReplyMode::OnError) {
+                auto lower_result = result;
+                std::transform(lower_result.begin(), lower_result.end(), lower_result.begin(),
+                               [](unsigned char c){ return std::tolower(c); });
+                bool is_error = lower_result.find("error") != std::string::npos
+                             || lower_result.find("fail") != std::string::npos;
+                if (is_error) {
+                    auto reply = prompt_user_reply(tc.name, tc.arguments, result);
+                    switch (reply.action) {
+                        case ReplyAction::Abort:
+                            resp.prompt_tokens = total_prompt;
+                            resp.completion_tokens = total_completion;
+                            return ChatResponse{"[User aborted]"};
+                        case ReplyAction::Skip:
+                            std::cout << "\n[Tool] Skipped: " << tc.name << std::endl;
+                            continue;
+                        case ReplyAction::Edit:
+                            tc.arguments = reply.modified_args;
+                            result = registry_.execute(tc.name, tc.arguments);
+                            break;
+                        case ReplyAction::Custom:
+                            memory_.add(ChatMessage{"user", reply.custom_message});
+                            return reasoning_loop_stream(on_token);
+                        default: // Continue (retry)
+                            result = registry_.execute(tc.name, tc.arguments);
+                            break;
+                    }
+                }
+            }
 
             // Add tool response to memory
             ChatMessage tool_msg{"tool", result, tc.name};

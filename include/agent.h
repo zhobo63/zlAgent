@@ -4,6 +4,7 @@
 #include "llm_client.h"
 #include "tool.h"
 #include "memory.h"
+#include "user_reply.h"
 
 namespace agent {
 
@@ -77,6 +78,10 @@ public:
     // Set whether local tool discovery is allowed (from config).
     void set_local_tools_enabled(bool enabled) { local_tools_enabled_ = enabled; }
 
+    // User Reply: allow user intervention during reasoning loop.
+    void set_user_reply_mode(UserReplyMode mode) { user_reply_mode_ = mode; }
+    UserReplyMode get_user_reply_mode() const { return user_reply_mode_; }
+
 private:
     LLMClient llm_;
     ToolRegistry registry_;
@@ -94,6 +99,9 @@ private:
     bool lazy_local_tools_       = true;
     bool local_tools_discovered_ = false;
     int  max_reflection_retries_ = 2;
+
+    // User Reply mode — controls when the Agent pauses for user input.
+    UserReplyMode user_reply_mode_ = UserReplyMode::Off;
 
     // Discover and register local tools if lazy discovery is enabled.
     void discover_local_tools();
