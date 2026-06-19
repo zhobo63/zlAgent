@@ -36,3 +36,4 @@
 #include <remote_log.h>
 #define JSON_THROW_USER
 #include <json.hpp>
+#include <logger.h>

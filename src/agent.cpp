@@ -104,9 +104,9 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
     discover_local_tools();
 
     // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
-    if (task_planning_ && needs_planning(user_input)) {
-        return run_planned(user_input, on_token);
-    }
+    //if (task_planning_ && needs_planning(user_input)) {
+    //    return run_planned(user_input, on_token);
+    //}
 
     // Add user message to memory
     ChatMessage user_msg{"user", user_input, ""};
@@ -252,7 +252,7 @@ ChatResponse Agent::reasoning_loop() {
             }
             memory_.add(tool_msg);
 
-            LOG_INFO(u8"🛠️Tool", "Result: " + result.substr(0, 200) + (result.size() > 200 ? "..." : ""));
+            LOG_INFO(u8"🛠️Tool", "Result: " + result);
         }
 
         // Loop again - LLM will see tool results and decide next action

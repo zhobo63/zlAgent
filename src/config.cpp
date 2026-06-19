@@ -51,6 +51,14 @@ std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const
             std::string key   = line.substr(0, eq_pos);
             std::string value = line.substr(eq_pos + 1);
 
+            // Strip inline comment (; or #)
+            for (size_t i = 0; i < value.size(); ++i) {
+                if (value[i] == ';' || value[i] == '#') {
+                    value = value.substr(0, i);
+                    break;
+                }
+            }
+
             ltrim(key);
             rtrim(key);
             ltrim(value);
