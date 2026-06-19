@@ -53,7 +53,7 @@ public:
 
 #ifdef _WIN32
             // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-            std::string full_cmd = "cmd.exe /c chcp 65001 >nul && \"" + command + "\"";
+            std::string full_cmd = "cmd.exe /c \"chcp 65001 >nul && " + command + "\"";
 
             wchar_t cwd_wide[1024] = L".";
             if (!cwd.empty()) {
