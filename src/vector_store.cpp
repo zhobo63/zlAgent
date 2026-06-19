@@ -3,7 +3,6 @@
 #include "vector_store.h"
 #include <cmath>
 #include "logger.h"
-#include "json.hpp"
 
 namespace agent {
 using json = nlohmann::json;

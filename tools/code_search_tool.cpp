@@ -3,7 +3,6 @@
 #include "tool.h"
 #include "encoding.h"
 #include "wide_string.h"
-#include "json.hpp"
 #include <regex>
 #include <cstring>
 

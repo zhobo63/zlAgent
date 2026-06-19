@@ -26,9 +26,12 @@
 #include <map>
 #include <memory>
 #include <cctype>
-#include <conio.h>
 #include <clocale>
 #include <thread>
+
+#ifdef _WIN32
+#include <conio.h>
+#endif
 
 #include <remote_log.h>
 #define JSON_THROW_USER

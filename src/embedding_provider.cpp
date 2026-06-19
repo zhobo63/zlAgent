@@ -1,7 +1,6 @@
 ﻿#include "pch.h"
 
 #include "embedding_provider.h"
-#include "json.hpp"
 #include "httplib.h"
 #include "logger.h"
 #include <cmath>

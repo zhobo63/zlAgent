@@ -217,7 +217,7 @@ ChatResponse Agent::reasoning_loop() {
                     continue;
             }
 
-            LOG_INFO("Tool", "Executing: " + tc.name + " with args: " + tc.arguments);
+            LOG_INFO(u8"🛠️Tool", "Executing: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -252,7 +252,7 @@ ChatResponse Agent::reasoning_loop() {
             }
             memory_.add(tool_msg);
 
-            LOG_INFO("Tool", "Result: " + result.substr(0, 200) + (result.size() > 200 ? "..." : ""));
+            LOG_INFO(u8"🛠️Tool", "Result: " + result.substr(0, 200) + (result.size() > 200 ? "..." : ""));
         }
 
         // Loop again - LLM will see tool results and decide next action
@@ -328,7 +328,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
                     continue;
             }
 
-            LOG_INFO("Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
+            LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -368,7 +368,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
             std::string preview = result.substr(0, 200);
             if (result.size() > 200) preview += "...";
-            LOG_INFO("Tool", "Result: " + preview + "\n");
+            LOG_INFO(u8"🛠️Tool", "Result: " + preview + "\n");
         }
 
         // Loop again - LLM will see tool results and decide next action

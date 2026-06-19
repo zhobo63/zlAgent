@@ -4,7 +4,6 @@
 #include "encoding.h"
 #include "wide_string.h"
 #include "safety_guard.h"
-#include "json.hpp"
 
 #ifndef _WIN32
 #include <dirent.h>

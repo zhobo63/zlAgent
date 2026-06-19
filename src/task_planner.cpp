@@ -3,7 +3,6 @@
 #include "task_planner.h"
 #include <regex>
 #include "logger.h"
-#include "json.hpp"
 #include "wide_string.h"
 
 namespace agent {

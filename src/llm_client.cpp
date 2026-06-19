@@ -3,8 +3,8 @@
 #include "llm_client.h"
 #include "encoding.h"
 #include "httplib.h"
-#include "json.hpp"
 #include "logger.h"
+#include "token_counter.h"
 #include <mutex>
 
 namespace agent {
@@ -438,6 +438,13 @@ ChatResponse chat_stream_impl(
     if (!handle) {
         resp.has_tool_calls = false;
         resp.tool_calls.clear();
+    }
+
+    // If the server didn't return usage in the stream, estimate tokens ourselves.
+    if (resp.prompt_tokens == 0 && !messages.empty()) {
+        resp.prompt_tokens     = TokenCounter::estimate_conversation(messages);
+        std::string full_output = resp.reasoning_content + resp.content;
+        resp.completion_tokens = TokenCounter::estimate(full_output);
     }
 
     return resp;

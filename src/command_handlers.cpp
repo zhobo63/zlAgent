@@ -415,6 +415,16 @@ void register_command_handlers(
         }
     });
 
+    // ── /quit, /exit ────────────────────────────────
+    dispatcher.register_command("quit", [](const std::vector<std::string>&) {
+        LOG_INFO("Command", "  Goodbye!");
+        exit(0);
+    });
+    dispatcher.register_command("exit", [](const std::vector<std::string>&) {
+        LOG_INFO("Command", "  Goodbye!");
+        exit(0);
+    });
+
     // ── /add-doc path ────────────────────────────────
     dispatcher.register_command("add-doc", [](const std::vector<std::string>& args) {
         if (args.empty()) {
