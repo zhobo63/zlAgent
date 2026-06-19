@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include "llm_client.h"
+#include "logger.h"
 #include "config.h"
 #include "safety_guard.h"
 #include "language_detector.h"
@@ -91,6 +92,10 @@ int main() {
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
 
+    // Set log level early so all subsequent LOG_* calls respect it.
+    agent::set_log_level(agent::parse_log_level(cfg.logging.level));
+    LOG_INFO("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
+
     std::cout << "========================================" << std::endl;
     std::cout << "  ZL Agent - Code Assistant" << std::endl;
     std::cout << "  LLM: " << cfg.llm.url << std::endl;
@@ -102,14 +107,16 @@ int main() {
     // === Safety setup ===
     if (!cfg.safety.path_whitelist.empty()) {
         agent::SafetyGuard::set_path_whitelist(cfg.safety.path_whitelist);
-        std::cout << "[Config] Path whitelist enabled: ";
-        for (size_t i = 0; i < cfg.safety.path_whitelist.size(); ++i) {
-            if (i > 0) std::cout << ", ";
-            std::cout << cfg.safety.path_whitelist[i];
+        {
+            std::string paths;
+            for (size_t i = 0; i < cfg.safety.path_whitelist.size(); ++i) {
+                if (i > 0) paths += ", ";
+                paths += cfg.safety.path_whitelist[i];
+            }
+            LOG_INFO("Config", "Path whitelist enabled: " + paths);
         }
-        std::cout << std::endl;
     } else {
-        std::cout << "[Config] Path whitelist: disabled (no restriction)" << std::endl;
+        LOG_INFO("Config", "Path whitelist: disabled (no restriction)");
     }
 
     // Determine the effective language: auto-detect > config value.
@@ -118,8 +125,7 @@ int main() {
         std::string detected = agent::LanguageDetector::detect_directory(".");
         if (!detected.empty()) {
             effective_language = detected;
-            std::cout << "[Config] Auto-detected language: " << detected
-                      << " (overriding config value '" << cfg.agent_.language << "')" << std::endl;
+            LOG_INFO("Config", "Auto-detected language: " + detected + " (overriding config value '" + cfg.agent_.language + "')");
         }
     }
 
@@ -131,10 +137,9 @@ int main() {
             std::ostringstream oss;
             oss << pf.rdbuf();
             system_prompt = oss.str();
-            std::cout << "[Config] System prompt loaded from: " << cfg.agent_.prompt_file << std::endl;
+            LOG_INFO("Config", "System prompt loaded from: " + cfg.agent_.prompt_file);
         } else {
-            std::cerr << "[Warning] Cannot open prompt file '" << cfg.agent_.prompt_file
-                      << "', using built-in." << std::endl;
+            LOG_WARN("Config", "Cannot open prompt file '" + cfg.agent_.prompt_file + "', using built-in.");
             system_prompt = agent::SystemPromptProvider::get(effective_language);
         }
     } else {
@@ -151,10 +156,10 @@ int main() {
 
     // User Reply mode: allow user intervention during reasoning loop.
     ag.set_user_reply_mode(agent::parse_reply_mode(cfg.agent_.user_reply_mode));
-    std::cout << "[Config] User reply mode: " << agent::reply_mode_to_string(ag.get_user_reply_mode()) << std::endl;
+    LOG_INFO("Config", "User reply mode: " + std::string(agent::reply_mode_to_string(ag.get_user_reply_mode())));
 
     // Register built-in tools
-    std::cout << "Registering built-in tools..." << std::endl;
+    LOG_INFO("Main", "Registering built-in tools...");
     ag.add_tool(agent::create_read_file_tool());
     ag.add_tool(agent::create_write_file_tool());
     ag.add_tool(agent::create_edit_file_tool());
@@ -177,14 +182,13 @@ int main() {
     agent::SkillRegistry skill_registry;
     agent::set_global_skill_registry(&skill_registry);
 
-    std::cout << "\nLoading skills..." << std::endl;
+    LOG_INFO("Main", "\nLoading skills...");
 
     // 1. Load native skills from zlagent/skills/.
     auto native_skills = agent::SkillLoader::scan_directory("zlagent/skills", "native");
     for (auto& skill : native_skills) {
         skill_registry.register_skill(skill);
-        std::cout << u8"  \u2713 " << skill->name
-                  << " (" << skill->source_path << ")" << std::endl;
+        LOG_INFO("Skill", u8"  \u2713 " + skill->name + " (" + skill->source_path + ")");
     }
 
     // 2. Auto-detect and import cross-agent skills.
@@ -194,8 +198,7 @@ int main() {
         auto imported_skills = agent::SkillLoader::auto_detect_and_import(".", existing);
         for (auto& skill : imported_skills) {
             skill_registry.register_skill(skill);
-            std::cout << "  + " << skill->name
-                      << " [imported from " << skill->source_path << "]" << std::endl;
+            LOG_INFO("Skill", "  + " + skill->name + " [imported from " + skill->source_path + "]");
         }
     }
 
@@ -225,12 +228,10 @@ int main() {
     for (const auto& skill : skill_registry.get_skills()) {
         if (skill->enabled) ++enabled_count; else ++disabled_count;
     }
-    std::cout << "\n" << enabled_count << " skills loaded"
-              << (disabled_count > 0 ? ", " + std::to_string(disabled_count) + " disabled" : "")
-              << "." << std::endl;
+    LOG_INFO("Main", std::to_string(enabled_count) + " skills loaded" + (disabled_count > 0 ? ", " + std::to_string(disabled_count) + " disabled" : "") + ".");
 
     // Load external plugins from configured directory.
-    std::cout << "\nLoading external plugins..." << std::endl;
+    LOG_INFO("Main", "\nLoading external plugins...");
     agent::PluginLoader loader;
     auto plugins = loader.load_plugins(cfg.plugins.directory);
     for (auto& plugin : plugins) {
@@ -241,15 +242,15 @@ int main() {
 
     // === RAG System ===
     if (cfg.rag.enabled) {
-        std::cout << "\nInitializing RAG system..." << std::endl;
+        LOG_INFO("RAG", "\nInitializing RAG system...");
 
         agent::EmbeddingProvider* provider = nullptr;
         if (cfg.rag.embedding_backend == "lm_studio") {
             provider = new agent::LLMEmbeddingProvider(cfg.llm.url, cfg.rag.embedding_model);
-            std::cout << "  Embedding backend: LM Studio (" << cfg.rag.embedding_model << ")" << std::endl;
+            LOG_INFO("RAG", "  Embedding backend: LM Studio (" + cfg.rag.embedding_model + ")");
         } else {
             provider = new agent::TfidfEmbeddingProvider();
-            std::cout << "  Embedding backend: TF-IDF (local)" << std::endl;
+            LOG_INFO("RAG", "  Embedding backend: TF-IDF (local)");
         }
 
         // Build RAG config.
@@ -265,32 +266,32 @@ int main() {
 
         // Load existing store if available.
         if (!cfg.rag.store_path.empty() && std::filesystem::exists(cfg.rag.store_path)) {
-            std::cout << "  Loading existing knowledge base from: " << cfg.rag.store_path << std::endl;
+            LOG_INFO("RAG", "  Loading existing knowledge base from: " + cfg.rag.store_path);
             rag_manager->load_store(cfg.rag.store_path);
         }
 
         // Ingest knowledge directories at startup.
         for (const auto& dir : cfg.rag.knowledge_dirs) {
-            std::cout << "  Ingesting: " << dir << std::endl;
+            LOG_INFO("RAG", "  Ingesting: " + dir);
             rag_manager->add_directory(dir);
         }
 
         // Save store if persistence is configured.
         if (!cfg.rag.store_path.empty()) {
             rag_manager->save(cfg.rag.store_path);
-            std::cout << "  Knowledge base saved to: " << cfg.rag.store_path << std::endl;
+            LOG_INFO("RAG", "  Knowledge base saved to: " + cfg.rag.store_path);
         }
 
         set_global_rag_manager(rag_manager.get());
         ag.add_tool(agent::create_search_knowledge_base_tool());
 
-        std::cout << "  Total chunks indexed: " << rag_manager->total_chunks() << std::endl;
+        LOG_INFO("RAG", "  Total chunks indexed: " + std::to_string(rag_manager->total_chunks()));
     }
 
     // === Long-Term Memory ===
     std::unique_ptr<agent::LongTermMemory> long_term_memory;
     if (cfg.memory.long_term_enabled) {
-        std::cout << "\nInitializing long-term memory..." << std::endl;
+        LOG_INFO("Memory", "\nInitializing long-term memory...");
 
         agent::LongTermMemory::Config ltm_cfg;
         ltm_cfg.store_dir = cfg.memory.store_dir;
@@ -302,10 +303,9 @@ int main() {
 
         // Load from disk.
         if (long_term_memory->load()) {
-            std::cout << "  Loaded: " << long_term_memory->get_recent_sessions(10).size()
-                      << " sessions, " << long_term_memory->get_facts().size() << " facts" << std::endl;
+            LOG_INFO("Memory", "  Loaded: " + std::to_string(long_term_memory->get_recent_sessions(10).size()) + " sessions, " + std::to_string(long_term_memory->get_facts().size()) + " facts");
         } else {
-            std::cout << "  No existing memory found (starting fresh)" << std::endl;
+            LOG_INFO("Memory", "  No existing memory found (starting fresh)");
         }
 
         // Inject facts into system prompt.
@@ -314,14 +314,14 @@ int main() {
             if (!context.empty()) {
                 system_prompt += "\n\n" + context;
                 ag.set_system_prompt(system_prompt);
-                std::cout << "  Injected semantic facts into system prompt" << std::endl;
+                LOG_INFO("Memory", "  Injected semantic facts into system prompt");
             }
         }
 
         // Integrate with RAG if available.
         if (agent::get_global_rag_manager()) {
             long_term_memory->integrate_with_rag(agent::get_global_rag_manager());
-            std::cout << "  Session summaries injected into RAG knowledge base" << std::endl;
+            LOG_INFO("Memory", "  Session summaries injected into RAG knowledge base");
         }
 
         set_global_long_term_memory(long_term_memory.get());
@@ -367,7 +367,7 @@ int main() {
 
         // Safety: input filter - detect prompt injection attempts.
         if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
-            std::cerr << u8"\n!  [Safety] Possible prompt injection detected. Input rejected." << std::endl;
+            LOG_WARN("Safety", "Possible prompt injection detected. Input rejected.");
             continue;
         }
 
@@ -424,6 +424,8 @@ int main() {
             std::cout << u8"\n\n⏱  Tokens: ";
             std::cout << "prompt=" << usage_info.prompt_tokens;
             std::cout << ", completion=" << usage_info.completion_tokens;
+            if (usage_info.max_tokens > 0)
+                std::cout << "/" << usage_info.max_tokens;
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
 

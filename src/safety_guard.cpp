@@ -1,10 +1,30 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "safety_guard.h"
+#include "logger.h"
+#include <cstring>
 #include <regex>
 #include "wide_string.h"
 
 namespace agent {
+
+// Case-insensitive substring search — no copy of the haystack.
+static bool contains_ci(const std::string& haystack, const char* needle) {
+    size_t nlen = strlen(needle);
+    if (nlen == 0 || haystack.size() < nlen) return false;
+    for (size_t i = 0; i <= haystack.size() - nlen; ++i) {
+        bool match = true;
+        for (size_t j = 0; j < nlen; ++j) {
+            if (::tolower(static_cast<unsigned char>(haystack[i + j]))
+                != ::tolower(static_cast<unsigned char>(needle[j]))) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
 
 // ============================================================================
 // 1. Dangerous tool confirmation
@@ -20,17 +40,14 @@ bool SafetyGuard::is_command_dangerous(const std::string& command) {
         ":(){:|:&};:",   // fork bomb
     };
 
-    std::string lower = command;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
     for (const char* pat : dangerous_patterns) {
-        if (lower.find(pat) != std::string::npos) return true;
+        if (contains_ci(command, pat)) return true;
     }
     return false;
 }
 
 bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
-    std::cout << "\n!  [Safety] Dangerous operation detected: " << operation << std::endl;
+    LOG_WARN("Safety", "Dangerous operation detected: " + operation);
     std::cout << "   Type 'y' to confirm, anything else to cancel: ";
 
     std::string response;
@@ -43,8 +60,9 @@ bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
     };
     trim(response);
 
-    std::transform(response.begin(), response.end(), response.begin(), ::tolower);
-    return (response == "y" || response == "yes");
+    std::string lower = response;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    return (lower == "y" || lower == "yes");
 }
 
 // ============================================================================
@@ -88,7 +106,7 @@ std::string SafetyGuard::normalize_path(const std::string& path) {
 bool SafetyGuard::is_under_allowed_dir(const std::string& normalized_path) {
     for (const auto& allowed : g_path_whitelist) {
         // Check if the path starts with the allowed directory.
-        if (normalized_path.substr(0, allowed.size()) == allowed) {
+        if (normalized_path.compare(0, allowed.size(), allowed) == 0) {
             return true;
         }
     }
@@ -120,12 +138,9 @@ std::vector<std::string> SafetyGuard::check_skill_content(const std::string& con
         {"> /dev/",          "!  Detected write to device file"},
     };
 
-    std::string lower = content;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
     for (const auto& check : checks) {
-        // Simple substring match on lowered content.
-        if (lower.find(check.pattern) != std::string::npos) {
+        // Case-insensitive substring match — no copy of the haystack.
+        if (contains_ci(content, check.pattern)) {
             warnings.push_back(check.warning);
         }
     }
@@ -154,11 +169,8 @@ bool SafetyGuard::is_prompt_injection(const std::string& input) {
         "act as if you were",
     };
 
-    std::string lower = input;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
     for (const char* pat : injection_patterns) {
-        if (lower.find(pat) != std::string::npos) return true;
+        if (contains_ci(input, pat)) return true;
     }
     return false;
 }

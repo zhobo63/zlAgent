@@ -78,6 +78,11 @@ struct Config {
         bool enabled = true;
     } local_tools;
 
+    // ── Logging ──────────────────────────────────────────
+    struct Logging {
+        std::string level = "info";  // debug, info, warn, error, none
+    } logging;
+
     // ── Safety ───────────────────────────────────────
     struct Safety {
         bool dangerous_tool_confirmation = true;  // prompt before destructive ops
@@ -103,7 +108,6 @@ struct Config {
     // Save the config to an INI file path.
     static bool save(const Config& cfg, const std::string& ini_path);
 
-private:
     // Helper: parse a boolean string ("true"/"false", "1"/"0", "yes"/"no").
     static bool parse_bool(const std::string& s, bool default_val = false);
 };

@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 
+#include "logger.h"
 #include "long_term_memory.h"
 #include "memory.h"
 #include "rag_manager.h"
@@ -140,7 +141,7 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
             }
         }
     } catch (...) {
-        std::cerr << "[LongTermMemory] JSON parse failed - no facts extracted from conversation" << std::endl;
+        LOG_ERROR("LongTermMemory", "JSON parse failed - no facts extracted from conversation");
         // JSON parse failed - no facts extracted.
     }
 
@@ -214,7 +215,7 @@ void LongTermMemory::add_fact(const std::string& key, const std::string& value) 
 std::vector<FactEntry> LongTermMemory::get_facts(const std::string& prefix) const {
     std::vector<FactEntry> result;
     for (const auto& [k, v] : facts_) {
-        if (prefix.empty() || k.substr(0, prefix.size()) == prefix) {
+        if (prefix.empty() || k.compare(0, prefix.size(), prefix) == 0) {
             result.push_back(v);
         }
     }
@@ -247,7 +248,7 @@ bool LongTermMemory::load() {
                 }
             }
         } catch (...) {
-            std::cerr << "[LongTermMemory] Failed to parse sessions.json" << std::endl;
+            LOG_ERROR("LongTermMemory", "Failed to parse sessions.json");
         }
     }
 
@@ -270,7 +271,7 @@ bool LongTermMemory::load() {
                 }
             }
         } catch (...) {
-            std::cerr << "[LongTermMemory] Failed to parse facts.json" << std::endl;
+            LOG_ERROR("LongTermMemory", "Failed to parse facts.json");
         }
     }
 
@@ -281,7 +282,7 @@ bool LongTermMemory::load() {
 static void write_json_file(const std::string& path, const json& j) {
     std::ofstream ofs(path);
     if (!ofs.is_open()) {
-        std::cerr << "Failed to open file for writing: " + path;
+        LOG_ERROR("LongTermMemory", "Failed to open file for writing: " + path);
         return;
     }
     ofs << j.dump(2);

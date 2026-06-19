@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 
+#include "logger.h"
 #include "command_dispatcher.h"
 
 namespace agent {
@@ -19,8 +20,7 @@ bool CommandDispatcher::dispatch(const std::string& raw_input) {
 
     auto it = commands_.find(cmd_name);
     if (it == commands_.end()) {
-        std::cerr << "Unknown command: /" << cmd_name
-                  << ". Type /help for available commands." << std::endl;
+        LOG_ERROR("CommandDispatcher", "Unknown command: /" + cmd_name + ". Type /help for available commands.");
         return true; // handled - don't send to LLM
     }
 

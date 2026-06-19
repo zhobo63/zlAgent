@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "skill_system.h"
+#include "logger.h"
 #include "wide_string.h"
 
 namespace agent {
@@ -212,8 +213,7 @@ bool SkillLoader::validate_dependencies(SkillPtr skill, const std::vector<std::s
             if (avail == tool_name) { found = true; break; }
         }
         if (!found) {
-            std::cout << "  [Skill] " << skill->name
-                       << ": tool '" << tool_name << "' not found, disabled." << std::endl;
+            LOG_WARN("Skill", "  " + skill->name + ": tool '" + tool_name + "' not found, disabled.");
             skill->enabled = false;
             return false;
         }
@@ -257,8 +257,7 @@ std::vector<SkillPtr> SkillLoader::auto_detect_and_import(
             for (auto& skill : skills) {
                 // Skip duplicates - native takes priority.
                 if (existing_skills.count(skill->name)) {
-                    std::cout << "  [Skill] " << skill->name
-                               << dir.label << " - skipped (duplicate)" << std::endl;
+                    LOG_INFO("Skill", "  " + skill->name + dir.label + " - skipped (duplicate)");
                     continue;
                 }
                 imported.push_back(skill);

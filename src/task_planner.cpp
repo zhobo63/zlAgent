@@ -2,6 +2,7 @@
 
 #include "task_planner.h"
 #include <regex>
+#include "logger.h"
 #include "json.hpp"
 #include "wide_string.h"
 
@@ -15,7 +16,7 @@ Each step should be specific and actionable - something an agent can execute wit
 
 Respond in JSON format:
 {
-  "overall_goa": "<one-line summary of what we're trying to achieve>",
+  "overall_goal": "<one-line summary of what we're trying to achieve>",
   "steps": [
     {"id": 1, "description": "<concrete action>"},
     {"id": 2, "description": "<next concrete action>"},
@@ -101,8 +102,8 @@ Plan TaskPlanner::parse_plan(const std::string& raw_response) {
     try {
         auto j = nlohmann::json::parse(json_str);
 
-        if (j.contains("overall_goa")) {
-            plan.overall_goal = j["overall_goa"].get<std::string>();
+        if (j.contains("overall_goal")) {
+            plan.overall_goal = j["overall_goal"].get<std::string>();
         }
 
         if (j.contains("steps") && j["steps"].is_array()) {
@@ -115,7 +116,7 @@ Plan TaskPlanner::parse_plan(const std::string& raw_response) {
         }
     } catch (...) {
         // JSON parse failed - fall back to line-by-line extraction.
-        std::cout << "[Planner] JSON parse failed, falling back to text parsing." << std::endl;
+        LOG_WARN("Planner", "JSON parse failed, falling back to text parsing.");
 
         // Look for lines like "1. ..." or "- ...".
         std::regex step_regex(R"(^\s*(?:\d+[\.\)]|\-)\s+(.+)$)");

@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 
+#include "logger.h"
 #include "command_handlers.h"
 #include "config.h"
 #include "agent.h"
@@ -17,41 +18,39 @@ void register_command_handlers(
     LongTermMemory* long_term_memory) {
 
     // ── /help ────────────────────────────────────────
-    dispatcher.register_command("help", [](const auto&) {
-        std::cout << "\nAvailable commands:\n"
-                  << "  /help              Show this help message\n"
-                  << "  /status            Show agent status (tools, skills, memory)\n"
-                  << "  /config            Show current configuration summary\n"
-                  << "  /skills            List registered skills\n"
-                  << "\nModel commands:\n"
-                  << "  /model             List available models and switch interactively\n"
-                  << "  /model-info        Show current LLM model info\n"
-                  << "\nMemory commands:\n"
-                  << "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
-                  << "  /sessions [n]      List recent session summaries (default: 5)\n"
-                  << "  /summary           Summarize current history and start a new conversation with the summary\n"
-                  << "  /new               Start a new conversation (clear history)\n"
-                  << "  /clear-memory      Clear current conversation history\n"
-                  << "  /save-session      Save current session to long-term memory now\n"
-                  << "\nRAG commands:\n"
-                  << "  /search-kb query   Search knowledge base directly from CLI\n"
-                  << "  /add-doc path      Add a file or directory to the knowledge base\n"
-                  << "\nUser Reply (intervention):\n"
-                  << "  /reply-mode        Show current user reply mode\n"
-                  << "  /reply-mode off    Disable intervention (fully automatic)\n"
-                  << "  /reply-mode on_error  Pause when a tool call fails\n"
-                  << "  /reply-mode always   Pause before every tool call\n"
-                  << "\nSession control:\n"
-                  << "  /quit, /exit       Exit (same as typing 'quit')\n"
-                  << std::endl;
+    dispatcher.register_command("help", [](const std::vector<std::string>&) {
+        LOG_INFO("Command", std::string{"\nAvailable commands:\n"
+            "  /help              Show this help message\n"
+            "  /status            Show agent status (tools, skills, memory)\n"
+            "  /config            Show current configuration summary\n"
+            "  /skills            List registered skills\n"
+            "\nModel commands:\n"
+            "  /model             List available models and switch interactively\n"
+            "  /model-info        Show current LLM model info\n"
+            "\nMemory commands:\n"
+            "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
+            "  /sessions [n]      List recent session summaries (default: 5)\n"
+            "  /summary           Summarize current history and start a new conversation with the summary\n"
+            "  /new               Start a new conversation (clear history)\n"
+            "  /clear-memory      Clear current conversation history\n"
+            "  /save-session      Save current session to long-term memory now\n"
+            "\nRAG commands:\n"
+            "  /search-kb query   Search knowledge base directly from CLI\n"
+            "  /add-doc path      Add a file or directory to the knowledge base\n"
+            "\nUser Reply (intervention):\n"
+            "  /reply-mode        Show current user reply mode\n"
+            "  /reply-mode off    Disable intervention (fully automatic)\n"
+            "  /reply-mode on_error  Pause when a tool call fails\n"
+            "  /reply-mode always   Pause before every tool call\n"
+            "\nSession control:\n"
+            "  /quit, /exit       Exit (same as typing 'quit')\n"});
     });
 
     // ── /status ────────────────────────────────────────
-    dispatcher.register_command("status", [ag](const auto&) {
+    dispatcher.register_command("status", [ag](const std::vector<std::string>&) {
         if (!ag) return;
         int tool_count = static_cast<int>(ag->get_tool_names().size());
-        std::cout << "\n--- Agent Status ---\n"
-                  << "  Tools registered: " << tool_count << "\n";
+        LOG_INFO("Command", "\n--- Agent Status ---\n  Tools registered: " + std::to_string(tool_count) + "\n");
 
         // Skills.
         auto sr = get_global_skill_registry();
@@ -60,72 +59,65 @@ void register_command_handlers(
             for (const auto& s : sr->get_skills()) {
                 if (s->enabled) ++enabled; else ++disabled;
             }
-            std::cout << "  Skills: " << enabled << " enabled"
-                      << (disabled > 0 ? ", " + std::to_string(disabled) + " disabled" : "")
-                      << "\n";
+            LOG_INFO("Command", "  Skills: " + std::to_string(enabled) + " enabled" +
+                      (disabled > 0 ? ", " + std::to_string(disabled) + " disabled" : "") + "\n");
         }
 
         // Long-term memory.
         auto ltm = get_global_long_term_memory();
         if (ltm) {
             auto sessions = ltm->get_recent_sessions(1);
-            std::cout << "  Long-term memory: "
-                      << ltm->get_recent_sessions(100).size() << " sessions, "
-                      << ltm->get_facts().size() << " facts\n";
+            LOG_INFO("Command", "  Long-term memory: " +
+                      std::to_string(ltm->get_recent_sessions(100).size()) + " sessions, " +
+                      std::to_string(ltm->get_facts().size()) + " facts\n");
         }
 
         // RAG.
         auto rag = get_global_rag_manager();
         if (rag) {
-            std::cout << "  RAG chunks: " << rag->total_chunks() << "\n";
+            LOG_INFO("Command", "  RAG chunks: " + std::to_string(rag->total_chunks()) + "\n");
         }
-
-        std::cout << std::endl;
     });
 
     // ── /config ────────────────────────────────────────
-    dispatcher.register_command("config", [](const auto&) {
-        std::cout << "\n--- Configuration ---\n"
-                  << "  (Use 'zlagent.ini' to modify settings)\n"
-                  << "  See zlagent.ini for all available options.\n"
-                  << std::endl;
+    dispatcher.register_command("config", [](const std::vector<std::string>&) {
+        LOG_INFO("Command", std::string{"\n--- Configuration ---\n"
+            "  (Use 'zlagent.ini' to modify settings)\n"
+            "  See zlagent.ini for all available options.\n"});
     });
 
     // ── /skills ────────────────────────────────────────
-    dispatcher.register_command("skills", [](const auto&) {
+    dispatcher.register_command("skills", [](const std::vector<std::string>&) {
         auto sr = get_global_skill_registry();
         if (!sr) {
-            std::cout << "  No skill registry available.\n";
+            LOG_INFO("Command", "  No skill registry available.");
             return;
         }
 
         auto skills = sr->get_skills();
         if (skills.empty()) {
-            std::cout << "  No skills registered.\n";
+            LOG_INFO("Command", "  No skills registered.");
             return;
         }
 
-        std::cout << "\n--- Registered Skills ---\n";
+        LOG_INFO("Command", "\n--- Registered Skills ---");
         for (const auto& s : skills) {
             std::string status = s->enabled ? "[OK]" : "[DISABLED]";
-            std::cout << "  " << status << " **" << s->name << "** - "
-                      << s->description.substr(0, 80);
-            if (s->description.size() > 80) std::cout << "...";
-            std::cout << "\n";
+            std::string desc = s->description.substr(0, 80);
+            if (s->description.size() > 80) desc += "...";
+            LOG_INFO("Command", "  " + status + " **" + s->name + "** - " + desc);
         }
-        std::cout << std::endl;
     });
 
     // ── /model - interactive model switcher ────────────────
-    dispatcher.register_command("model", [ag](const auto&) {
+    dispatcher.register_command("model", [ag](const std::vector<std::string>&) {
         if (!ag) return;
 
         auto models = ag->get_llm().list_models();
         std::string current_model = ag->get_llm().get_model();
 
         if (models.empty()) {
-            std::cout << "  Unable to query /v1/models API.\n"
-                      << "  Current model: " << current_model << "\n";
+            LOG_INFO("Command", "  Unable to query /v1/models API.\n  Current model: " + current_model);
             return;
         }
 
@@ -139,17 +131,16 @@ void register_command_handlers(
             return std::to_string(ctx);
         };
 
-        std::cout << "\n--- Available Models ---\n";
+        LOG_INFO("Command", "\n--- Available Models ---");
         for (size_t i = 0; i < models.size(); ++i) {
             const auto& m = models[i];
             std::string marker = (m.id == current_model) ? " <-- CURRENT" : "";
-            std::cout << "  [" << (i + 1) << "] " << m.id
-                      << " (ctx: " << fmt_ctx(m.context_length)
-                      << ", owned_by: " << m.owned_by << ")"
-                      << marker << "\n";
+            LOG_INFO("Command", "  [" + std::to_string(i + 1) + "] " + m.id +
+                      " (ctx: " + fmt_ctx(m.context_length) +
+                      ", owned_by: " + m.owned_by + ")"
+                      + marker);
         }
-        std::cout << "\nEnter model number to switch, or press Enter to keep current (" 
-                  << current_model << "): ";
+        LOG_INFO("Command", "\nEnter model number to switch, or press Enter to keep current (" + current_model + "): ");
 
         std::string input;
         if (!std::getline(std::cin, input)) return;
@@ -159,18 +150,18 @@ void register_command_handlers(
         while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
 
         if (input.empty()) {
-            std::cout << "  Kept current model: " << current_model << "\n";
+            LOG_INFO("Command", "  Kept current model: " + current_model);
             return;
         }
 
         // Parse number.
         int num = -1;
         try { num = std::stoi(input); } catch (...) {
-            std::cerr << "[Command] Failed to parse model number from input: '" << input << "'" << std::endl;
+            LOG_ERROR("Command", "Failed to parse model number from input: '" + input + "'");
         }
 
         if (num < 1 || static_cast<size_t>(num) > models.size()) {
-            std::cout << "  Invalid selection. Kept current model: " << current_model << "\n";
+            LOG_INFO("Command", "  Invalid selection. Kept current model: " + current_model);
             return;
         }
 
@@ -188,13 +179,13 @@ void register_command_handlers(
         agent::IniParser::update_key("zlagent.ini", "llm", "model", selected.id);
         agent::IniParser::update_key("zlagent.ini", "llm", "max_tokens", std::to_string(new_max_tokens));
 
-        std::cout << "  Model switched to: " << selected.id << "\n"
-                  << "  Context length:    " << fmt_ctx(selected.context_length) << " tokens\n"
-                  << "  max_tokens set to: " << new_max_tokens << " (auto-adjusted)\n";
+        LOG_INFO("Command", "  Model switched to: " + selected.id + "\n" +
+            "  Context length:    " + fmt_ctx(selected.context_length) + " tokens\n" +
+            "  max_tokens set to: " + std::to_string(new_max_tokens) + " (auto-adjusted)");
     });
 
     // ── /model-info ────────────────────────────────
-    dispatcher.register_command("model-info", [ag](const auto&) {
+    dispatcher.register_command("model-info", [ag](const std::vector<std::string>&) {
         if (!ag) return;
 
         // Helper: format context length for display.
@@ -207,32 +198,30 @@ void register_command_handlers(
             return std::to_string(ctx);
         };
 
-        std::cout << "\n--- LLM Model Info ---\n"
-                  << "  Current model: " << ag->get_llm().get_model() << "\n";
+        LOG_INFO("Command", std::string{"\n--- LLM Model Info ---\n"
+                  "  Current model: "} + ag->get_llm().get_model());
 
         // Also show available models from API.
         auto models = ag->get_llm().list_models();
         if (!models.empty()) {
-            std::cout << "  Available on server: " << models.size() << " model(s)\n";
+            LOG_INFO("Command", "  Available on server: " + std::to_string(models.size()) + " model(s)");
             for (const auto& m : models) {
                 std::string marker = (m.id == ag->get_llm().get_model()) ? " <-- CURRENT" : "";
-                std::cout << "    - " << m.id
-                          << " (ctx: " << fmt_ctx(m.context_length)
-                          << ", owned_by: " << m.owned_by << ")"
-                          << marker << "\n";
+                LOG_INFO("Command", "    - " + m.id +
+                          " (ctx: " + fmt_ctx(m.context_length) +
+                          ", owned_by: " + m.owned_by + ")"
+                          + marker);
             }
         } else {
-            std::cout << "  Unable to query /v1/models API.\n";
+            LOG_INFO("Command", "  Unable to query /v1/models API.");
         }
-
-        std::cout << std::endl;
     });
 
     // ── /facts [prefix] ────────────────────────────────
-    dispatcher.register_command("facts", [](const auto& args) {
+    dispatcher.register_command("facts", [](const std::vector<std::string>& args) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
-            std::cout << "  Long-term memory not initialized.\n";
+            LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
         }
 
@@ -242,51 +231,50 @@ void register_command_handlers(
         auto facts = ltm->get_facts(prefix);
         if (facts.empty()) {
             if (prefix.empty()) {
-                std::cout << "  No facts stored.\n";
+                LOG_INFO("Command", "  No facts stored.");
             } else {
-                std::cout << "  No facts with prefix: \"" << prefix << "\"\n";
+                LOG_INFO("Command", "  No facts with prefix: \"" + prefix + "\"");
             }
             return;
         }
 
-        std::cout << "\n--- Semantic Facts ---\n";
+        LOG_INFO("Command", "\n--- Semantic Facts ---");
         for (const auto& f : facts) {
-            std::cout << "  **" << f.key << "** = " << f.value;
+            std::string msg = "  **" + f.key + "** = " + f.value;
             if (!f.source_session.empty()) {
-                std::cout << " [from " << f.source_session.substr(0, 10) << "]";
+                msg += " [from " + f.source_session.substr(0, 10) + "]";
             }
-            std::cout << "\n";
+            LOG_INFO("Command", msg);
         }
-        std::cout << std::endl;
     });
 
     // ── /sessions [n] ────────────────────────────────
-    dispatcher.register_command("sessions", [](const auto& args) {
+    dispatcher.register_command("sessions", [](const std::vector<std::string>& args) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
-            std::cout << "  Long-term memory not initialized.\n";
+            LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
         }
 
         int n = 5;
         if (!args.empty()) {
             try { n = std::stoi(args[0]); } catch (...) {
-                std::cerr << "[Command] Failed to parse session count from: '" << args[0] << "', using default (5)" << std::endl;
+                LOG_WARN("Command", "Failed to parse session count from: '" + args[0] + "', using default (5)");
                 n = 5;
             }
         }
 
         auto sessions = ltm->get_recent_sessions(n);
         if (sessions.empty()) {
-            std::cout << "  No past sessions found.\n";
+            LOG_INFO("Command", "  No past sessions found.");
             return;
         }
 
-        std::cout << "\n--- Recent Sessions ---\n";
+        LOG_INFO("Command", "\n--- Recent Sessions ---");
         for (size_t i = 0; i < sessions.size(); ++i) {
             const auto& s = sessions[i];
             std::string date = s.timestamp.substr(0, 10);
-            std::cout << "  " << (i + 1) << ". [" << date << "] **" << s.topic << "**\n";
+            LOG_INFO("Command", "  " + std::to_string(i + 1) + ". [" + date + "] **" + s.topic + "**");
             std::string preview = s.summary;
             if (preview.size() > 200) {
                 preview.resize(200);
@@ -296,21 +284,20 @@ void register_command_handlers(
             std::istringstream iss(preview);
             std::string line;
             while (std::getline(iss, line)) {
-                std::cout << "     " << line << "\n";
+                LOG_INFO("Command", "     " + line);
             }
         }
-        std::cout << std::endl;
     });
 
     // ── /new ───────────────────────────────────────────
-    dispatcher.register_command("new", [ag](const auto&) {
+    dispatcher.register_command("new", [ag](const std::vector<std::string>&) {
         if (!ag) return;
         ag->get_memory().clear();
-        std::cout << "  New conversation started.\n";
+        LOG_INFO("Command", "  New conversation started.");
     });
 
     // ── /summary ───────────────────────────────────────
-    dispatcher.register_command("summary", [ag](const auto&) {
+    dispatcher.register_command("summary", [ag](const std::vector<std::string>&) {
         if (!ag) return;
 
         auto& memory = ag->get_memory();
@@ -322,7 +309,7 @@ void register_command_handlers(
             if (m.role != "system") { has_content = true; break; }
         }
         if (!has_content) {
-            std::cout << "  Nothing to summarize.\n";
+            LOG_INFO("Command", "  Nothing to summarize.");
             return;
         }
 
@@ -343,11 +330,11 @@ void register_command_handlers(
             prompt.push_back(ChatMessage{m.role, content, m.name});
         }
 
-        std::cout << "  Summarizing conversation...\n";
+        LOG_INFO("Command", "  Summarizing conversation...");
         auto resp = ag->get_llm().chat(prompt);
 
         if (resp.content.empty()) {
-            std::cout << "  Summarization failed.\n";
+            LOG_WARN("Command", "  Summarization failed.");
             return;
         }
 
@@ -357,38 +344,37 @@ void register_command_handlers(
             "[Summary of previous conversation]\n" + resp.content};
         memory.add(summary_msg);
 
-        std::cout << "  Conversation summarized. New session started with summary:\n\n"
-                  << resp.content << "\n";
+        LOG_INFO("Command", "  Conversation summarized. New session started with summary:\n\n" + resp.content);
     });
 
     // ── /clear-memory ────────────────────────────────
-    dispatcher.register_command("clear-memory", [ag](const auto&) {
+    dispatcher.register_command("clear-memory", [ag](const std::vector<std::string>&) {
         if (!ag) return;
         ag->get_memory().clear();
-        std::cout << "  Conversation history cleared.\n";
+        LOG_INFO("Command", "  Conversation history cleared.");
     });
 
     // ── /save-session ────────────────────────────────
-    dispatcher.register_command("save-session", [ag](const auto&) {
+    dispatcher.register_command("save-session", [ag](const std::vector<std::string>&) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
-            std::cout << "  Long-term memory not initialized.\n";
+            LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
         }
         if (!ag) {
-            std::cout << "  Agent not available.\n";
+            LOG_INFO("Command", "  Agent not available.");
             return;
         }
 
-        std::cout << "  Saving session to long-term memory...\n";
+        LOG_INFO("Command", "  Saving session to long-term memory...");
         ltm->save_session(ag->get_memory(), ag->get_llm());
-        std::cout << "  Session saved successfully.\n";
+        LOG_INFO("Command", "  Session saved successfully.");
     });
 
     // ── /search-kb query ────────────────────────────────
-    dispatcher.register_command("search-kb", [](const auto& args) {
+    dispatcher.register_command("search-kb", [](const std::vector<std::string>& args) {
         if (args.empty()) {
-            std::cout << "  Usage: /search-kb <query>\n";
+            LOG_INFO("Command", "  Usage: /search-kb <query>");
             return;
         }
 
@@ -401,22 +387,21 @@ void register_command_handlers(
 
         auto rag = get_global_rag_manager();
         if (!rag) {
-            std::cout << "  RAG knowledge base not initialized.\n";
+            LOG_INFO("Command", "  RAG knowledge base not initialized.");
             return;
         }
 
         auto results = rag->search(query);
         if (results.empty()) {
-            std::cout << "  No relevant results for: \"" << query << "\"\n";
+            LOG_INFO("Command", "  No relevant results for: \"" + query + "\"");
             return;
         }
 
-        std::cout << "\n--- Knowledge Base Results ---\n"
-                  << "  Query: \"" << query << "\"\n\n";
+        LOG_INFO("Command", "\n--- Knowledge Base Results ---\n  Query: \"" + query + "\"\n");
         for (size_t i = 0; i < results.size(); ++i) {
             const auto& r = results[i];
-            std::cout << "  Result " << (i + 1) << " (score: " << static_cast<double>(r.score) << ")\n";
-            std::cout << "  Source: " << r.source << "\n";
+            LOG_INFO("Command", "  Result " + std::to_string(i + 1) + " (score: " + std::to_string(static_cast<double>(r.score)) + ")");
+            LOG_INFO("Command", "  Source: " + r.source);
             std::string preview = r.content;
             if (preview.size() > 500) {
                 preview.resize(500);
@@ -425,22 +410,21 @@ void register_command_handlers(
             std::istringstream iss(preview);
             std::string line;
             while (std::getline(iss, line)) {
-                std::cout << "    " << line << "\n";
+                LOG_INFO("Command", "    " + line);
             }
         }
-        std::cout << std::endl;
     });
 
     // ── /add-doc path ────────────────────────────────
-    dispatcher.register_command("add-doc", [](const auto& args) {
+    dispatcher.register_command("add-doc", [](const std::vector<std::string>& args) {
         if (args.empty()) {
-            std::cout << "  Usage: /add-doc <file_or_directory_path>\n";
+            LOG_INFO("Command", "  Usage: /add-doc <file_or_directory_path>");
             return;
         }
 
         auto rag = get_global_rag_manager();
         if (!rag) {
-            std::cout << "  RAG knowledge base not initialized.\n";
+            LOG_INFO("Command", "  RAG knowledge base not initialized.");
             return;
         }
 
@@ -450,18 +434,18 @@ void register_command_handlers(
         try {
             is_dir = std::filesystem::is_directory(path);
         } catch (...) {
-            std::cerr << "[Command] Failed to check if path is directory: '" << path << "'" << std::endl;
+            LOG_ERROR("Command", "Failed to check if path is directory: '" + path + "'");
         }
 
         if (is_dir) {
             rag->add_directory(path);
-            std::cout << "  Added directory: " << path << "\n";
+            LOG_INFO("Command", "  Added directory: " + path);
         } else {
             rag->add_file(path);
-            std::cout << "  Added file: " << path << "\n";
+            LOG_INFO("Command", "  Added file: " + path);
         }
 
-        std::cout << "  Total chunks now: " << rag->total_chunks() << "\n";
+        LOG_INFO("Command", "  Total chunks now: " + std::to_string(rag->total_chunks()));
     });
 
 } // register_command_handlers

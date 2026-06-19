@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 #include <vector>
@@ -49,6 +49,7 @@ struct ChatResponse {
     // Token usage (0 if not available)
     size_t prompt_tokens = 0;
     size_t completion_tokens = 0;
+    size_t max_tokens      = 0;  // the limit requested for this response
 
     size_t total_tokens() const { return prompt_tokens + completion_tokens; }
 };
@@ -85,16 +86,21 @@ public:
         double temperature = 0.2,
         int max_tokens = 4096);
 
-    // Build the JSON request body for chat (shared by both streaming and non-streaming)
-    std::string build_chat_json(
+    // Build the JSON request body for chat (shared by both streaming and non-streaming).
+    // Takes model explicitly so it can be called from free functions too.
+    static std::string build_chat_json(
+        const std::string& model,
         const std::vector<ChatMessage>& messages,
         const std::vector<ToolDefinition>& tools,
         double temperature,
         int max_tokens,
         bool stream = false);
 
-    // Parse a single SSE "data: ..." line into content/tool_calls
-    static void parse_sse_data(const std::string& data_line, ChatResponse& resp);
+    // Parse a single SSE "data: ..." chunk (streaming) — handles delta tokens.
+    static void parse_sse_chunk(const std::string& data_line, ChatResponse& resp);
+
+    // Parse a full non-streaming JSON response — handles message structure.
+    static void parse_full_response(const std::string& json_str, ChatResponse& resp);
 
     // Set the model name for subsequent requests.
     void set_model(const std::string& model) { model_ = model; }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include <mutex>
@@ -48,14 +49,11 @@ public:
 
       static RemoteLog& GetInstance() {
           if(!gInstance)
-              gInstance=new RemoteLog;
+              gInstance = std::make_unique<RemoteLog>();
           return *gInstance;
       }
       static void FreeInstance() {
-          if(gInstance) {
-              delete gInstance;
-              gInstance=nullptr;
-          }
+          gInstance.reset();
       }
 
 private:
@@ -68,13 +66,13 @@ private:
 
     static constexpr size_t MAX_BUFFER_SIZE = 1024;
     static constexpr int    UDP_PORT        = 995;
-    static RemoteLog* gInstance;
+    static std::unique_ptr<RemoteLog> gInstance;
 
     void InitSocket();
     void CloseSocket();
     void SendWorker();
 };
 
-inline RemoteLog *RemoteLog::gInstance = nullptr;
+inline std::unique_ptr<RemoteLog> RemoteLog::gInstance;
 
 #define LOG RemoteLog::GetInstance().Log

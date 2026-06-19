@@ -112,9 +112,10 @@ private:
     // Internal streaming loop: same logic but uses chat_stream with token callback
     ChatResponse reasoning_loop_stream(TokenCallback on_token);
 
-    // Heuristic: decide whether the input warrants task planning.
-    // Returns true for complex multi-step requests, false for simple queries.
-    static bool needs_planning(const std::string& input);
+    // Decide whether the input warrants task planning.
+    // Uses a lightweight LLM call to ask if the task is complex enough to need planning.
+    // Trivially short inputs (< 30 chars) bypass the LLM and return false directly.
+    bool needs_planning(const std::string& input);
 
     // ── Advanced pipeline ───────────────────────────────────
 

@@ -6,6 +6,7 @@
 #include "task_planner.h"
 #include "self_reflector.h"
 #include "multi_agent.h"
+#include "logger.h"
 
 namespace agent {
 
@@ -34,12 +35,44 @@ void Agent::discover_local_tools() {
     if (!local_tools_enabled_ || !lazy_local_tools_ || local_tools_discovered_) return;
     local_tools_discovered_ = true;
 
-    std::cout << "\n[Lazy] Discovering local tools..." << std::endl;
+    LOG_INFO("Lazy", "\nDiscovering local tools...");
     auto local_tools = create_local_tools();
     for (auto& tool : local_tools) {
         registry_.register_tool(std::move(tool));
     }
-    std::cout << "[Lazy] Local tools discovered and registered." << std::endl;
+    LOG_INFO("Lazy", "Local tools discovered and registered.");
+}
+
+// ── LLM-based planning decision ────────────────────────────
+
+bool Agent::needs_planning(const std::string& input) {
+    // Fast path: trivially short inputs never need planning.
+    if (input.size() < 30) return false;
+
+    static const char* system_prompt =
+        "You are a task classifier. Given a user request, decide whether it is complex enough to require multi-step planning.\n"
+        "Reply with exactly one word: YES or NO.\n\n"
+        "Reply YES if the request involves multiple distinct actions, requires creating/modifying multiple artifacts,\n"
+        "or would benefit from being broken into sub-tasks. Reply NO for simple queries, single-action requests, or chit-chat.";
+
+    std::vector<ChatMessage> messages = {
+        ChatMessage{"system", system_prompt, ""},
+        ChatMessage{"user", input, ""}
+    };
+
+    try {
+        ChatResponse resp = llm_.chat(messages);
+        std::string answer = resp.content;
+        // Trim whitespace and convert to upper case for comparison.
+        size_t start = answer.find_first_not_of(" \t\n\r");
+        if (start == std::string::npos) return false;
+        answer = answer.substr(start);
+        std::transform(answer.begin(), answer.end(), answer.begin(), ::toupper);
+        return answer.find("YES") != std::string::npos;
+    } catch (...) {
+        // If the LLM call fails, fall back to a conservative default: no planning.
+        return false;
+    }
 }
 
 std::string Agent::run(const std::string& user_input) {
@@ -64,60 +97,6 @@ std::string Agent::run(const std::string& user_input) {
     return response.content;
 }
 
-// ── Planning heuristic ─────────────────────────────────────
-
-bool Agent::needs_planning(const std::string& input) {
-    // Convert to lowercase for case-insensitive checks.
-    std::string lower = input;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-    // 1. Length threshold — short inputs are unlikely to need planning.
-    if (input.size() < 30) return false;
-
-    // 2. Multi-step keywords (English + Chinese)
-    static const char* multi_step_keywords[] = {
-        "first", "then", "next", "after that", "finally",
-        "step", "steps", "phase", "phases",
-        "also", "and then", "followed by",
-        "1.", "2.", "3.",
-        // Chinese multi-step indicators
-        u8"首先", u8"然後", u8"接著", u8"階段", u8"一", u8"步驟",
-        u8"二步", u8"接下來", u8"第三步", u8"第四步",
-    };
-    for (const auto* kw : multi_step_keywords) {
-        if (lower.find(kw) != std::string::npos)
-            return true;
-    }
-
-    // 3. Action-rich input — contains multiple action verbs suggesting a pipeline.
-    static const char* action_verbs[] = {
-        "create", "write", "read", "search", "build",
-        "test", "deploy", "refactor", "analyze",
-        "generate", "implement", "fix", "review",
-    };
-    int verb_count = 0;
-    for (const auto* v : action_verbs) {
-        if (lower.find(v) != std::string::npos)
-            ++verb_count;
-    }
-    if (verb_count >= 2)
-        return true;
-
-    // 4. Long input with file/code references — likely a complex task.
-    static const char* code_refs[] = {
-        "file", "code", "function",
-        u8"檔案", u8"程式碼", u8"函數", u8"類別",
-    };
-    if (input.size() > 100) {
-        for (const auto* ref : code_refs) {
-            if (lower.find(ref) != std::string::npos)
-                return true;
-        }
-    }
-
-    // Default: simple query — no planning needed.
-    return false;
-}
 
 // Streaming version: tokens are printed as they arrive via on_token callback
 std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token, ChatResponse* usage_out) {
@@ -140,12 +119,46 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
     if (usage_out) {
         usage_out->prompt_tokens     = response.prompt_tokens;
         usage_out->completion_tokens = response.completion_tokens;
+        usage_out->max_tokens        = response.max_tokens;
     }
 
     // Add assistant response to memory
     memory_.add(ChatMessage{"assistant", response.content, ""});
 
     return response.content;
+}
+
+// ── User Reply handler ─────────────────────────────────────────────
+// After the caller has handled Abort and Custom, this processes the remaining
+// actions. result is empty for pre-execution; contains tool output for post-execution.
+enum class ReplyDirective {
+    Continue,   // proceed with (possibly modified) args
+    Skip,       // skip this tool call entirely
+    ReExecute,  // re-execute with modified args (post-execution only)
+};
+
+static ReplyDirective handle_user_reply(
+    ChatResponse::ToolCall& tc,
+    const std::string& result,
+    const UserReplyResult& reply) {
+
+    switch (reply.action) {
+        case ReplyAction::Skip:
+            LOG_WARN("Tool", "Skipped: " + tc.name);
+            return ReplyDirective::Skip;
+        case ReplyAction::Edit:
+            tc.arguments = reply.modified_args;
+            break;
+        default: // Continue
+            break;
+    }
+
+    if (result.empty()) {
+        // Pre-execution: fall through to execute with (possibly modified) args.
+        return ReplyDirective::Continue;
+    }
+    // Post-execution: re-execute with (possibly modified) args.
+    return ReplyDirective::ReExecute;
 }
 
 ChatResponse Agent::reasoning_loop() {
@@ -156,7 +169,7 @@ ChatResponse Agent::reasoning_loop() {
 
         // Compress context if history is too large
         if (memory_.summarize(llm_)) {
-            std::cout << "[Memory] Context compressed via summarization." << std::endl;
+            LOG_INFO("Memory", "Context compressed via summarization.");
         }
 
         // Get current conversation history + tools
@@ -186,33 +199,25 @@ ChatResponse Agent::reasoning_loop() {
         for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
-                std::cout << "[Tool] Skipping '" << tc.name
-                          << "' — empty arguments from LLM" << std::endl;
+                LOG_WARN("Tool", "Skipping '" + tc.name + "' — empty arguments from LLM");
                 continue;
             }
 
             // ── User Reply: pre-execution check (Always mode) ──
             if (user_reply_mode_ == UserReplyMode::Always) {
                 auto reply = prompt_user_reply(tc.name, tc.arguments);
-                switch (reply.action) {
-                    case ReplyAction::Abort:
-                        return ChatResponse{"[User aborted]"};
-                    case ReplyAction::Skip:
-                        std::cout << "[Tool] Skipped: " << tc.name << std::endl;
-                        continue;
-                    case ReplyAction::Edit:
-                        tc.arguments = reply.modified_args;
-                        break;
-                    case ReplyAction::Custom:
-                        memory_.add(ChatMessage{"user", reply.custom_message});
-                        return reasoning_loop();
-                    default: // Continue
-                        break;
+                if (reply.action == ReplyAction::Abort)
+                    return ChatResponse{"[User aborted]"};
+                if (reply.action == ReplyAction::Custom) {
+                    memory_.add(ChatMessage{"user", reply.custom_message});
+                    return reasoning_loop();
                 }
+                auto dir = handle_user_reply(tc, "", reply);
+                if (dir == ReplyDirective::Skip)
+                    continue;
             }
 
-            std::cout << "[Tool] Executing: " << tc.name
-                      << " with args: " << tc.arguments << std::endl;
+            LOG_INFO("Tool", "Executing: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -225,22 +230,17 @@ ChatResponse Agent::reasoning_loop() {
                              || lower_result.find("fail") != std::string::npos;
                 if (is_error) {
                     auto reply = prompt_user_reply(tc.name, tc.arguments, result);
-                    switch (reply.action) {
-                        case ReplyAction::Abort:
-                            return ChatResponse{"[User aborted]"};
-                        case ReplyAction::Skip:
-                            std::cout << "[Tool] Skipped: " << tc.name << std::endl;
-                            continue;
-                        case ReplyAction::Edit:
-                            tc.arguments = reply.modified_args;
-                            result = registry_.execute(tc.name, tc.arguments);
-                            break;
-                        case ReplyAction::Custom:
-                            memory_.add(ChatMessage{"user", reply.custom_message});
-                            return reasoning_loop();
-                        default: // Continue (retry)
-                            result = registry_.execute(tc.name, tc.arguments);
-                            break;
+                    if (reply.action == ReplyAction::Abort)
+                        return ChatResponse{"[User aborted]"};
+                    if (reply.action == ReplyAction::Custom) {
+                        memory_.add(ChatMessage{"user", reply.custom_message});
+                        return reasoning_loop();
+                    }
+                    auto dir = handle_user_reply(tc, result, reply);
+                    if (dir == ReplyDirective::Skip)
+                        continue;
+                    if (dir == ReplyDirective::ReExecute) {
+                        result = registry_.execute(tc.name, tc.arguments);
                     }
                 }
             }
@@ -252,8 +252,7 @@ ChatResponse Agent::reasoning_loop() {
             }
             memory_.add(tool_msg);
 
-            std::cout << "[Tool] Result: " << result.substr(0, 200)
-                      << (result.size() > 200 ? "..." : "") << std::endl;
+            LOG_INFO("Tool", "Result: " + result.substr(0, 200) + (result.size() > 200 ? "..." : ""));
         }
 
         // Loop again - LLM will see tool results and decide next action
@@ -273,7 +272,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
         // Compress context if history is too large
         if (memory_.summarize(llm_)) {
-            std::cout << "\n[Memory] Context compressed via summarization.\n" << std::endl;
+            LOG_INFO("Memory", "\nContext compressed via summarization.\n");
         }
 
         const auto& messages = memory_.get_messages();
@@ -308,35 +307,28 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
-                std::cout << "\n[Tool] Skipping '" << tc.name
-                          << "' — empty arguments from LLM" << std::endl;
+                LOG_WARN("Tool", "\nSkipping '" + tc.name + "' — empty arguments from LLM");
                 continue;
             }
 
             // ── User Reply: pre-execution check (Always mode) ──
             if (user_reply_mode_ == UserReplyMode::Always) {
                 auto reply = prompt_user_reply(tc.name, tc.arguments);
-                switch (reply.action) {
-                    case ReplyAction::Abort:
-                        resp.prompt_tokens = total_prompt;
-                        resp.completion_tokens = total_completion;
-                        return ChatResponse{"[User aborted]"};
-                    case ReplyAction::Skip:
-                        std::cout << "\n[Tool] Skipped: " << tc.name << std::endl;
-                        continue;
-                    case ReplyAction::Edit:
-                        tc.arguments = reply.modified_args;
-                        break;
-                    case ReplyAction::Custom:
-                        memory_.add(ChatMessage{"user", reply.custom_message});
-                        return reasoning_loop_stream(on_token);
-                    default: // Continue
-                        break;
+                if (reply.action == ReplyAction::Abort) {
+                    resp.prompt_tokens = total_prompt;
+                    resp.completion_tokens = total_completion;
+                    return ChatResponse{"[User aborted]"};
                 }
+                if (reply.action == ReplyAction::Custom) {
+                    memory_.add(ChatMessage{"user", reply.custom_message});
+                    return reasoning_loop_stream(on_token);
+                }
+                auto dir = handle_user_reply(tc, "", reply);
+                if (dir == ReplyDirective::Skip)
+                    continue;
             }
 
-            std::cout << "\n[Tool] Executing: " << tc.name
-                      << " with args: " << tc.arguments << std::endl;
+            LOG_INFO("Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 
@@ -349,24 +341,20 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
                              || lower_result.find("fail") != std::string::npos;
                 if (is_error) {
                     auto reply = prompt_user_reply(tc.name, tc.arguments, result);
-                    switch (reply.action) {
-                        case ReplyAction::Abort:
-                            resp.prompt_tokens = total_prompt;
-                            resp.completion_tokens = total_completion;
-                            return ChatResponse{"[User aborted]"};
-                        case ReplyAction::Skip:
-                            std::cout << "\n[Tool] Skipped: " << tc.name << std::endl;
-                            continue;
-                        case ReplyAction::Edit:
-                            tc.arguments = reply.modified_args;
-                            result = registry_.execute(tc.name, tc.arguments);
-                            break;
-                        case ReplyAction::Custom:
-                            memory_.add(ChatMessage{"user", reply.custom_message});
-                            return reasoning_loop_stream(on_token);
-                        default: // Continue (retry)
-                            result = registry_.execute(tc.name, tc.arguments);
-                            break;
+                    if (reply.action == ReplyAction::Abort) {
+                        resp.prompt_tokens = total_prompt;
+                        resp.completion_tokens = total_completion;
+                        return ChatResponse{"[User aborted]"};
+                    }
+                    if (reply.action == ReplyAction::Custom) {
+                        memory_.add(ChatMessage{"user", reply.custom_message});
+                        return reasoning_loop_stream(on_token);
+                    }
+                    auto dir = handle_user_reply(tc, result, reply);
+                    if (dir == ReplyDirective::Skip)
+                        continue;
+                    if (dir == ReplyDirective::ReExecute) {
+                        result = registry_.execute(tc.name, tc.arguments);
                     }
                 }
             }
@@ -380,7 +368,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
             std::string preview = result.substr(0, 200);
             if (result.size() > 200) preview += "...";
-            std::cout << "[Tool] Result: " << preview << "\n" << std::endl;
+            LOG_INFO("Tool", "Result: " + preview + "\n");
         }
 
         // Loop again - LLM will see tool results and decide next action
@@ -401,13 +389,13 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
     MultiAgent multi_agent(llm_.get_base_url(), &registry_);
 
     // Step 1: Generate a plan
-    std::cout << "\n[Planner] Generating task plan..." << std::endl;
+    LOG_INFO("Planner", "\nGenerating task plan...");
     const auto& context = memory_.get_messages();
     Plan plan = planner.generate_plan(user_input, context);
 
     if (plan.steps.empty()) {
         // Planning failed - fall back to normal execution.
-        std::cout << "[Planner] No steps generated, falling back to direct execution." << std::endl;
+        LOG_WARN("Planner", "No steps generated, falling back to direct execution.");
         ChatMessage user_msg{"user", user_input, ""};
         memory_.add(user_msg);
         ChatResponse response = reasoning_loop_stream(on_token);
@@ -416,18 +404,22 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
     }
 
     // Display the plan
-    std::cout << "\n[Planner] Plan for: " << plan.overall_goal << std::endl;
+    LOG_INFO("Planner", "\nPlan for: " + plan.overall_goal);
     for (const auto& step : plan.steps) {
-        std::cout << "  Step " << step.id << ": " << step.description << std::endl;
+        LOG_INFO("Planner", "  Step " + std::to_string(step.id) + ": " + step.description);
     }
 
     // Step 2: Execute each step with reflection and optional multi-agent routing.
+    // Use a while loop so that replanning (which replaces plan.steps) doesn't
+    // invalidate the iterator of a range-based for loop.
     std::vector<StepResult> completed_steps;
     std::ostringstream final_result;
 
-    for (auto& step : plan.steps) {
+    size_t step_index = 0;
+    while (step_index < plan.steps.size()) {
+        auto& step = plan.steps[step_index];
         step.status = "in_progress";
-        std::cout << "\n[Planner] Executing Step " << step.id << ": " << step.description << std::endl;
+        LOG_INFO("Planner", "\nExecuting Step " + std::to_string(step.id) + ": " + step.description);
 
         // Execute the step using multi-agent or direct agent.
         std::string step_output;
@@ -458,12 +450,12 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
             auto reflection = reflector.review(step.description, step_output);
 
             if (reflection.needs_correction) {
-                std::cout << "\n[Reflection] Issues found:" << std::endl;
-                std::cout << "  " << reflection.feedback.substr(0, 300) << std::endl;
+                LOG_WARN("Reflection", "\nIssues found:");
+                LOG_WARN("Reflection", "  " + reflection.feedback.substr(0, 300));
 
                 // Retry with feedback.
                 for (int retry = 0; retry < max_reflection_retries_; ++retry) {
-                    std::cout << "\n[Reflection] Retry " << (retry + 1) << "/" << max_reflection_retries_ << std::endl;
+                    LOG_INFO("Reflection", "\nRetry " + std::to_string(retry + 1) + "/" + std::to_string(max_reflection_retries_));
 
                     std::string correction_task = step.description +
                         "\n\nPrevious attempt had issues. Fix the following:\n" + reflection.feedback;
@@ -481,7 +473,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
                     // Re-review after correction.
                     auto re_reflection = reflector.review(step.description, step_output);
                     if (!re_reflection.needs_correction) {
-                        std::cout << "[Reflection] Correction accepted." << std::endl;
+                        LOG_INFO("Reflection", "Correction accepted.");
                         break;
                     }
 
@@ -493,10 +485,10 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
                     step_success = false;
                     error_msg = "Still has issues after " + std::to_string(max_reflection_retries_) +
                                 " retries: " + reflection.feedback.substr(0, 200);
-                    std::cout << "[Reflection] Step still has issues after max retries." << std::endl;
+                    LOG_ERROR("Reflection", "Step still has issues after max retries.");
                 }
             } else {
-                std::cout << "[Reflection] Step passed quality check." << std::endl;
+                LOG_INFO("Reflection", "Step passed quality check.");
             }
         }
 
@@ -505,21 +497,24 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
 
         completed_steps.push_back({step.id, step.description, step_output, step_success, error_msg});
 
+        ++step_index;
+
         if (!step_success) {
             // Attempt to re-plan from this point.
-            std::cout << "\n[Planner] Step " << step.id << " failed, attempting replan..." << std::endl;
+            LOG_WARN("Planner", "\nStep " + std::to_string(step.id) + " failed, attempting replan...");
             Plan new_plan = planner.replan(plan.overall_goal, completed_steps, error_msg);
 
             if (!new_plan.steps.empty()) {
-                std::cout << "[Planner] Replanned steps:" << std::endl;
+                LOG_INFO("Planner", "Replanned steps:");
                 for (const auto& ns : new_plan.steps) {
-                    std::cout << "  Step " << ns.id << ": " << ns.description << std::endl;
+                    LOG_INFO("Planner", "  Step " + std::to_string(ns.id) + ": " + ns.description);
                 }
 
-                // Replace remaining steps with the replan.
-                plan.steps = new_plan.steps;
+                // Replace remaining steps with the replan and restart from index 0.
+                plan.steps = std::move(new_plan.steps);
+                step_index = 0;
             } else {
-                std::cout << "[Planner] Replan failed, continuing with next step." << std::endl;
+                LOG_ERROR("Planner", "Replan failed, continuing with next step.");
             }
         }
     }

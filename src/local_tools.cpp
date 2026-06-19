@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 
+#include "logger.h"
 #include "local_tools.h"
 #include "encoding.h"
 #include "wide_string.h"
@@ -292,7 +293,7 @@ std::set<std::string> LocalToolDiscovery::suggest_tools_for_context(const std::s
             }
         }
     } catch (...) {
-        std::cerr << "[LocalTools] Failed to scan directory '" << project_dir << "' for tool suggestions" << std::endl;
+        LOG_ERROR("LocalTools", "Failed to scan directory '" + project_dir + "' for tool suggestions");
         // If filesystem operations fail, return empty set
     }
 
@@ -322,7 +323,7 @@ std::vector<LocalToolInfo> LocalToolDiscovery::discover() {
             try {
                 info.version = get_version(path);
             } catch (...) {
-                std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
+                LOG_ERROR("LocalTools", "Failed to get version for tool: " + name);
                 info.version = "unknown";
             }
 
@@ -353,7 +354,7 @@ std::vector<LocalToolInfo> LocalToolDiscovery::discover(const std::set<std::stri
             try {
                 info.version = get_version(path);
             } catch (...) {
-                std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
+                LOG_ERROR("LocalTools", "Failed to get version for tool: " + name);
                 info.version = "unknown";
             }
 
@@ -385,7 +386,7 @@ LocalToolInfo LocalToolDiscovery::find_tool(const std::string& name) {
     try {
         info.version = get_version(path);
     } catch (...) {
-        std::cerr << "[LocalTools] Failed to get version for tool: " << name << std::endl;
+        LOG_ERROR("LocalTools", "Failed to get version for tool: " + name);
         info.version = "unknown";
     }
 
@@ -565,28 +566,26 @@ std::vector<ToolPtr> create_local_tools() {
     auto suggested = LocalToolDiscovery::suggest_tools_for_context(fs::current_path().string());
 
     if (!suggested.empty()) {
-        std::cout << "[LocalTools] Context suggests: ";
-        for (const auto& t : suggested) std::cout << t << ' ';
-        std::cout << std::endl;
+        std::string suggestion_list = "Context suggests: ";
+        for (const auto& t : suggested) suggestion_list += t + ' ';
+        LOG_INFO("LocalTools", suggestion_list);
     }
 
     auto found = discovery.discover(suggested);
 
-    std::cout << "[LocalTools] Scanning for installed tools..." << std::endl;
+    LOG_INFO("LocalTools", "Scanning for installed tools...");
 
     std::vector<ToolPtr> tools;
     for (const auto& info : found) {
-        std::cout << "  Found: " << info.name
-                  << " v:" << info.version
-                  << " (" << info.path << ")" << std::endl;
+        LOG_INFO("LocalTools", "  Found: " + info.name + " v:" + info.version + " (" + info.path + ")");
         tools.push_back(std::make_shared<LocalExecutableTool>(info));
     }
 
     if (tools.empty()) {
-        std::cout << "[LocalTools] No known dev tools found in PATH." << std::endl;
-        std::cout << "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features." << std::endl;
+        LOG_INFO("LocalTools", "No known dev tools found in PATH.");
+        LOG_INFO("LocalTools", "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features.");
     } else {
-        std::cout << "[LocalTools] Registered " << tools.size() << " local tool(s)." << std::endl;
+        LOG_INFO("LocalTools", "Registered " + std::to_string(tools.size()) + " local tool(s).");
     }
 
     return tools;

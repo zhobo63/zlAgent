@@ -4,6 +4,7 @@
 #include "encoding.h"
 #include "httplib.h"
 #include "json.hpp"
+#include "logger.h"
 #include <mutex>
 
 namespace agent {
@@ -81,6 +82,7 @@ std::string LLMClient::post_json(const std::string& path, const std::string& jso
 // ---------------------------------------------------------------------------
 
 std::string LLMClient::build_chat_json(
+    const std::string& model,
     const std::vector<ChatMessage>& messages,
     const std::vector<ToolDefinition>& tools,
     double temperature,
@@ -88,7 +90,7 @@ std::string LLMClient::build_chat_json(
     bool stream) {
 
     json req;
-    req["model"] = model_;
+    req["model"] = model;
     req["temperature"] = temperature;
     req["max_tokens"] = max_tokens;
     if (stream) req["stream"] = true;
@@ -149,7 +151,7 @@ std::string LLMClient::build_chat_json(
     }
     catch(const std::exception& e)
     {
-        std::cerr << "Failed to serialize chat request: " + std::string(e.what());
+        LOG_ERROR("LLMClient", "Failed to serialize chat request: " + std::string(e.what()));
     }
 
     return req_str;
@@ -159,7 +161,11 @@ std::string LLMClient::build_chat_json(
 // SSE data-line parser using nlohmann::json
 // ---------------------------------------------------------------------------
 
-void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp) {
+// ---------------------------------------------------------------------------
+// parse_sse_chunk — Parse a single SSE "data: ..." line (streaming mode).
+// Handles delta tokens, reasoning content, tool calls, and usage.
+// ---------------------------------------------------------------------------
+void LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp) {
     if (data_line == "[DONE]") return;
 
     try {
@@ -175,78 +181,103 @@ void LLMClient::parse_sse_data(const std::string& data_line, ChatResponse& resp)
         // Extract choices[0].delta.content
         if (data.contains("choices") && !data["choices"].empty()) {
             auto& choice = data["choices"][0];
-            if (choice.contains("delta")) {
-                auto& delta = choice["delta"];
+            if (!choice.contains("delta")) return;
 
-                // Reasoning/thinking token
-                if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
-                    std::string reasoning = delta["reasoning_content"].get<std::string>();
-                    resp.reasoning_content += reasoning;
-                }
+            auto& delta = choice["delta"];
 
-                // Content token
-                if (delta.contains("content") && !delta["content"].is_null()) {
-                    std::string content = delta["content"].get<std::string>();
-                    resp.content += content;
-                }
-
-                // Tool calls in the stream chunk — merge into existing calls by index.
-                // OpenAI streaming sends tool_call chunks split across SSE events:
-                //   first chunk  → {index, id, function:{name}}
-                //   later chunks → {index, function:{arguments}} (id may be absent)
-                if (delta.contains("tool_calls")) {
-                    resp.has_tool_calls = true;
-                    for (auto& tc : delta["tool_calls"]) {
-                        int index = 0;
-                        if (tc.contains("index") && !tc["index"].is_null())
-                            index = tc["index"].get<int>();
-
-                        // Ensure we have enough entries for this index.
-                        while (static_cast<int>(resp.tool_calls.size()) <= index) {
-                            resp.tool_calls.emplace_back();
-                        }
-                        auto& call = resp.tool_calls[index];
-
-                        if (tc.contains("id") && !tc["id"].is_null() && call.id.empty())
-                            call.id = tc["id"].get<std::string>();
-
-                        if (tc.contains("function")) {
-                            auto& func = tc["function"];
-                            if (func.contains("name") && call.name.empty())
-                                call.name = func["name"].get<std::string>();
-                            if (func.contains("arguments") && !func["arguments"].is_null())
-                                call.arguments += func["arguments"].get<std::string>();
-                        }
-                    }
-                }
+            // Reasoning/thinking token
+            if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
+                std::string reasoning = delta["reasoning_content"].get<std::string>();
+                resp.reasoning_content += reasoning;
             }
 
-            // Non-streaming response: choices[0].message.content / tool_calls
-            if (choice.contains("message")) {
-                auto& msg = choice["message"];
-                if (msg.contains("content") && !msg["content"].is_null()) {
-                    resp.content = msg["content"].get<std::string>();
-                }
-                if (msg.contains("tool_calls")) {
-                    resp.has_tool_calls = true;
-                    for (auto& tc : msg["tool_calls"]) {
-                        ChatResponse::ToolCall call;
-                        if (tc.contains("id") && !tc["id"].is_null())
-                            call.id = tc["id"].get<std::string>();
-                        if (tc.contains("function")) {
-                            auto& func = tc["function"];
-                            if (func.contains("name"))
-                                call.name = func["name"].get<std::string>();
-                            if (func.contains("arguments") && !func["arguments"].is_null())
-                                call.arguments = func["arguments"].get<std::string>();
-                        }
-                        resp.tool_calls.push_back(call);
+            // Content token
+            if (delta.contains("content") && !delta["content"].is_null()) {
+                std::string content = delta["content"].get<std::string>();
+                resp.content += content;
+            }
+
+            // Tool calls in the stream chunk — merge into existing calls by index.
+            // OpenAI streaming sends tool_call chunks split across SSE events:
+            //   first chunk  → {index, id, function:{name}}
+            //   later chunks → {index, function:{arguments}} (id may be absent)
+            if (delta.contains("tool_calls")) {
+                resp.has_tool_calls = true;
+                for (auto& tc : delta["tool_calls"]) {
+                    int index = 0;
+                    if (tc.contains("index") && !tc["index"].is_null())
+                        index = tc["index"].get<int>();
+
+                    // Ensure we have enough entries for this index.
+                    while (static_cast<int>(resp.tool_calls.size()) <= index) {
+                        resp.tool_calls.emplace_back();
+                    }
+                    auto& call = resp.tool_calls[index];
+
+                    if (tc.contains("id") && !tc["id"].is_null() && call.id.empty())
+                        call.id = tc["id"].get<std::string>();
+
+                    if (tc.contains("function")) {
+                        auto& func = tc["function"];
+                        if (func.contains("name") && call.name.empty())
+                            call.name = func["name"].get<std::string>();
+                        if (func.contains("arguments") && !func["arguments"].is_null())
+                            call.arguments += func["arguments"].get<std::string>();
                     }
                 }
             }
         }
     } catch (const json::parse_error&) {
         // Ignore malformed SSE lines
+    }
+}
+
+// ---------------------------------------------------------------------------
+// parse_full_response — Parse a complete non-streaming JSON response.
+// Handles choices[0].message.content and tool_calls.
+// ---------------------------------------------------------------------------
+void LLMClient::parse_full_response(const std::string& json_str, ChatResponse& resp) {
+    try {
+        json data = json::parse(json_str);
+
+        if (!data.contains("choices") || data["choices"].empty()) return;
+
+        auto& choice = data["choices"][0];
+        if (!choice.contains("message")) return;
+
+        auto& msg = choice["message"];
+
+        // Extract usage if present
+        if (data.contains("usage")) {
+            auto& u = data["usage"];
+            resp.prompt_tokens      = u.value("prompt_tokens", 0u);
+            resp.completion_tokens  = u.value("completion_tokens", 0u);
+        }
+
+        // Content
+        if (msg.contains("content") && !msg["content"].is_null()) {
+            resp.content = msg["content"].get<std::string>();
+        }
+
+        // Tool calls
+        if (msg.contains("tool_calls")) {
+            resp.has_tool_calls = true;
+            for (auto& tc : msg["tool_calls"]) {
+                ChatResponse::ToolCall call;
+                if (tc.contains("id") && !tc["id"].is_null())
+                    call.id = tc["id"].get<std::string>();
+                if (tc.contains("function")) {
+                    auto& func = tc["function"];
+                    if (func.contains("name"))
+                        call.name = func["name"].get<std::string>();
+                    if (func.contains("arguments") && !func["arguments"].is_null())
+                        call.arguments = func["arguments"].get<std::string>();
+                }
+                resp.tool_calls.push_back(call);
+            }
+        }
+    } catch (const json::parse_error&) {
+        // Parse failure — response left empty
     }
 }
 
@@ -260,11 +291,12 @@ ChatResponse LLMClient::chat(
     double temperature,
     int max_tokens) {
 
-    std::string json_body = build_chat_json(messages, tools, temperature, max_tokens, false);
+    std::string json_body = build_chat_json(model_, messages, tools, temperature, max_tokens, false);
     std::string response_str = post_json("/v1/chat/completions", json_body);
 
     ChatResponse resp;
-    parse_sse_data(response_str, resp);
+    resp.max_tokens = static_cast<size_t>(max_tokens);
+    parse_full_response(response_str, resp);
     return resp;
 }
 
@@ -288,71 +320,9 @@ ChatResponse chat_stream_impl(
     client.set_read_timeout(120, 0);
     client.set_write_timeout(30, 0);
 
-    // Build JSON body — include messages and tools (was missing before).
-    json req;
-    req["model"] = model;
-    req["temperature"] = temperature;
-    req["max_tokens"] = max_tokens;
-    req["stream"] = true;
-
-    // Messages array
-    json messages_arr = json::array();
-    for (const auto& m : messages) {
-        json msg;
-        msg["role"] = m.role;
-        if (!m.content.empty())
-            msg["content"] = m.content;
-        else
-            msg["content"] = nullptr;  // null content for assistant with tool_calls only
-        if (!m.name.empty()) msg["name"] = m.name;
-        if (!m.tool_calls.empty()) {
-            json tc_arr = json::array();
-            for (const auto& tc : m.tool_calls) {
-                json tc_obj;
-                tc_obj["id"] = tc.id;
-                tc_obj["type"] = "function";
-                json func_obj;
-                func_obj["name"] = tc.name;
-                func_obj["arguments"] = tc.arguments;
-                tc_obj["function"] = func_obj;
-                tc_arr.push_back(tc_obj);
-            }
-            msg["tool_calls"] = tc_arr;
-        }
-        messages_arr.push_back(msg);
-    }
-    req["messages"] = messages_arr;
-
-    // Tools array (if any)
-    if (!tools.empty()) {
-        json tools_arr = json::array();
-        for (const auto& t : tools) {
-            json tool_def;
-            tool_def["type"] = "function";
-            json func;
-            func["name"] = t.name;
-            func["description"] = t.description;
-            try {
-                func["parameters"] = json::parse(t.parameters_schema);
-            } catch (...) {
-                std::cerr << "[LLMClient] Failed to parse tool parameters schema for '"
-                          << t.name << "' in streaming request, using empty object" << std::endl;
-                func["parameters"] = json::object();
-            }
-            tool_def["function"] = func;
-            tools_arr.push_back(tool_def);
-        }
-        req["tools"] = tools_arr;
-        req["tool_choice"] = "auto";
-    }
-
-    std::string json_body;
-	try {
-        json_body = req.dump();
-	}
-	catch (const std::exception& e) {
-        std::cerr << "Failed to serialize chat request: " + std::string(e.what());
-	}
+    // Build JSON body using the shared helper.
+    std::string json_body = LLMClient::build_chat_json(model, messages, tools,
+                                                       temperature, max_tokens, true);
     LOG(Color::CYAN, "JSON_BODY:%s", json_body.c_str());
 
     httplib::Headers headers;
@@ -370,7 +340,7 @@ ChatResponse chat_stream_impl(
                         handle->close();  // release our reference; main thread may still hold one via local_handle
                     }
                     interrupted.store(true);
-                    std::cout << u8"\n⚠  Interrupted by user." << std::endl;
+                    LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
                 }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -387,6 +357,7 @@ ChatResponse chat_stream_impl(
     if (!handle->is_valid()) return {};
 
     ChatResponse resp;
+    resp.max_tokens = static_cast<size_t>(max_tokens);
     std::string buffer;
 
     char read_buf[4096] = {0};
@@ -417,7 +388,7 @@ ChatResponse chat_stream_impl(
             // SSE lines start with "data: "
             if (line.rfind("data:", 0) == 0) {
                 std::string data_payload = line.substr(5);
-                LLMClient::parse_sse_data(data_payload, resp);
+                LLMClient::parse_sse_chunk(data_payload, resp);
 
                 // Call the token callback for content and reasoning tokens
                 try {
@@ -457,7 +428,7 @@ ChatResponse chat_stream_impl(
         if (!handle) break;  // handle was released by ESC interrupt
 
         if (line_start > 0) {
-            buffer = buffer.substr(line_start);
+            buffer.erase(0, line_start);
         }
     }
     interrupted.store(true);
@@ -517,14 +488,12 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
                 // Try to read context_length from various API fields.
                 if (item.contains("max_model_len")) {
                     try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {
-                        std::cerr << "[LLMClient] Failed to parse max_model_len for model '"
-                                  << mi.id << "'" << std::endl;
+                        LOG_ERROR("LLMClient", "Failed to parse max_model_len for model '" + mi.id + "'");
                     }
                 }
                 if (mi.context_length == 0 && item.contains("context_length")) {
                     try { mi.context_length = item["context_length"].get<int>(); } catch (...) {
-                        std::cerr << "[LLMClient] Failed to parse context_length for model '"
-                                  << mi.id << "'" << std::endl;
+                        LOG_ERROR("LLMClient", "Failed to parse context_length for model '" + mi.id + "'");
                     }
                 }
 
@@ -536,7 +505,7 @@ std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
             }
         }
     } catch (...) {
-        std::cerr << "[LLMClient] Failed to parse /v1/models API response" << std::endl;
+        LOG_ERROR("LLMClient", "Failed to parse /v1/models API response");
     }
 
     return models;

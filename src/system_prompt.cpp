@@ -2,6 +2,7 @@
 
 #include "system_prompt.h"
 
+#include "logger.h"
 #include "json.hpp"
 
 namespace agent {
@@ -72,7 +73,7 @@ static bool try_load_json(const std::string& language, json* root_out) {
                 return true;
             }
         } catch (const std::exception& e) {
-            std::cerr << "[SystemPrompt] JSON parse error: " << e.what() << "\n";
+            LOG_ERROR("SystemPrompt", "JSON parse error: " + std::string(e.what()));
         }
     }
 

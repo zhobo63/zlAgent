@@ -7,7 +7,7 @@ using namespace agent;
 TEST_CASE("CommandDispatcher: dispatch known command", "[commands]") {
     CommandDispatcher dispatcher;
     bool called = false;
-    dispatcher.register_command("test", [&](const auto&) { called = true; });
+    dispatcher.register_command("test", [&](const std::vector<std::string>&) { called = true; });
 
     REQUIRE(dispatcher.dispatch("/test") == true);
     REQUIRE(called == true);
@@ -16,7 +16,7 @@ TEST_CASE("CommandDispatcher: dispatch known command", "[commands]") {
 TEST_CASE("CommandDispatcher: non-slash input not dispatched", "[commands]") {
     CommandDispatcher dispatcher;
     bool called = false;
-    dispatcher.register_command("test", [&](const auto&) { called = true; });
+    dispatcher.register_command("test", [&](const std::vector<std::string>&) { called = true; });
 
     REQUIRE(dispatcher.dispatch("hello world") == false);
     REQUIRE(called == false);
@@ -30,7 +30,7 @@ TEST_CASE("CommandDispatcher: empty input not dispatched", "[commands]") {
 TEST_CASE("CommandDispatcher: command with arguments", "[commands]") {
     CommandDispatcher dispatcher;
     std::vector<std::string> received_args;
-    dispatcher.register_command("echo", [&](const auto& args) {
+    dispatcher.register_command("echo", [&](const std::vector<std::string>& args) {
         received_args = args;
     });
 
@@ -43,7 +43,7 @@ TEST_CASE("CommandDispatcher: command with arguments", "[commands]") {
 TEST_CASE("CommandDispatcher: command with no arguments", "[commands]") {
     CommandDispatcher dispatcher;
     std::vector<std::string> received_args;
-    dispatcher.register_command("ping", [&](const auto& args) {
+    dispatcher.register_command("ping", [&](const std::vector<std::string>& args) {
         received_args = args;
     });
 

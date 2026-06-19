@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "memory.h"
 
@@ -78,13 +78,25 @@ bool Memory::summarize(LLMClient& llm) {
         "Preserve key facts, decisions, code changes, and important context. "
         "Be concise but complete."};
 
+    // Per-message token budget for the summary request — enough context without
+    // wasting tokens on very long messages (e.g. large code blocks).
+    constexpr size_t SUMMARY_MSG_TOKEN_BUDGET = 500;
+
     std::vector<ChatMessage> prompt;
     prompt.push_back(sys_msg);
     for (const auto& m : msgs_to_summarize) {
-        // Truncate very long messages to avoid wasting tokens on the summary request
+        // Truncate long messages based on estimated tokens, not raw bytes,
+        // so code blocks and important context aren't cut off arbitrarily.
         std::string content = m.content;
-        if (content.size() > 2048) {
-            content = content.substr(0, 2048) + "... [truncated]";
+        size_t msg_tokens = TokenCounter::estimate(content);
+        if (msg_tokens > SUMMARY_MSG_TOKEN_BUDGET) {
+            // Truncate proportionally: keep roughly the same ratio of bytes
+            // as the budget-to-actual token ratio. This avoids repeated calls
+            // to estimate() and gives a reasonable truncation point.
+            size_t trunc_bytes = static_cast<size_t>(
+                content.size() * static_cast<double>(SUMMARY_MSG_TOKEN_BUDGET) / msg_tokens);
+            if (trunc_bytes < 128) trunc_bytes = 128;  // minimum context
+            content = content.substr(0, trunc_bytes) + "... [truncated]";
         }
         prompt.push_back(ChatMessage{m.role, content, m.name});
     }
