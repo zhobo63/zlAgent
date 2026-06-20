@@ -73,6 +73,7 @@ public:
             std::string content = args.value("content", "");
 
             if (path.empty()) return "Error: No file path provided.";
+            if (content.empty()) return "Error: No content provided. For large files, consider using edit_file to make targeted changes instead of write_file.";
 
             // Safety: path whitelist check.
             if (!SafetyGuard::is_path_allowed(path)) {
@@ -89,7 +90,8 @@ public:
             return "Successfully wrote " + std::to_string(content.size()) +
                    " bytes to '" + path + "'";
         } catch (const json::parse_error& e) {
-            return "Error: Invalid JSON arguments - " + std::string(e.what());
+            return "Error: Invalid JSON arguments - " + std::string(e.what()) +
+                   ". The response may have been truncated due to token limits. For large files, use edit_file for targeted changes instead.";
         }
     }
 };

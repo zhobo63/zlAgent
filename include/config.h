@@ -34,7 +34,7 @@ struct Config {
         std::string url       = "http://127.0.0.1:1234";
         std::string model     = "local";
         double    temperature = 0.2;
-        int       max_tokens  = 4096;
+        int       max_tokens  = 16384;
     } llm;
 
     // ── Memory ─────────────────────────────────────

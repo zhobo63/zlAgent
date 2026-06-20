@@ -34,9 +34,6 @@ public:
     // Set the system prompt (role, constraints, etc.)
     void set_system_prompt(const std::string& prompt);
 
-    // Main entry: send user message and get response (non-streaming)
-    std::string run(const std::string& user_input);
-
     // Streaming version: on_token is called for each token chunk as it arrives.
     // Returns the final response content after streaming completes.
     // If usage_out is provided, it will be filled with cumulative token counts.
@@ -106,21 +103,18 @@ private:
     // Discover and register local tools if lazy discovery is enabled.
     void discover_local_tools();
 
-    // Internal loop: call LLM, execute tools, repeat (non-streaming)
-    ChatResponse reasoning_loop();
-
     // Internal streaming loop: same logic but uses chat_stream with token callback
-    ChatResponse reasoning_loop_stream(TokenCallback on_token);
+    ChatResponse reasoning_loop_stream(const std::string& user_input, TokenCallback on_token);
 
     // Decide whether the input warrants task planning.
     // Uses a lightweight LLM call to ask if the task is complex enough to need planning.
     // Trivially short inputs (< 30 chars) bypass the LLM and return false directly.
-    bool needs_planning(const std::string& input);
+    bool needs_planning(ChatResponse &resp);
 
     // ── Advanced pipeline ───────────────────────────────────
 
     // Full pipeline: plan → execute steps (with reflection + multi-agent) → assemble result.
-    std::string run_planned(const std::string& user_input, TokenCallback on_token);
+    std::string run_planned(const std::string& user_input, ChatResponse& resp, TokenCallback on_token);
 };
 
 } // namespace agent

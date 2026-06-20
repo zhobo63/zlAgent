@@ -10,6 +10,8 @@
 
 namespace agent {
 
+using json = nlohmann::json;
+
 Agent::Agent(const std::string& llm_url, const std::string& model)
     : llm_(llm_url, model) {}
 
@@ -45,23 +47,9 @@ void Agent::discover_local_tools() {
 
 // ── LLM-based planning decision ────────────────────────────
 
-bool Agent::needs_planning(const std::string& input) {
+bool Agent::needs_planning(ChatResponse &resp) {
     // Fast path: trivially short inputs never need planning.
-    if (input.size() < 30) return false;
-
-    static const char* system_prompt =
-        "You are a task classifier. Given a user request, decide whether it is complex enough to require multi-step planning.\n"
-        "Reply with exactly one word: YES or NO.\n\n"
-        "Reply YES if the request involves multiple distinct actions, requires creating/modifying multiple artifacts,\n"
-        "or would benefit from being broken into sub-tasks. Reply NO for simple queries, single-action requests, or chit-chat.";
-
-    std::vector<ChatMessage> messages = {
-        ChatMessage{"system", system_prompt, ""},
-        ChatMessage{"user", input, ""}
-    };
-
     try {
-        ChatResponse resp = llm_.chat(messages);
         std::string answer = resp.content;
         // Trim whitespace and convert to upper case for comparison.
         size_t start = answer.find_first_not_of(" \t\n\r");
@@ -75,45 +63,17 @@ bool Agent::needs_planning(const std::string& input) {
     }
 }
 
-std::string Agent::run(const std::string& user_input) {
-    // Lazy discover local tools on first chat.
-    discover_local_tools();
-
-    // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
-    if (task_planning_ && needs_planning(user_input)) {
-        return run_planned(user_input, nullptr);
-    }
-
-    // Add user message to memory
-    ChatMessage user_msg{"user", user_input, ""};
-    memory_.add(user_msg);
-
-    // Run reasoning loop
-    ChatResponse response = reasoning_loop();
-
-    // Add assistant response to memory
-    memory_.add(ChatMessage{"assistant", response.content, ""});
-
-    return response.content;
-}
-
-
 // Streaming version: tokens are printed as they arrive via on_token callback
 std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token, ChatResponse* usage_out) {
     // Lazy discover local tools on first chat.
     discover_local_tools();
-
-    // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
-    //if (task_planning_ && needs_planning(user_input)) {
-    //    return run_planned(user_input, on_token);
-    //}
 
     // Add user message to memory
     ChatMessage user_msg{"user", user_input, ""};
     memory_.add(user_msg);
 
     // Run streaming reasoning loop
-    ChatResponse response = reasoning_loop_stream(on_token);
+    ChatResponse response = reasoning_loop_stream(user_input, on_token);
 
     // Pass usage info back if requested
     if (usage_out) {
@@ -161,109 +121,9 @@ static ReplyDirective handle_user_reply(
     return ReplyDirective::ReExecute;
 }
 
-ChatResponse Agent::reasoning_loop() {
-    int iteration = 0;
-
-    while (iteration < max_iterations_) {
-        iteration++;
-
-        // Compress context if history is too large
-        if (memory_.summarize(llm_)) {
-            LOG_INFO("Memory", "Context compressed via summarization.");
-        }
-
-        // Get current conversation history + tools
-        const auto& messages = memory_.get_messages();
-        auto tool_defs = registry_.get_definitions();
-
-        // Call LLM
-        ChatResponse resp = llm_.chat(messages, tool_defs);
-
-        // If no tool calls, return the response
-        if (!resp.has_tool_calls || resp.tool_calls.empty()) {
-            return resp;
-        }
-
-        // Add assistant message with tool_calls to memory (required by OpenAI API)
-        ChatMessage assistant_msg{"assistant", resp.content};
-        for (const auto& tc : resp.tool_calls) {
-            ToolCallInfo tci{};
-            tci.id = tc.id;
-            tci.name = tc.name;
-            tci.arguments = tc.arguments;
-            assistant_msg.tool_calls.push_back(std::move(tci));
-        }
-        memory_.add(assistant_msg);
-
-        // Execute each tool call and add results to memory
-        for (auto& tc : resp.tool_calls) {
-            // Guard: skip if LLM returned empty arguments (streaming truncation)
-            if (tc.arguments.empty()) {
-                LOG_WARN("Tool", "Skipping '" + tc.name + "' — empty arguments from LLM");
-                continue;
-            }
-
-            // ── User Reply: pre-execution check (Always mode) ──
-            if (user_reply_mode_ == UserReplyMode::Always) {
-                auto reply = prompt_user_reply(tc.name, tc.arguments);
-                if (reply.action == ReplyAction::Abort)
-                    return ChatResponse{"[User aborted]"};
-                if (reply.action == ReplyAction::Custom) {
-                    memory_.add(ChatMessage{"user", reply.custom_message});
-                    return reasoning_loop();
-                }
-                auto dir = handle_user_reply(tc, "", reply);
-                if (dir == ReplyDirective::Skip)
-                    continue;
-            }
-
-            LOG_INFO(u8"🛠️Tool", "Executing: " + tc.name + " with args: " + tc.arguments);
-
-            std::string result = registry_.execute(tc.name, tc.arguments);
-
-            // ── User Reply: post-execution check (OnError mode) ──
-            if (user_reply_mode_ == UserReplyMode::OnError) {
-                auto lower_result = result;
-                std::transform(lower_result.begin(), lower_result.end(), lower_result.begin(),
-                               [](unsigned char c){ return std::tolower(c); });
-                bool is_error = lower_result.find("error") != std::string::npos
-                             || lower_result.find("fail") != std::string::npos;
-                if (is_error) {
-                    auto reply = prompt_user_reply(tc.name, tc.arguments, result);
-                    if (reply.action == ReplyAction::Abort)
-                        return ChatResponse{"[User aborted]"};
-                    if (reply.action == ReplyAction::Custom) {
-                        memory_.add(ChatMessage{"user", reply.custom_message});
-                        return reasoning_loop();
-                    }
-                    auto dir = handle_user_reply(tc, result, reply);
-                    if (dir == ReplyDirective::Skip)
-                        continue;
-                    if (dir == ReplyDirective::ReExecute) {
-                        result = registry_.execute(tc.name, tc.arguments);
-                    }
-                }
-            }
-
-            // Add tool response to memory
-            ChatMessage tool_msg{"tool", result, tc.name};
-            if (!tc.id.empty()) {
-                tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;
-            }
-            memory_.add(tool_msg);
-
-            LOG_INFO(u8"🛠️Tool", "Result: " + result);
-        }
-
-        // Loop again - LLM will see tool results and decide next action
-    }
-
-    // Safety fallback after max iterations
-    return ChatResponse{"[Max iterations reached. Stopping.]"};
-}
 
 // Streaming reasoning loop: same logic but uses chat_stream with token callback.
-ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
+ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCallback on_token) {
     int iteration = 0;
     size_t total_prompt = 0, total_completion = 0;  // accumulate across iterations
 
@@ -284,6 +144,12 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         // Accumulate token usage across iterations
         total_prompt += resp.prompt_tokens;
         total_completion += resp.completion_tokens;
+
+        // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
+        if (task_planning_ && needs_planning(resp)) {
+            std::cout << run_planned(user_input, resp, on_token);
+            return resp;
+        }
 
         // If no tool calls, return the response
         if (!resp.has_tool_calls || resp.tool_calls.empty()) {
@@ -307,7 +173,12 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
         for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
-                LOG_WARN("Tool", "\nSkipping '" + tc.name + "' — empty arguments from LLM");
+                LOG_WARN("Tool", "\nSkipping '" + tc.name + "' — empty arguments from LLM, feeding error back");
+                ChatMessage tool_msg{"tool", "[Error] Tool call was truncated: missing arguments for '" + tc.name + "'. Please retry with complete arguments.", tc.name};
+                if (!tc.id.empty()) {
+                    tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;
+                }
+                memory_.add(tool_msg);
                 continue;
             }
 
@@ -321,11 +192,27 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
                 }
                 if (reply.action == ReplyAction::Custom) {
                     memory_.add(ChatMessage{"user", reply.custom_message});
-                    return reasoning_loop_stream(on_token);
+                    return reasoning_loop_stream(user_input, on_token);
                 }
                 auto dir = handle_user_reply(tc, "", reply);
                 if (dir == ReplyDirective::Skip)
                     continue;
+            }
+
+            // Validate arguments are well-formed JSON before executing
+            try {
+                json::parse(tc.arguments);
+            } catch (const json::parse_error& e) {
+                LOG_WARN("Tool", "Truncated/invalid JSON arguments for '" + tc.name + "': " + std::string(e.what()));
+                ChatMessage tool_msg{"tool",
+                    "[Error] Tool call arguments are malformed or truncated: " + std::string(e.what()) +
+                    ". The response may have hit the token limit. For large files, use edit_file for targeted changes instead of write_file.",
+                    tc.name};
+                if (!tc.id.empty()) {
+                    tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;
+                }
+                memory_.add(tool_msg);
+                continue;
             }
 
             LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
@@ -348,7 +235,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
                     }
                     if (reply.action == ReplyAction::Custom) {
                         memory_.add(ChatMessage{"user", reply.custom_message});
-                        return reasoning_loop_stream(on_token);
+                        return reasoning_loop_stream(user_input, on_token);
                     }
                     auto dir = handle_user_reply(tc, result, reply);
                     if (dir == ReplyDirective::Skip)
@@ -383,7 +270,7 @@ ChatResponse Agent::reasoning_loop_stream(TokenCallback on_token) {
 
 // ── Advanced Pipeline: Plan → Execute (with Reflection + Multi-Agent) ──
 
-std::string Agent::run_planned(const std::string& user_input, TokenCallback on_token) {
+std::string Agent::run_planned(const std::string& user_input, ChatResponse& resp, TokenCallback on_token) {
     TaskPlanner planner(llm_);
     SelfReflector reflector(llm_);
     MultiAgent multi_agent(llm_.get_base_url(), &registry_);
@@ -391,16 +278,12 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
     // Step 1: Generate a plan
     LOG_INFO("Planner", "\nGenerating task plan...");
     const auto& context = memory_.get_messages();
-    Plan plan = planner.generate_plan(user_input, context);
+    Plan plan = planner.generate_plan(resp.content, context);
 
     if (plan.steps.empty()) {
         // Planning failed - fall back to normal execution.
         LOG_WARN("Planner", "No steps generated, falling back to direct execution.");
-        ChatMessage user_msg{"user", user_input, ""};
-        memory_.add(user_msg);
-        ChatResponse response = reasoning_loop_stream(on_token);
-        memory_.add(ChatMessage{"assistant", response.content, ""});
-        return response.content;
+        return resp.content;
     }
 
     // Display the plan
@@ -437,7 +320,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
                 return true;
             };
 
-            ChatResponse resp = reasoning_loop_stream(step_callback);
+            ChatResponse resp = reasoning_loop_stream(step.description, step_callback);
             step_output = resp.content;
             memory_.add(ChatMessage{"assistant", step_output, ""});
         }
@@ -465,7 +348,7 @@ std::string Agent::run_planned(const std::string& user_input, TokenCallback on_t
                     } else {
                         ChatMessage fix_msg{"user", correction_task, ""};
                         memory_.add(fix_msg);
-                        ChatResponse fix_resp = reasoning_loop_stream(on_token);
+                        ChatResponse fix_resp = reasoning_loop_stream(user_input, on_token);
                         step_output = fix_resp.content;
                         memory_.add(ChatMessage{"assistant", step_output, ""});
                     }

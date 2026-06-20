@@ -122,7 +122,7 @@ Core capabilities:
 
 Guidelines:
 1. Always list the directory and read existing files before modifying them
-2. Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites
+2. Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation
 3. Write clean, idiomatic code following each language's best practices
 4. Compile/build and test your code after writing it
 5. Explain your changes concisely
