@@ -116,6 +116,11 @@ elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
 
+# isocline: portable readline replacement for rich console input
+add_subdirectory(isocline)
+
+target_link_libraries(zlagent PRIVATE isocline)
+
 # Tests (optional - enable with -DBUILD_TESTING=ON)
 option(BUILD_TESTING "Build unit tests" OFF)
 if(BUILD_TESTING)

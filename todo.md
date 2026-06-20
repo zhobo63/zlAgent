@@ -126,5 +126,6 @@ fallback 路徑捕獲到 step regex 就直接 push，沒有檢查步驟是否非
 
 - **`include/pch.h`** — 檢查是否有不必要的 include 
 - **`CMakeLists.txt`** — 缺少 `target_compile_options` 的警告標記（如 `-Wall -Wextra` for GCC/Clang, `/W4` for MSVC）
-- **測試`execute_command`工具是否正常
+- **測試`execute_command`工具是否正常 多測試不同用法
 - needs_planning需要移去DONE的時候判斷
+- 左右鍵控制游標

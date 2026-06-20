@@ -19,193 +19,20 @@
 #include "plugin_loader.h"
 #include "local_tools.h"
 #include "wide_string.h"
+#include <isocline.h>
 
-// ── Input history: up/down arrow to browse previous commands ─────────
+// ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
-static std::vector<std::string> g_input_history;   // submitted commands (oldest first)
-
-/// Helper: convert wresult back to UTF-8 string
-static std::string wide_to_utf8(const std::wstring& ws) {
-    if (ws.empty()) return {};
-    int len = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-    std::string out(len - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, &out[0], len - 1, nullptr, nullptr);
-    return out;
-}
-
-/// Helper: clear the current line and redraw from a UTF-8 string
-static void redraw_line(const std::string& utf8_str) {
-    std::cout << "\r\x1b[K";  // clear to end of line
-    for (wchar_t wc : agent::utf8_to_wide(utf8_str))
-        std::wcout << wc;
-}
-
-/// Read multi-line input from the console.
-/// - Enter alone: submit the current buffer
-/// - Shift+Enter: insert a newline (multi-line mode)
-/// - Up/Down arrow: browse command history
-// Calculate the display width of a wide string.
-// CJK characters (and other fullwidth chars) occupy 2 cells; ASCII and halfwidth occupy 1.
-static int get_display_width(const std::wstring& s) {
-    int w = 0;
-    for (wchar_t c : s) {
-        if (c >= 0x1100 &&
-            ((c <= 0x115F) || (c == 0x2329) || (c == 0x232A) ||
-             (c >= 0x2E80 && c <= 0xA4CF && c != 0x303F) ||
-             (c >= 0xAC00 && c <= 0xD7A3) ||
-             (c >= 0xF900 && c <= 0xFAD9) ||
-             (c >= 0xFE10 && c <= 0xFE19) ||
-             (c >= 0xFE30 && c <= 0xFE6F) ||
-             (c >= 0xFF00 && c <= 0xFF60) ||
-             (c >= 0xFFE0 && c <= 0xFFE6) ||
-             (c >= 0x20000 && c <= 0x2FFFD) ||
-             (c >= 0x30000 && c <= 0x3FFFD))) {
-            w += 2;
-        } else {
-            w += 1;
-        }
-    }
-    return w;
-}
-
-static std::string read_multiline_input() {
-    std::wstring wresult;
-#ifdef _WIN32
-    // hist_offset == 0 means we are at the "working" position (current typed text).
-    // hist_offset > 0 means we've navigated up by that many steps into history.
-    // The actual index in g_input_history is: size - hist_offset.
-    static int hist_offset = 0;          // how far back from the end
-    static std::string working_buf;      // what the user was typing before pressing up
-
-    while (true) {
-        wchar_t ch = _getwch();
-
-        // Enter key
-        if (ch == L'\r') {
-            if (GetKeyState(VK_SHIFT) < 0) {
-                // Shift+Enter: insert newline
-                wresult += L'\n';
-                std::cout << "\n";
-            } else {
-                // Enter alone: submit — save to history and break
-                std::string submitted = wide_to_utf8(wresult);
-                if (!submitted.empty()) {
-                    g_input_history.push_back(submitted);
-                    if (static_cast<int>(g_input_history.size()) > MAX_HISTORY)
-                        g_input_history.erase(g_input_history.begin());
-                }
-                hist_offset = 0;
-                working_buf.clear();
-                break;
-            }
-        }
-        // Backspace — erase the correct number of display cells for the last character
-        else if (ch == 8) {
-            if (!wresult.empty()) {
-                int before = get_display_width(wresult);
-                wresult.pop_back();
-                int after = get_display_width(wresult);
-                int erased = before - after;  // 1 for ASCII, 2 for CJK
-                for (int i = 0; i < erased; ++i)
-                    std::cout << "\b \b";
-            }
-        }
-        // Extended key (arrow keys etc.) — prefix is 0 or 224
-        else if (ch == 0 || ch == 224) {
-            wchar_t next = _getwch();
-
-            if (next == 72) {  // Up arrow
-                if (hist_offset == 0) {
-                    // Save current typed text as working buffer before navigating
-                    working_buf = wide_to_utf8(wresult);
-                }
-                int max_offset = static_cast<int>(g_input_history.size());
-                if (hist_offset < max_offset)
-                    hist_offset++;
-
-                // Erase old input by backing up, then clear to end of line and redraw
-                int display_w = get_display_width(wresult);
-                for (int i = 0; i < display_w; ++i)
-                    std::cout << "\b";
-                std::cout << "\x1b[K";  // clear rest of line (handles multi-column CJK)
-
-                std::string display_str;
-                if (hist_offset <= max_offset) {
-                    size_t idx = static_cast<size_t>(max_offset - hist_offset);
-                    display_str = g_input_history[idx];
-                }
-                wresult.clear();
-                for (wchar_t wc : agent::utf8_to_wide(display_str)) {
-                    wresult += wc;
-                    std::wcout << wc;
-                }
-            }
-            else if (next == 80) {  // Down arrow
-                if (hist_offset > 0)
-                    hist_offset--;
-
-                int max_offset = static_cast<int>(g_input_history.size());
-                std::string display_str;
-                if (hist_offset <= max_offset && hist_offset > 0) {
-                    size_t idx = static_cast<size_t>(max_offset - hist_offset);
-                    display_str = g_input_history[idx];
-                } else {
-                    // At working position — restore what user was typing
-                    display_str = working_buf;
-                }
-
-                // Erase old input by backing up, then clear to end of line and redraw
-                int display_w = get_display_width(wresult);
-                for (int i = 0; i < display_w; ++i)
-                    std::cout << "\b";
-                std::cout << "\x1b[K";
-
-                wresult.clear();
-                for (wchar_t wc : agent::utf8_to_wide(display_str)) {
-                    wresult += wc;
-                    std::wcout << wc;
-                }
-            }
-        }
-        // Printable character (including CJK via IME)
-        else {
-            wresult += ch;
-            std::wcout << ch;
-        }
-    }
-
-    // Convert wide string to UTF-8 narrow string
-    int len = WideCharToMultiByte(CP_UTF8, 0, wresult.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return "";
-    std::string result(len - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wresult.c_str(), -1, &result[0], len - 1, nullptr, nullptr);
-    return result;
-#else
-    // Fallback: single-line for non-Windows
-    std::string fallback;
-    std::getline(std::cin, fallback);
-    return fallback;
-#endif
-}
 
 int main() {
 #ifdef _WIN32
     // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
     setlocale(LC_ALL, "zh_TW.UTF-8");
-
-    // Set console input/output code pages to UTF-8 so emoji and all Unicode display correctly.
-    SetConsoleCP(65001);
-    SetConsoleOutputCP(65001);
-
-    // Enable VT processing for ANSI escape codes (e.g., dim text for thinking output).
-    {
-        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-        DWORD mode = 0;
-        if (GetConsoleMode(hOut, &mode))
-            SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    }
 #endif
+
+    // Initialize isocline for rich console input (handles terminal setup on all platforms)
+    ic_init(false);
+    ic_set_history(nullptr, MAX_HISTORY);
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
 
@@ -461,10 +288,11 @@ int main() {
     std::cout << "\nReady. Type your request (or '/help' for commands):\n" << std::endl;
 
     // Interactive loop with streaming output.
-    std::string input;
     while (true) {
-        std::cout << "You: [" << ag.get_llm().get_model() << "] ";
-        input = read_multiline_input();
+        char* raw = ic_readline(("You: [" + ag.get_llm().get_model() + "]").c_str());
+        if (!raw) break;  // Ctrl-C / Ctrl-D
+        std::string input(raw);
+        ic_free(raw);
         if (input.empty()) continue;
 
         if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
