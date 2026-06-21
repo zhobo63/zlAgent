@@ -293,7 +293,7 @@ int main() {
 
     // Interactive loop with streaming output.
     while (true) {
-        char* raw = ic_readline(("You: [" + ag.get_llm().get_model() + "]").c_str());
+        char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
         if (!raw) break;  // Ctrl-C / Ctrl-D
         std::string input(raw);
         ic_free(raw);

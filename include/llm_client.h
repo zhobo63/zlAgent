@@ -69,12 +69,13 @@ public:
     explicit LLMClient(const std::string& base_url = "http://127.0.0.1:1234",
                       const std::string& model = "local");
 
-    // Non-streaming chat (blocks until full response)
+    // Non-streaming chat (blocks until full response).
+    // temperature defaults to 0.2; max_tokens < 0 means auto-calculate from context window.
     ChatResponse chat(
         const std::vector<ChatMessage>& messages,
         const std::vector<ToolDefinition>& tools = {},
         double temperature = 0.2,
-        int max_tokens = 4096);
+        int max_tokens = -1);
 
     // Streaming chat: on_token is called for each token chunk as it arrives.
     // Returns the final ChatResponse after the stream completes.
@@ -84,7 +85,7 @@ public:
         TokenCallback on_token,
         const std::vector<ToolDefinition>& tools = {},
         double temperature = 0.2,
-        int max_tokens = 4096);
+        int max_tokens = -1);
 
     // Build the JSON request body for chat (shared by both streaming and non-streaming).
     // Takes model explicitly so it can be called from free functions too.

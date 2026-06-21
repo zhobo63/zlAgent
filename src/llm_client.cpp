@@ -291,6 +291,17 @@ ChatResponse LLMClient::chat(
     double temperature,
     int max_tokens) {
 
+    // Auto-calculate remaining context window if not specified.
+    if (max_tokens < 0) {
+        size_t used = TokenCounter::estimate_conversation(messages);
+        int ctx_len = get_model_context_length(model_);
+        if (ctx_len > 0 && static_cast<size_t>(ctx_len) > used) {
+            max_tokens = ctx_len - static_cast<int>(used);
+        } else {
+            max_tokens = 8192;  // safe fallback
+        }
+    }
+
     std::string json_body = build_chat_json(model_, messages, tools, temperature, max_tokens, false);
     std::string response_str = post_json("/v1/chat/completions", json_body);
 
@@ -456,6 +467,17 @@ ChatResponse LLMClient::chat_stream(
     const std::vector<ToolDefinition>& tools,
     double temperature,
     int max_tokens) {
+
+    // Auto-calculate remaining context window if not specified.
+    if (max_tokens < 0) {
+        size_t used = TokenCounter::estimate_conversation(messages);
+        int ctx_len = get_model_context_length(model_);
+        if (ctx_len > 0 && static_cast<size_t>(ctx_len) > used) {
+            max_tokens = ctx_len - static_cast<int>(used);
+        } else {
+            max_tokens = 8192;  // safe fallback
+        }
+    }
 
     auto url = parse_url();
     if (url.host.empty()) return {};

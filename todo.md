@@ -122,8 +122,17 @@ fallback 路徑捕獲到 step regex 就直接 push，沒有檢查步驟是否非
 
 ---
 
+## P3 — 近期變更追蹤
+
+### [x] CLI 提示符模型顯示格式調整
+**文件:** `src/main.cpp:296`
+
+將 `[model_name]` 改為 `(model_name)`，避免與工具名稱的方括號混淆。
+
+---
+
 ## 其他觀察
 
-- **`include/pch.h`** — 檢查是否有不必要的 include 
+- **`include/pch.h`** — 檢查是否有不必要的 include
 - **`CMakeLists.txt`** — 缺少 `target_compile_options` 的警告標記（如 `-Wall -Wextra` for GCC/Clang, `/W4` for MSVC）
 - needs_planning需要移去DONE的時候判斷

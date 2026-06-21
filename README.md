@@ -366,6 +366,87 @@ auto_extract_facts = true
 | `/save-session` | 立即將當前會話保存到長期記憶 |
 | `/search-kb query` | CLI 直接搜尋 RAG 知識庫 |
 | `/add-doc path` | 將檔案/目錄加入 RAG 知識庫 |
+| `/quit`, `/exit` | 退出程式 |
+
+## 使用者介入模式 (User Reply Mode)
+
+Agent 支援在工具執行過程中暫停並等待使用者決策。透過 `zlagent.ini` 設定：
+
+```ini
+[agent]
+user_reply_mode = off    # off, on_error, always
+```
+
+| 模式 | 說明 |
+|------|------|
+| `off` | 完全自動，不暫停（預設） |
+| `on_error` | 僅在工具執行失敗時暫停，讓使用者決定如何處理錯誤 |
+| `always` | 每次工具呼叫前都暫停，等待使用者確認或修改參數 |
+
+當 Agent 暫停時，使用者可以選擇：
+
+| 選項 | 說明 |
+|------|------|
+| **Continue** | 繼續執行當前工具呼叫 |
+| **Skip** | 跳過此次工具呼叫 |
+| **Abort** | 終止整個推理循環 |
+| **Edit** | 修改工具參數後再執行 |
+| **Custom** | 注入自訂訊息到對話中 |
+
+## 日誌等級設定
+
+透過 `zlagent.ini` 控制輸出詳細程度：
+
+```ini
+[logging]
+level = info    # debug, info, warn, error, none
+```
+
+| 等級 | 說明 |
+|------|------|
+| `debug` | 最詳細的除錯資訊 |
+| `info` | 一般運行訊息（預設） |
+| `warn` | 僅警告和錯誤 |
+| `error` | 僅錯誤訊息 |
+| `none` | 靜音模式，不輸出日誌 |
+
+## 串流模式 (Streaming)
+
+Agent 支援串流式輸出，讓使用者即時看到 LLM 的回應：
+
+```cpp
+// 使用 run_stream 進行串流推理
+agent.run_stream(user_input, [](const std::string& token) {
+    // 即時處理每個 token
+});
+```
+
+## 進階工具功能
+
+### read_file_lines — 高效能檔案行範圍讀取
+
+對於大型檔案，`read_file_lines` 比 `read_file` 更高效，只需指定需要的行數範圍：
+
+```json
+{
+    "path": "src/large_file.cpp",
+    "start_line": 100,
+    "end_line": 200
+}
+```
+
+### execute_command — Shell 命令執行
+
+支援執行任意 shell 命令，並可指定工作目錄：
+
+```json
+{
+    "command": "g++ main.cpp -o main",
+    "cwd": "/path/to/project"   // 可選
+}
+```
+
+命令執行有 30 秒超時限制。
 
 ## 動態模型切換
 
