@@ -108,6 +108,7 @@ int main() {
     // Register built-in tools
     LOG_INFO("Main", "Registering built-in tools...");
     ag.add_tool(agent::create_read_file_tool());
+    ag.add_tool(agent::create_read_file_lines_tool());
     ag.add_tool(agent::create_write_file_tool());
     ag.add_tool(agent::create_edit_file_tool());
     ag.add_tool(agent::create_list_directory_tool());

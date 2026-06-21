@@ -5,6 +5,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (compile, run tests, lint) using execute_command",
@@ -46,6 +47,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (compile with g++, clang++, run programs) using execute_command",
@@ -97,6 +99,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (node, npm, npx) using execute_command",
@@ -148,6 +151,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (node, npm, npx, tsc) using execute_command",
@@ -199,6 +203,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (python, pip, pytest) using execute_command",
@@ -250,6 +255,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (cargo build, cargo test, clippy) using execute_command",
@@ -301,6 +307,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (go build, go test, go vet) using execute_command",
@@ -352,6 +359,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (javac, java, mvn, gradle) using execute_command",

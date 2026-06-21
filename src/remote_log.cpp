@@ -145,7 +145,7 @@ void RemoteLog::Log(const Color &color, const char *msg, ...) {
 
     // Format message into buffer
     std::string formatted;
-    formatted.resize(256);
+    formatted.resize(4096);
     int len = vsnprintf(&formatted[0], formatted.size(), msg, args);
     if (len < 0) {
         va_end(args);

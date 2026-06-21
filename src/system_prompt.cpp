@@ -103,6 +103,7 @@ static std::string hardcoded_prompt(const std::string& language) {
 Core capabilities:
 - Browse directories using list_directory
 - Read files using read_file
+- Read a specific line range from a file using read_file_lines (more efficient for large files)
 - Write new files or overwrite existing ones using write_file
 - Apply precise edits to existing files using edit_file (find old_text, replace with new_text)
 - Execute commands (compile, run tests, lint) using execute_command

@@ -36,6 +36,8 @@ set(CORE_SOURCES
     # CLI command system
     src/command_dispatcher.cpp
     src/command_handlers.cpp
+    # File utilities
+    src/file_utils.cpp
     # Remote logging
     src/remote_log.cpp
     # User reply (intervention during reasoning loop)
