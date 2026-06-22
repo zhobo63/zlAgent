@@ -14,6 +14,7 @@
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
 #include "command_handlers.h"
+#include "terminal_command_detector.h"
 #include "agent.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -289,7 +290,18 @@ int main() {
     // Register the /reply-mode command for user intervention control.
     register_reply_mode_command(dispatcher, &ag);
 
-    std::cout << "\nReady. Type your request (or '/help' for commands):\n" << std::endl;
+    // Terminal command detector — intercept shell commands before LLM.
+    agent::TerminalCommandDetector* terminal_detector = nullptr;
+    if (cfg.terminal_commands.enabled) {
+        terminal_detector = agent::TerminalCommandDetector::create(
+            cfg.terminal_commands.direct_commands,
+            cfg.terminal_commands.confirm_commands);
+    }
+
+    std::cout << "\nReady. Type your request (or '/help' for commands):" << std::endl;
+    if (cfg.terminal_commands.enabled) {
+        std::cout << u8"  💡 Shell commands are auto-detected and executed directly." << std::endl;
+    }
 
     // Interactive loop with streaming output.
     while (true) {
@@ -313,6 +325,43 @@ int main() {
 
         // Dispatch slash-commands before sending to LLM.
         if (dispatcher.dispatch(input)) continue;
+
+        // Detect and execute terminal commands directly, bypassing the LLM.
+        if (terminal_detector) {
+            switch (terminal_detector->detect(input)) {
+                case agent::CommandConfidence::High:
+                    // High confidence — execute immediately.
+                    agent::TerminalCommandDetector::execute_directly(input);
+                    continue;
+
+                case agent::CommandConfidence::Low:
+                    // Low confidence — ask user to confirm.
+                    std::cout << u8"\u26A0 Detected possible terminal command: "
+                              << input << "\n"
+                              << u8"   Execute directly? [y/N]: ";
+                    {
+                        std::string resp;
+                        if (std::getline(std::cin, resp)) {
+                            auto trim = [](std::string& s) {
+                                s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
+                                s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
+                            };
+                            trim(resp);
+                            std::string lower = resp;
+                            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                            if (lower == "y" || lower == "yes") {
+                                agent::TerminalCommandDetector::execute_directly(input);
+                                continue;
+                            }
+                        }
+                    }
+                    // User declined — fall through to LLM.
+                    break;
+
+                case agent::CommandConfidence::NotACommand:
+                    break;  // Not a command, send to LLM as usual.
+            }
+        }
 
         // Safety: input filter - detect prompt injection attempts.
         if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {

@@ -61,6 +61,14 @@ ZL Agent 是一個多語言本地 AI Coding Agent，採用純 C++17 實現，透
 │  │  │(執行前確認)│ (錯誤介入) │ (修改參數)   │  │    │
 │  │  └───────────┘ └──────────┘ └────────────┘  │    │
 │  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │           Terminal Command Detector            │    │
+│  │  ┌───────────┐ ┌──────────┐ ┌────────────┐  │    │
+│  │  │HighConf   │ │LowConf   │ │NotACommand  │  │    │
+│  │  │(直接執行)  │ (需確認)   │ (送 LLM)     │  │    │
+│  │  └───────────┘ └──────────┘ └────────────┘  │    │
+│  └──────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -557,7 +565,69 @@ user_reply_mode = off    ; 介入模式：off / on_error / always
 
 ---
 
-### 3.9 技能系統 (`skill_system.h/cpp`, `zlagent/skills/`)
+### 3.9 Terminal Command Detector（終端命令直執行）(`terminal_command_detector.h/cpp`)
+
+**核心概念：**
+
+當用戶輸入被判斷為 shell 命令時，**直接調用 terminal 工具執行，不經過 LLM**。這讓常見操作零延遲完成，同時避免 LLM 的 token 浪費。
+
+**與 execute_command 工具的區別：**
+- **execute_command（Tool）**：LLM 在推理循環中決定調用 → 走完整 tool call 流程 → 返回結果給 LLM
+- **Terminal Command Detector**：用戶輸入 → 判斷為 shell 命令 → 直接執行 → 輸出到終端，完全繞過 LLM
+
+#### 判斷規則
+
+| 置信度 | 行為 | 觸發條件 |
+|--------|------|----------|
+| `CommandConfidence::High`（直接執行） | 立即執行，不詢問用戶 | 白名單內的命令：`ls`, `git status`, `cat`, `pwd`, `make` 等 |
+| `CommandConfidence::Low`（需確認） | 先問用戶 `[y/N]` | 危險命令：`rm`, `docker`, `sudo`, `curl`；或包含 shell operator (`\|`, `>`, `&&`)；或未知短命令（≤8 字元） |
+| `CommandConfidence::NotACommand` | 正常送 LLM | 自然語言前綴、含問號/感嘆號、長句等 |
+
+#### 排除規則（避免誤判為 shell 命令）
+
+1. **自然語言前綴**："please", "can you", "how to", "explain", "tell me"...
+2. **標點符號**：包含 `?` 或 `!`
+3. **長句**：超過 15 個空格（約 >16 字）
+4. **英文冠詞**：包含 " the ", " an ", " a "
+5. **首詞過長**：第一個 token >12 字元且無 shell operator
+
+#### INI 配置 (`[terminal_commands]`)
+
+| Key | 類型 | 預設值 | 說明 |
+|-----|------|--------|------|
+| `enabled` | bool | `true` | 終端命令直執行開關 |
+| `direct` | string | *(內建預設)* | 高置信度命令列表（逗號分隔），空=使用內建白名單 |
+| `confirm` | string | *(內建預設)* | 低置信度命令列表（逗號分隔），空=使用內建白名單 |
+| `ask_unknown` | bool | `false` | 未知短命令是否詢問用戶確認 |
+
+#### API
+
+```cpp
+class TerminalCommandDetector {
+public:
+    static TerminalCommandDetector* create(
+        const std::vector<std::string>& direct_commands,
+        const std::vector<std::string>& confirm_commands);
+
+    CommandConfidence detect(const std::string& input) const;
+    std::string explain(const std::string& input) const;
+
+    static bool execute_directly(const std::string& command);
+};
+```
+
+#### 執行流程
+
+```
+用戶輸入 → /command? (yes→dispatch, no→繼續)
+         ↓
+TerminalCommandDetector.detect()
+         ├─ High  → execute_directly() → 輸出結果
+         ├─ Low   → 詢問 [y/N] → y: execute_directly(), N: 送 LLM
+         └─ NotACommand → 送 LLM（正常流程）
+```
+
+### 3.10 技能系統 (`skill_system.h/cpp`, `zlagent/skills/`)
 
 **核心概念：**
 
@@ -817,13 +887,14 @@ The skill is now available for use.
 
 | 項目 | 要求 |
 |------|------|
-| 啟動流程 | 載入 INI 配置 → **自動偵測語言**（如開啟）→ 設定系統提示詞 → 註冊內建工具 → 載入外掛 → 發現本地工具 → 進入互動循環 |
+| 啟動流程 | 載入 INI 配置 → **自動偵測語言**（如開啟）→ 設定系統提示詞 → 註冊內建工具 → 載入外掛 → 發現本地工具 → 初始化 TerminalCommandDetector → 進入互動循環 |
 | 輸入方式 | stdin 逐行讀取（getline） |
 | 退出命令 | `quit` / `exit` / EOF |
 | 輸出格式 | `Agent: <回應內容>` |
 | CLI 選項 | `--no-auto-import-skills`、`--extra-skill-path`、`--rescan-skills`、`--no-dynamic-skills` |
 | ESC 中斷串流 | 按 ESC 鍵可中斷正在串流的 LLM 輸出 |
 | Token 使用量顯示 | 每次回應後顯示 prompt/completion/total token 數 |
+| Terminal Command 直執行 | `/command` 之後、LLM 之前，自動判斷輸入是否為 shell 命令並直接執行（繞過 LLM） |
 
 ---
 

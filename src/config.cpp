@@ -278,6 +278,18 @@ Config Config::load(const std::string& ini_path) {
         }
     }
 
+    // --- [terminal_commands] section ---
+    {
+        auto it = data.find("terminal_commands");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled",             cfg.terminal_commands.enabled, true);
+            read_csv_list(s, "direct",           cfg.terminal_commands.direct_commands);
+            read_csv_list(s, "confirm",          cfg.terminal_commands.confirm_commands);
+            read_bool(s, "ask_unknown",          cfg.terminal_commands.ask_unknown, false);
+        }
+    }
+
     // Print loaded values.
     LOG_INFO("Config", "LLM URL: " + cfg.llm.url);
     LOG_INFO("Config", "Language: " + cfg.agent_.language
@@ -407,6 +419,30 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
             kvs["knowledge_dirs"] = dirs;
         }
         write_section("rag", kvs);
+    }
+
+    // [terminal_commands]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"]     = cfg.terminal_commands.enabled ? "true" : "false";
+        if (!cfg.terminal_commands.direct_commands.empty()) {
+            std::string cmds;
+            for (const auto& c : cfg.terminal_commands.direct_commands) {
+                if (!cmds.empty()) cmds += ", ";
+                cmds += c;
+            }
+            kvs["direct"] = cmds;
+        }
+        if (!cfg.terminal_commands.confirm_commands.empty()) {
+            std::string cmds;
+            for (const auto& c : cfg.terminal_commands.confirm_commands) {
+                if (!cmds.empty()) cmds += ", ";
+                cmds += c;
+            }
+            kvs["confirm"] = cmds;
+        }
+        kvs["ask_unknown"] = cfg.terminal_commands.ask_unknown ? "true" : "false";
+        write_section("terminal_commands", kvs);
     }
 
     out.close();

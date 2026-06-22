@@ -201,7 +201,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
             // Validate arguments are well-formed JSON before executing
             try {
-                json::parse(tc.arguments);
+                auto arg = json::parse(tc.arguments);
             } catch (const json::parse_error& e) {
                 LOG_WARN("Tool", "Truncated/invalid JSON arguments for '" + tc.name + "': " + std::string(e.what()));
                 ChatMessage tool_msg{"tool",

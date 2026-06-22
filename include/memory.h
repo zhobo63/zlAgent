@@ -26,7 +26,7 @@ public:
     void add(ChatMessage msg);
 
     /// Get all stored messages as a const reference (avoids copying).
-    [[nodiscard]] const std::vector<ChatMessage>& get_messages() const;
+    const std::vector<ChatMessage>& get_messages() const;
 
     /// Clear history.
     void clear();
@@ -37,10 +37,10 @@ public:
     /// Compress older messages into a summary using the LLM.
     /// When history exceeds max_messages, this summarizes the oldest half and
     /// replaces it with a single summary message. Returns true if compression happened.
-    [[nodiscard]] bool summarize(LLMClient& llm);
+    bool summarize(LLMClient& llm);
 
     /// Cached token count for the current conversation (incrementally maintained).
-    [[nodiscard]] size_t get_cached_token_count() const { return cached_tokens_; }
+    size_t get_cached_token_count() const { return cached_tokens_; }
 
 private:
     std::vector<ChatMessage> history_;

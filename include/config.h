@@ -102,6 +102,14 @@ struct Config {
         std::vector<std::string> knowledge_dirs;   // directories to ingest at startup
     } rag;
 
+    // ── Terminal Command Direct Execution ─────────────
+    struct TerminalCommands {
+        bool enabled = true;                        // enable direct terminal command detection
+        std::vector<std::string> direct_commands;   // high-confidence: execute without asking
+        std::vector<std::string> confirm_commands;  // low-confidence: ask before executing
+        bool ask_unknown = false;                   // prompt for commands not in either list
+    } terminal_commands;
+
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);
 

@@ -42,6 +42,10 @@ void register_command_handlers(
             "  /reply-mode off    Disable intervention (fully automatic)\n"
             "  /reply-mode on_error  Pause when a tool call fails\n"
             "  /reply-mode always   Pause before every tool call\n"
+            "\nTerminal command shortcut:\n"
+            "  Shell commands are auto-detected and executed directly, bypassing the LLM.\n"
+            "  Safe commands (ls, git status, etc.) run immediately; risky ones ask first.\n"
+            "  Configure via [terminal_commands] in zlagent.ini.\n"
             "\nSession control:\n"
             "  /quit, /exit       Exit (same as typing 'quit')\n"});
     });

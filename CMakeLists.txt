@@ -36,6 +36,8 @@ set(CORE_SOURCES
     # CLI command system
     src/command_dispatcher.cpp
     src/command_handlers.cpp
+    # Terminal command direct execution
+    src/terminal_command_detector.cpp
     # File utilities
     src/file_utils.cpp
     # Remote logging

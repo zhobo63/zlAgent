@@ -157,6 +157,12 @@ dangerous_tool_confirmation = true   ; 危險工具確認（rm -rf/del /f 等需
 path_whitelist =                     ; 允許操作的目錄列表（逗號分隔，空=無限制）
 skill_content_check = true           ; SKILL.md 內容檢查
 input_filter = true                  ; 輸入過濾（防止提示詞注入攻擊）
+
+[terminal_commands]
+enabled = true                       ; 終端命令直執行開關
+direct =                            ; 高置信度命令列表，空=使用內建預設
+confirm =                           ; 低置信度命令列表，空=使用內建預設
+ask_unknown = false                  ; 未知短命令是否詢問用戶
 ```
 
 | Section | Key | 類型 | 預設值 | 說明 |
@@ -185,8 +191,46 @@ input_filter = true                  ; 輸入過濾（防止提示詞注入攻�
 | | `path_whitelist` | string | *(空)* | 允許操作的目錄列表（逗號分隔，空=無限制） |
 | | `skill_content_check` | bool | `true` | SKILL.md 內容檢查（偵測可疑 shell 命令） |
 | | `input_filter` | bool | `true` | 輸入過濾（防止提示詞注入攻擊） |
+| `[terminal_commands]` | `enabled` | bool | `true` | 終端命令直執行開關（判斷為 shell 命令則直接執行，不經 LLM） |
+| | `direct` | string | *(內建預設)* | 高置信度命令列表（逗號分隔），空=使用內建白名單 |
+| | `confirm` | string | *(內建預設)* | 低置信度命令列表（逗號分隔），空=使用內建白名單 |
+| | `ask_unknown` | bool | `false` | 未知短命令是否詢問用戶確認 |
 
 > **註：** 若找不到 `zlagent.ini`，Agent 會使用全部預設值並輸出提示訊息。
+
+## Terminal Command Direct Execution（終端命令直執行）
+
+當用戶輸入被判斷為 shell 命令時，**直接調用 terminal 工具執行，不經過 LLM**。這讓常見操作（`ls`、`git status`、`cat` 等）零延遲完成。
+
+```
+You: (qwopus3.6-27b-v2-mtp) ls -la
+$ ls -la
+total 128
+drwxr-xr-x ...
+
+You: (qwopus3.6-27b-v2-mtp) rm -rf build/
+⚠ Detected possible terminal command: rm -rf build/
+   Execute directly? [y/N]: y
+$ rm -rf build/
+```
+
+### 判斷規則
+
+| 置信度 | 行為 | 觸發條件 |
+|--------|------|----------|
+| **High**（直接執行） | 立即執行，不詢問 | 白名單內的命令：`ls`, `git status`, `cat`, `pwd`, `make` 等 |
+| **Low**（需確認） | 先問用戶 `[y/N]` | 危險命令：`rm`, `docker`, `sudo`, `curl`；或包含 shell operator (`\|`, `>`, `&&`)；或未知短命令 |
+| **NotACommand** | 正常送 LLM | 自然語言前綴（"please", "how to"...）、含問號/感嘆號、長句等 |
+
+### INI 配置
+
+```ini
+[terminal_commands]
+enabled = true
+direct =                          ; 高置信度命令列表，空=使用內建預設
+confirm =                         ; 低置信度命令列表，空=使用內建預設
+ask_unknown = false               ; 未知短命令是否詢問用戶
+```
 
 ## 進階能力
 
@@ -367,6 +411,7 @@ auto_extract_facts = true
 | `/search-kb query` | CLI 直接搜尋 RAG 知識庫 |
 | `/add-doc path` | 將檔案/目錄加入 RAG 知識庫 |
 | `/quit`, `/exit` | 退出程式 |
+| **Terminal shortcut** | Shell 命令自動偵測並直接執行，不經 LLM（見下方 Terminal Command Direct Execution） |
 
 ## 使用者介入模式 (User Reply Mode)
 
