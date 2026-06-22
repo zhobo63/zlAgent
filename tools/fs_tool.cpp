@@ -3,7 +3,6 @@
 #include "tool.h"
 #include "encoding.h"
 #include "safety_guard.h"
-#include "json.hpp"
 #include "httplib.h"
 #include <iomanip>
 #include <regex>
@@ -23,7 +22,8 @@ namespace fs = std::filesystem;
 static std::string execute_shell_command(const std::string& cmd, const std::string& cwd) {
 #ifdef _WIN32
     // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-    std::string full_cmd = "cmd.exe /c chcp 65001 >nul && \"" + cmd + "\"";
+    std::string full_cmd = "cmd.exe /c \"chcp 65001 >nul && " + cmd + "\"";
+    LOG_DEBUG("LocalTools", "Executing command: " + full_cmd + " in cwd: " + (cwd.empty() ? "(current)" : cwd));
 
     wchar_t cwd_wide[1024] = L".";
     if (!cwd.empty()) {
@@ -1031,7 +1031,8 @@ public:
     std::string name() const override { return "git_status"; }
     std::string description() const override {
         return "Get the git status of a repository in porcelain format. "
-               "Returns structured file change statuses (M=modified, A=added, D=deleted, ??=untracked).";
+               "Returns structured file change statuses: M=modified, A=added, D=deleted, "
+               "??=untracked, R=renamed, C=copied, U=unmerged.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -1046,44 +1047,59 @@ public:
             auto args = json::parse(json_args);
             std::string path = args.value("path", ".");
 
-            // Check if it's a git repo first
-            std::string check_cmd = "git -C \"" + path + "\" rev-parse --is-inside-work-tree 2>&1";
-            std::string check_output = execute_shell_command(check_cmd, "");
+            // Resolve relative paths to absolute paths so that cwd is always unambiguous.
+            fs::path abs_path = fs::absolute(path);
+            if (!fs::is_directory(abs_path)) {
+                return "Error: Path '" + path + "' does not exist or is not a directory.";
+            }
+
+            // Check if it's a git repo first. Use cwd parameter to avoid nested-quote issues on Windows.
+            std::string check_cmd = "git rev-parse --is-inside-work-tree 2>&1";
+            std::string check_output = execute_shell_command(check_cmd, abs_path.string());
             if (check_output.find("true") == std::string::npos) {
                 return "Error: '" + path + "' is not a git repository.";
             }
 
-            std::string cmd = "git -C \"" + path + "\" status --porcelain 2>&1";
-            std::string output = execute_shell_command(cmd, "");
+            // Use cwd parameter instead of -C to avoid nested-quote issues on Windows.
+            std::string cmd = "git status --porcelain 2>&1";
+            std::string output = execute_shell_command(cmd, abs_path.string());
 
             if (output.empty()) {
                 return "Working tree clean. No changes in '" + path + "'.";
             }
 
-            // Parse porcelain format: XY path
+            // Parse porcelain format: XY path (or XYSN old -> new for renames/copies)
             std::ostringstream result;
-            result << "# Git Status for: " << path << "\n";
+            result << "# Git Status for: " << abs_path.string() << "\n";
 
-            int modified = 0, added = 0, deleted = 0, untracked = 0, renamed = 0, other = 0;
+            int modified = 0, added = 0, deleted = 0, untracked = 0, renamed = 0, copied = 0, unmerged = 0, other = 0;
 
             std::istringstream stream(output);
             std::string line;
             while (std::getline(stream, line)) {
-                if (line.size() >= 4) {
-                    char status = line[0];
-                    std::string file = line.substr(3);
+                if (line.size() < 3) continue;
 
-                    switch (status) {
-                        case 'M': modified++; break;
-                        case 'A': added++; break;
-                        case 'D': deleted++; break;
-                        case '?': untracked++; break;
-                        case 'R': renamed++; break;
-                        default: other++;
-                    }
+                char index_status = line[0];   // Index state
+                char work_status  = line[1];   // Working tree state
 
-                    result << "  " << line << "\n";
+                // Classify by index status first (what will be committed),
+                // fall back to working-tree status if index is clean.
+                // This correctly handles compound states like "AM" (added+modified)
+                // as "added", and "MD" (modified+deleted) as "modified".
+                char primary_status = (index_status != ' ') ? index_status : work_status;
+
+                switch (primary_status) {
+                    case 'M': modified++; break;
+                    case 'A': added++;    break;
+                    case 'D': deleted++;  break;
+                    case 'R': renamed++;  break;
+                    case 'C': copied++;   break;
+                    case 'U': unmerged++; break;
+                    case '?': untracked++; break;
+                    default: other++;     break;
                 }
+
+                result << "  " << line << "\n";
             }
 
             result << "\n# Summary: "
@@ -1091,7 +1107,9 @@ public:
                    << added << " added, "
                    << deleted << " deleted, "
                    << untracked << " untracked, "
-                   << renamed << " renamed";
+                   << renamed << " renamed, "
+                   << copied << " copied, "
+                   << unmerged << " unmerged";
 
             return result.str();
         } catch (const json::parse_error& e) {
@@ -1127,18 +1145,25 @@ public:
             std::string path   = args.value("path", ".");
             bool staged        = args.value("staged", false);
 
-            // Check if it's a git repo
-            std::string check_cmd = "git -C \"" + path + "\" rev-parse --is-inside-work-tree 2>&1";
-            std::string check_output = execute_shell_command(check_cmd, "");
+            // Resolve relative paths to absolute paths so that cwd is always unambiguous.
+            fs::path abs_path = fs::absolute(path);
+            if (!fs::is_directory(abs_path)) {
+                return "Error: Path '" + path + "' does not exist or is not a directory.";
+            }
+
+            // Check if it's a git repo. Use cwd parameter to avoid nested-quote issues on Windows.
+            std::string check_cmd = "git rev-parse --is-inside-work-tree 2>&1";
+            std::string check_output = execute_shell_command(check_cmd, abs_path.string());
             if (check_output.find("true") == std::string::npos) {
                 return "Error: '" + path + "' is not a git repository.";
             }
 
-            std::string cmd = "git -C \"" + path + "\" diff";
+            // Use cwd parameter instead of -C to avoid nested-quote issues on Windows.
+            std::string cmd = "git diff";
             if (staged) cmd += " --cached";
             cmd += " 2>&1";
 
-            std::string output = execute_shell_command(cmd, "");
+            std::string output = execute_shell_command(cmd, abs_path.string());
 
             if (output.empty()) {
                 return staged ? "No staged changes in '" + path + "'."
@@ -1146,7 +1171,7 @@ public:
             }
 
             std::ostringstream result;
-            result << "# Git Diff" << (staged ? " (staged)" : "") << " for: " << path << "\n\n";
+            result << "# Git Diff" << (staged ? " (staged)" : "") << " for: " << abs_path.string() << "\n\n";
             result << output;
 
             return result.str();

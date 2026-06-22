@@ -1,9 +1,19 @@
 #include "pch.h"
 
 #include "config.h"
+#include "logger.h"
 #include "wide_string.h"
 
 namespace agent {
+
+// --- Trim helpers ---
+static void ltrim(std::string& s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
+}
+
+static void rtrim(std::string& s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
+}
 
 // --- IniParser ---
 
@@ -20,9 +30,6 @@ std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const
 
     while (std::getline(file, line)) {
         // Trim whitespace.
-        auto ltrim  = [](std::string& s) { s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); })); };
-        auto rtrim  = [](std::string& s) { s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end()); };
-
         ltrim(line);
         rtrim(line);
 
@@ -43,6 +50,14 @@ std::map<std::string, std::map<std::string, std::string>> IniParser::parse(const
         if (eq_pos != std::string::npos) {
             std::string key   = line.substr(0, eq_pos);
             std::string value = line.substr(eq_pos + 1);
+
+            // Strip inline comment (; or #)
+            for (size_t i = 0; i < value.size(); ++i) {
+                if (value[i] == ';' || value[i] == '#') {
+                    value = value.substr(0, i);
+                    break;
+                }
+            }
 
             ltrim(key);
             rtrim(key);
@@ -84,6 +99,58 @@ bool IniParser::update_key(const std::string& ini_path,
     return true;
 }
 
+// --- Config read helpers ---
+// Read a key from the section map if it exists; skip silently otherwise.
+static void read_if_exists(const std::map<std::string, std::string>& s,
+                           const char* key, std::string& target) {
+    auto it = s.find(key);
+    if (it != s.end()) target = it->second;
+}
+
+static void read_if_exists(const std::map<std::string, std::string>& s,
+                           const char* key, int& target) {
+    auto it = s.find(key);
+    if (it != s.end()) target = std::stoi(it->second);
+}
+
+static void read_if_exists(const std::map<std::string, std::string>& s,
+                           const char* key, double& target) {
+    auto it = s.find(key);
+    if (it != s.end()) target = std::stod(it->second);
+}
+
+static void read_if_exists(const std::map<std::string, std::string>& s,
+                           const char* key, float& target) {
+    auto it = s.find(key);
+    if (it != s.end()) target = std::stof(it->second);
+}
+
+static void read_bool(const std::map<std::string, std::string>& s,
+                      const char* key, bool& target, bool default_val) {
+    auto it = s.find(key);
+    if (it != s.end()) target = Config::parse_bool(it->second, default_val);
+}
+
+// Read a comma-separated list of trimmed strings.
+static void read_csv_list(const std::map<std::string, std::string>& s,
+                          const char* key, std::vector<std::string>& target) {
+    auto it = s.find(key);
+    if (it == s.end()) return;
+
+    std::string str = it->second;
+    size_t pos = 0;
+    while ((pos = str.find(',', pos)) != std::string::npos) {
+        std::string item = str.substr(0, pos);
+        ltrim(item);
+        rtrim(item);
+        if (!item.empty()) target.push_back(std::move(item));
+        str = str.substr(pos + 1);
+    }
+    ltrim(str);
+    rtrim(str);
+    if (!str.empty()) target.push_back(std::move(str));
+}
+
 // --- Config helpers ---
 
 bool Config::parse_bool(const std::string& s, bool default_val) {
@@ -99,132 +166,126 @@ Config Config::load(const std::string& ini_path) {
 
     auto data = IniParser::parse(ini_path);
     if (data.empty()) {
-        std::cout << "[Config] No INI file found at '" << ini_path << "', using defaults." << std::endl;
+        LOG_INFO("Config", "No INI file found at '" + ini_path + "', using defaults.");
         Config::save(cfg, ini_path);
         return cfg;
     }
 
-    std::cout << "[Config] Loaded from: " << ini_path << std::endl;
+    LOG_INFO("Config", "Loaded from: " + ini_path);
 
     // --- [llm] section ---
-    if (data.count("llm")) {
-        auto& s = data["llm"];
-        if (s.count("url"))        cfg.llm.url = s["url"];
-        if (s.count("model"))      cfg.llm.model = s["model"];
-        if (s.count("temperature")) cfg.llm.temperature = std::stod(s["temperature"]);
-        if (s.count("max_tokens"))  cfg.llm.max_tokens = std::stoi(s["max_tokens"]);
+    {
+        auto it = data.find("llm");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_if_exists(s, "url",         cfg.llm.url);
+            read_if_exists(s, "model",       cfg.llm.model);
+            read_if_exists(s, "temperature",  cfg.llm.temperature);
+            read_if_exists(s, "max_tokens",   cfg.llm.max_tokens);
+        }
     }
 
     // --- [memory] section ---
-    if (data.count("memory")) {
-        auto& s = data["memory"];
-        if (s.count("max_messages"))         cfg.memory.max_messages = std::stoi(s["max_messages"]);
-        if (s.count("long_term_enabled"))    cfg.memory.long_term_enabled = parse_bool(s["long_term_enabled"], false);
-        if (s.count("store_dir"))            cfg.memory.store_dir = s["store_dir"];
-        if (s.count("max_sessions"))         cfg.memory.max_sessions = std::stoi(s["max_sessions"]);
-        if (s.count("inject_facts_to_prompt")) cfg.memory.inject_facts_to_prompt = parse_bool(s["inject_facts_to_prompt"], true);
-        if (s.count("auto_extract_facts"))   cfg.memory.auto_extract_facts = parse_bool(s["auto_extract_facts"], true);
+    {
+        auto it = data.find("memory");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_if_exists(s, "max_messages",           cfg.memory.max_messages);
+            read_bool(s, "long_term_enabled",           cfg.memory.long_term_enabled, false);
+            read_if_exists(s, "store_dir",              cfg.memory.store_dir);
+            read_if_exists(s, "max_sessions",           cfg.memory.max_sessions);
+            read_bool(s, "inject_facts_to_prompt",      cfg.memory.inject_facts_to_prompt, true);
+            read_bool(s, "auto_extract_facts",          cfg.memory.auto_extract_facts, true);
+        }
     }
 
     // --- [agent] section ---
-    if (data.count("agent")) {
-        auto& s = data["agent"];
-        if (s.count("max_iterations")) cfg.agent_.max_iterations = std::stoi(s["max_iterations"]);
-        if (s.count("language"))             cfg.agent_.language = s["language"];
-        if (s.count("auto_detect_language")) cfg.agent_.auto_detect_language = parse_bool(s["auto_detect_language"], true);
-        if (s.count("prompt_file"))          cfg.agent_.prompt_file = s["prompt_file"];
-        if (s.count("user_reply_mode"))      cfg.agent_.user_reply_mode = s["user_reply_mode"];
+    {
+        auto it = data.find("agent");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_if_exists(s, "max_iterations",     cfg.agent_.max_iterations);
+            read_if_exists(s, "language",           cfg.agent_.language);
+            read_bool(s, "auto_detect_language",    cfg.agent_.auto_detect_language, true);
+            read_if_exists(s, "prompt_file",        cfg.agent_.prompt_file);
+            read_if_exists(s, "user_reply_mode",    cfg.agent_.user_reply_mode);
+        }
     }
 
     // --- [features] section ---
-    if (data.count("features")) {
-        auto& s = data["features"];
-        if (s.count("task_planning"))          cfg.features.task_planning = parse_bool(s["task_planning"], true);
-        if (s.count("self_reflection"))        cfg.features.self_reflection = parse_bool(s["self_reflection"], true);
-        if (s.count("multi_agent"))            cfg.features.multi_agent = parse_bool(s["multi_agent"], false);
-        if (s.count("max_reflection_retries")) cfg.features.max_reflection_retries = std::stoi(s["max_reflection_retries"]);
+    {
+        auto it = data.find("features");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "task_planning",           cfg.features.task_planning, true);
+            read_bool(s, "self_reflection",         cfg.features.self_reflection, true);
+            read_bool(s, "multi_agent",             cfg.features.multi_agent, false);
+            read_if_exists(s, "max_reflection_retries", cfg.features.max_reflection_retries);
+        }
     }
 
     // --- [plugins] section ---
-    if (data.count("plugins")) {
-        auto& s = data["plugins"];
-        if (s.count("directory")) cfg.plugins.directory = s["directory"];
+    {
+        auto it = data.find("plugins");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_if_exists(s, "directory", cfg.plugins.directory);
+        }
     }
 
     // --- [local_tools] section ---
-    if (data.count("local_tools")) {
-        auto& s = data["local_tools"];
-        if (s.count("enabled")) cfg.local_tools.enabled = parse_bool(s["enabled"], true);
+    {
+        auto it = data.find("local_tools");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled", cfg.local_tools.enabled, true);
+        }
+    }
+
+    // --- [logging] section ---
+    {
+        auto it = data.find("logging");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_if_exists(s, "level", cfg.logging.level);
+        }
     }
 
     // --- [safety] section ---
-    if (data.count("safety")) {
-        auto& s = data["safety"];
-        if (s.count("dangerous_tool_confirmation")) cfg.safety.dangerous_tool_confirmation = parse_bool(s["dangerous_tool_confirmation"], true);
-        if (s.count("path_whitelist")) {
-            // Comma-separated list of directories.
-            std::string wl_str = s["path_whitelist"];
-            size_t pos = 0;
-            while ((pos = wl_str.find(',', pos)) != std::string::npos) {
-                std::string dir = wl_str.substr(0, pos);
-                // Trim.
-                auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
-                auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
-                ltrim(dir);
-                rtrim(dir);
-                if (!dir.empty()) cfg.safety.path_whitelist.push_back(dir);
-                wl_str = wl_str.substr(pos + 1);
-            }
-            // Last segment.
-            auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
-            auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
-            ltrim(wl_str);
-            rtrim(wl_str);
-            if (!wl_str.empty()) cfg.safety.path_whitelist.push_back(wl_str);
+    {
+        auto it = data.find("safety");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "dangerous_tool_confirmation", cfg.safety.dangerous_tool_confirmation, true);
+            read_csv_list(s, "path_whitelist",          cfg.safety.path_whitelist);
+            read_bool(s, "skill_content_check",         cfg.safety.skill_content_check, true);
+            read_bool(s, "input_filter",                cfg.safety.input_filter, true);
         }
-        if (s.count("skill_content_check")) cfg.safety.skill_content_check = parse_bool(s["skill_content_check"], true);
-        if (s.count("input_filter"))        cfg.safety.input_filter = parse_bool(s["input_filter"], true);
     }
 
     // --- [rag] section ---
-    if (data.count("rag")) {
-        auto& s = data["rag"];
-        if (s.count("enabled"))             cfg.rag.enabled = parse_bool(s["enabled"], false);
-        if (s.count("embedding_backend"))   cfg.rag.embedding_backend = s["embedding_backend"];
-        if (s.count("embedding_mode"))     cfg.rag.embedding_model = s["embedding_mode"];
-        if (s.count("store_path"))          cfg.rag.store_path = s["store_path"];
-        if (s.count("top_k"))               cfg.rag.top_k = std::stoi(s["top_k"]);
-        if (s.count("min_score"))           cfg.rag.min_score = std::stof(s["min_score"]);
-        if (s.count("knowledge_dirs")) {
-            // Comma-separated list of directories.
-            std::string dirs_str = s["knowledge_dirs"];
-            size_t pos = 0;
-            while ((pos = dirs_str.find(',', pos)) != std::string::npos) {
-                std::string dir = dirs_str.substr(0, pos);
-                auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
-                auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
-                ltrim(dir);
-                rtrim(dir);
-                if (!dir.empty()) cfg.rag.knowledge_dirs.push_back(dir);
-                dirs_str = dirs_str.substr(pos + 1);
-            }
-            auto ltrim = [](std::string& d) { d.erase(d.begin(), std::find_if(d.begin(), d.end(), [](char c){ return !std::isspace(c); })); };
-            auto rtrim = [](std::string& d) { d.erase(std::find_if(d.rbegin(), d.rend(), [](char c){ return !std::isspace(c); }).base(), d.end()); };
-            ltrim(dirs_str);
-            rtrim(dirs_str);
-            if (!dirs_str.empty()) cfg.rag.knowledge_dirs.push_back(dirs_str);
+    {
+        auto it = data.find("rag");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled",             cfg.rag.enabled, false);
+            read_if_exists(s, "embedding_backend",   cfg.rag.embedding_backend);
+            read_if_exists(s, "embedding_mode",      cfg.rag.embedding_model);
+            read_if_exists(s, "store_path",          cfg.rag.store_path);
+            read_if_exists(s, "top_k",               cfg.rag.top_k);
+            read_if_exists(s, "min_score",           cfg.rag.min_score);
+            read_csv_list(s, "knowledge_dirs",       cfg.rag.knowledge_dirs);
         }
     }
 
     // Print loaded values.
-    std::cout << "[Config] LLM URL: " << cfg.llm.url << std::endl;
-    std::cout << "[Config] Language: " << cfg.agent_.language
-              << (cfg.agent_.prompt_file.empty() ? "" : ", Prompt file: " + cfg.agent_.prompt_file)
-              << std::endl;
-    std::cout << "[Config] Features - task_planning=" << std::to_string(cfg.features.task_planning)
-              << ", self_reflection=" << std::to_string(cfg.features.self_reflection)
-              << ", multi_agent=" << std::to_string(cfg.features.multi_agent)
-              << ", max_reflection_retries=" << std::to_string(cfg.features.max_reflection_retries) << std::endl;
+    LOG_INFO("Config", "LLM URL: " + cfg.llm.url);
+    LOG_INFO("Config", "Language: " + cfg.agent_.language
+              + (cfg.agent_.prompt_file.empty() ? "" : ", Prompt file: " + cfg.agent_.prompt_file));
+    LOG_INFO("Config", "Features - task_planning=" + std::to_string(cfg.features.task_planning)
+              + ", self_reflection=" + std::to_string(cfg.features.self_reflection)
+              + ", multi_agent=" + std::to_string(cfg.features.multi_agent)
+              + ", max_reflection_retries=" + std::to_string(cfg.features.max_reflection_retries));
 
     return cfg;
 }
@@ -232,7 +293,7 @@ Config Config::load(const std::string& ini_path) {
 bool Config::save(const Config& cfg, const std::string& ini_path) {
     std::ofstream out(ini_path);
     if (!out.is_open()) {
-        std::cerr << "[Config] Failed to write config to '" << ini_path << "'." << std::endl;
+        LOG_ERROR("Config", "Failed to write config to '" + ini_path + "'.");
         return false;
     }
 
@@ -304,6 +365,13 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
         write_section("local_tools", kvs);
     }
 
+    // [logging]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["level"] = cfg.logging.level;
+        write_section("logging", kvs);
+    }
+
     // [safety]
     {
         std::map<std::string, std::string> kvs;
@@ -342,7 +410,7 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
     }
 
     out.close();
-    std::cout << "[Config] Default config saved to: " << ini_path << std::endl;
+    LOG_INFO("Config", "Default config saved to: " + ini_path);
     return true;
 }
 

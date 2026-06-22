@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <functional>
 #include "llm_client.h"
 
@@ -42,8 +43,8 @@ public:
     // Find and execute a tool by name
     std::string execute(const std::string& tool_name, const std::string& json_args);
 
-private:
-    std::vector<ToolPtr> tools_;
+ private:
+    std::unordered_map<std::string, ToolPtr> tools_;
 };
 
 } // namespace agent

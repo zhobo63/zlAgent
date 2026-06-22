@@ -2,7 +2,7 @@
 
 #include "vector_store.h"
 #include <cmath>
-#include "json.hpp"
+#include "logger.h"
 
 namespace agent {
 using json = nlohmann::json;
@@ -11,7 +11,7 @@ using json = nlohmann::json;
 static void write_json_file(const std::string& path, const json& j) {
     std::ofstream ofs(path);
     if (!ofs.is_open()) {
-        std::cerr << "Failed to open file for writing: " + path;
+        LOG_ERROR("VectorStore", "Failed to open file for writing: " + path);
         return;
     }
     ofs << j.dump(2);
@@ -89,7 +89,7 @@ VectorStore VectorStore::load(const std::string& path) {
 
     std::ifstream in(path);
     if (!in.is_open()) {
-        std::cerr << "[VectorStore] Failed to load from: " << path << std::endl;
+        LOG_WARN("VectorStore", "Failed to load from: " + path);
         return store; // empty store on failure
     }
 
@@ -122,8 +122,7 @@ VectorStore VectorStore::load(const std::string& path) {
             }
         }
     } catch (const std::exception& ex) {
-        std::cerr << "[VectorStore] Parse error loading " << path
-                  << ": " << ex.what() << std::endl;
+        LOG_ERROR("VectorStore", "Parse error loading " + path + ": " + std::string(ex.what()));
     }
 
     return store;

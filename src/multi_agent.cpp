@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 
 #include "multi_agent.h"
+#include "logger.h"
 #include "wide_string.h"
 
 namespace agent {
@@ -81,8 +82,20 @@ ChatResponse SubAgent::run_loop(const std::string& task) {
         memory_.add(assistant_msg);
 
         for (const auto& tc : resp.tool_calls) {
-            std::cout << "  [" << agent_role_to_string(role_) << "] Tool: " << tc.name
-                       << " args: " << tc.arguments.substr(0, 120) << std::endl;
+            // Guard: skip if LLM returned empty arguments
+            if (tc.arguments.empty()) {
+                LOG_WARN("SubAgent", "Skipping '" + tc.name + "' — empty arguments from LLM");
+                ChatMessage tool_msg{"tool",
+                    "[Error] Tool call was truncated: missing arguments for '" + tc.name + "'. Please retry with complete arguments.",
+                    tc.name};
+                if (!tc.id.empty()) {
+                    tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;
+                }
+                memory_.add(tool_msg);
+                continue;
+            }
+
+            LOG_DEBUG("SubAgent", "  [" + agent_role_to_string(role_) + "] Tool: " + tc.name + " args: " + tc.arguments.substr(0, 120));
 
             std::string result = "";
             if (registry_) {
@@ -139,7 +152,7 @@ AgentRole MultiAgent::route_step(const std::string& step_description) {
 std::string MultiAgent::execute_task(const std::string& task_description) {
     auto role = route_step(task_description);
 
-    std::cout << "\n[MultiAgent] Routing step to " << agent_role_to_string(role) << " agent." << std::endl;
+    LOG_INFO("MultiAgent", "\nRouting step to " + agent_role_to_string(role) + " agent.");
 
     // For coding tasks, run a Coder → Reviewer pipeline.
     if (role == AgentRole::Coder) {
@@ -147,13 +160,13 @@ std::string MultiAgent::execute_task(const std::string& task_description) {
 
         // If the coder produced something substantial, have the reviewer check it.
         if (coder_result.size() > 50) {
-            std::cout << "[MultiAgent] Running code review..." << std::endl;
+            LOG_INFO("MultiAgent", "Running code review...");
             std::string review_task = "Review the following work for correctness and quality:\n" + coder_result;
             auto review_result = reviewer_->execute(review_task);
 
             // If the reviewer found issues, feed them back to the coder.
             if (!review_result.empty() && review_result.find("issue") != std::string::npos) {
-                std::cout << "[MultiAgent] Reviewer found issues, sending feedback to Coder..." << std::endl;
+                LOG_WARN("MultiAgent", "Reviewer found issues, sending feedback to Coder...");
                 std::string fix_task = "Fix the following issues in your previous work:\n" + review_result;
                 coder_result = coder_->execute(fix_task);
             }

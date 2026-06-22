@@ -1,8 +1,8 @@
 ﻿#include "pch.h"
 
 #include "embedding_provider.h"
-#include "json.hpp"
 #include "httplib.h"
+#include "logger.h"
 #include <cmath>
 #include <set>
 
@@ -70,7 +70,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
             parts.host = u.substr(0, port_pos);
             try { parts.port = std::stoi(u.substr(port_pos + 1)); }
             catch (...) {
-                std::cerr << "[EmbeddingProvider] Failed to parse port from URL, using default" << std::endl;
+                LOG_WARN("EmbeddingProvider", "Failed to parse port from URL, using default");
                 parts.port = parts.is_ssl ? 443 : 80;
             }
         } else {
@@ -106,7 +106,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
             }
         }
     } catch (...) {
-        std::cerr << "[EmbeddingProvider] Failed to parse embedding API response" << std::endl;
+        LOG_ERROR("EmbeddingProvider", "Failed to parse embedding API response");
         return {}; // parse error - fallback to empty
     }
 

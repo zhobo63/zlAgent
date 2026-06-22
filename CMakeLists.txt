@@ -36,6 +36,8 @@ set(CORE_SOURCES
     # CLI command system
     src/command_dispatcher.cpp
     src/command_handlers.cpp
+    # File utilities
+    src/file_utils.cpp
     # Remote logging
     src/remote_log.cpp
     # User reply (intervention during reasoning loop)
@@ -115,6 +117,11 @@ elseif(UNIX AND NOT APPLE)
 elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
+
+# isocline: portable readline replacement for rich console input
+add_subdirectory(isocline)
+
+target_link_libraries(zlagent PRIVATE isocline)
 
 # Tests (optional - enable with -DBUILD_TESTING=ON)
 option(BUILD_TESTING "Build unit tests" OFF)

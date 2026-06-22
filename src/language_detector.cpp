@@ -2,6 +2,7 @@
 
 #include "language_detector.h"
 #include "wide_string.h"
+#include "logger.h"
 
 namespace agent {
 
@@ -51,7 +52,7 @@ std::string LanguageDetector::detect_directory(const std::string& dir_path) {
             lang_counts[lang]++;
         }
     } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "[LanguageDetector] Error scanning directory: " << e.what() << std::endl;
+        LOG_ERROR("LanguageDetector", "Error scanning directory: " + std::string(e.what()));
         return ""; // let config default take over.
     }
 
@@ -62,8 +63,7 @@ std::string LanguageDetector::detect_directory(const std::string& dir_path) {
     // If only one language is present, return it.
     if (lang_counts.size() == 1) {
         std::string detected = lang_counts.begin()->first;
-        std::cout << "[LanguageDetector] Detected: " << detected
-                  << " (" << lang_counts.begin()->second << " files)" << std::endl;
+        LOG_INFO("LanguageDetector", "Detected: " + detected + " (" + std::to_string(lang_counts.begin()->second) + " files)");
         return detected;
     }
 
@@ -74,20 +74,19 @@ std::string LanguageDetector::detect_directory(const std::string& dir_path) {
     }
 
     double dominant_ratio = static_cast<double>(max_count) / total_source_files;
-    std::cout << "[LanguageDetector] Found " << lang_counts.size() << " languages ("
-              << total_source_files << " source files). ";
+    LOG_INFO("LanguageDetector", "Found " + std::to_string(lang_counts.size()) + " languages (" + std::to_string(total_source_files) + " source files). ");
 
     if (dominant_ratio > 0.6) {
         // Find the dominant language name.
         for (const auto& [lang, count] : lang_counts) {
             if (count == max_count) {
-                std::cout << "Dominant: " << lang << " (" << static_cast<int>(dominant_ratio * 100) << "%)" << std::endl;
+                LOG_INFO("LanguageDetector", "Dominant: " + lang + " (" + std::to_string(static_cast<int>(dominant_ratio * 100)) + "%)");
                 return lang;
             }
         }
     }
 
-    std::cout << "Mixed project, using multi-language mode." << std::endl;
+    LOG_INFO("LanguageDetector", "Mixed project, using multi-language mode.");
     return "multi";
 }
 

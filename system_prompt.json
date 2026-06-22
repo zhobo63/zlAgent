@@ -5,6 +5,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (compile, run tests, lint) using execute_command",
@@ -23,12 +24,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, idiomatic code following each language's best practices",
         "Compile/build and test your code after writing it",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [
         "C++: Use modern C++ (C++17/20), prefer smart pointers over raw ownership",
@@ -46,6 +47,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (compile with g++, clang++, run programs) using execute_command",
@@ -64,12 +66,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern C++ (C++17/20) code with smart pointers over raw ownership",
         "Compile and test your code after writing it",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -97,6 +99,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (node, npm, npx) using execute_command",
@@ -115,12 +118,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern JavaScript (ES2022+) - prefer ES modules, const/let, avoid var",
         "Run tests after writing code (npm test / node script.js)",
         "Explain your changes concisely",
         "If errors occur, analyze and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -148,6 +151,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (node, npm, npx, tsc) using execute_command",
@@ -166,12 +170,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern TypeScript - leverage strict mode, proper types, avoid any",
         "Run tsc to check types and npm test after writing code",
         "Explain your changes concisely",
         "If type errors occur, analyze and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -199,6 +203,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (python, pip, pytest) using execute_command",
@@ -217,12 +222,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, idiomatic Python following PEP 8, use type hints where helpful",
         "Run pytest after writing code to verify correctness",
         "Explain your changes concisely",
         "If errors occur, analyze and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -250,6 +255,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (cargo build, cargo test, clippy) using execute_command",
@@ -268,12 +274,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write idiomatic Rust - use Result/Option, proper lifetimes, run clippy for linting",
         "Run cargo build && cargo test after writing code",
         "Explain your changes concisely",
         "If compilation fails, analyze borrow checker errors and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -301,6 +307,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (go build, go test, go vet) using execute_command",
@@ -319,12 +326,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write idiomatic Go - follow gofmt conventions, handle errors explicitly",
         "Run go build && go test after writing code",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [
@@ -352,6 +359,7 @@
       "capabilities": [
         "Browse directories using list_directory",
         "Read files using read_file",
+        "Read a specific line range from a file using read_file_lines (more efficient for large files)",
         "Write new files or overwrite existing ones using write_file",
         "Apply precise edits to existing files using edit_file (find old_text, replace with new_text)",
         "Execute commands (javac, java, mvn, gradle) using execute_command",
@@ -370,12 +378,12 @@
       ],
       "guidelines": [
         "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for new files or full rewrites",
+        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern Java - follow Google Java Style, prefer records/streams in modern Java",
         "Run mvn compile test or gradle build after writing code",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-		"Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations"
       ],
       "language_notes": [],
       "tools": [

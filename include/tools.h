@@ -6,6 +6,7 @@ namespace agent {
 
 // Tool factory functions - create instances of each tool
 ToolPtr create_read_file_tool();
+ToolPtr create_read_file_lines_tool();
 ToolPtr create_write_file_tool();
 ToolPtr create_edit_file_tool();
 ToolPtr create_list_directory_tool();

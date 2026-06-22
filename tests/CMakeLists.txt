@@ -38,6 +38,8 @@ set(TEST_IMPL_SOURCES
     ../src/rag_manager.cpp
     ../src/long_term_memory.cpp
     ../src/llm_client.cpp
+    ../src/token_counter.cpp
+    ../src/remote_log.cpp
 )
 
 add_executable(tests ${TEST_SOURCES} ${TEST_IMPL_SOURCES})
@@ -47,8 +49,21 @@ target_include_directories(tests PRIVATE ../include)
 # Link Catch2
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 
-if(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
-    target_include_directories(tests PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
+# Enable OpenSSL support for HTTPS (same as main target)
+if(OPENSSL_FOUND)
+    add_compile_definitions(CPPHTTLIB_OPENSSL_SUPPORT)
+
+    if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
+        target_link_libraries(tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    elseif(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
+        set(OPENSSL_STATIC_DIR "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
+        target_include_directories(tests PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
+        target_link_libraries(tests PRIVATE
+            "${OPENSSL_STATIC_DIR}/libssl_static_v143.lib"
+            "${OPENSSL_STATIC_DIR}/libcrypto_static_v143.lib"
+            ws2_32 advapi32 crypt32 user32 gdi32
+        )
+    endif()
 endif()
 
 # Enable CTest integration
