@@ -165,8 +165,8 @@ std::string LLMClient::build_chat_json(
 // parse_sse_chunk — Parse a single SSE "data: ..." line (streaming mode).
 // Handles delta tokens, reasoning content, tool calls, and usage.
 // ---------------------------------------------------------------------------
-void LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp) {
-    if (data_line == "[DONE]") return;
+bool LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp, TokenCallback on_token) {
+    if (data_line == "[DONE]") return true;
 
     try {
         json data = json::parse(data_line);
@@ -181,7 +181,7 @@ void LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
         // Extract choices[0].delta.content
         if (data.contains("choices") && !data["choices"].empty()) {
             auto& choice = data["choices"][0];
-            if (!choice.contains("delta")) return;
+            if (!choice.contains("delta")) return true;
 
             auto& delta = choice["delta"];
 
@@ -189,12 +189,16 @@ void LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
             if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
                 std::string reasoning = delta["reasoning_content"].get<std::string>();
                 resp.reasoning_content += reasoning;
+                if (on_token && !reasoning.empty() && !on_token(reasoning, true))
+                    return false;  // callback signaled interruption
             }
 
             // Content token
             if (delta.contains("content") && !delta["content"].is_null()) {
                 std::string content = delta["content"].get<std::string>();
                 resp.content += content;
+                if (on_token && !content.empty() && !on_token(content, false))
+                    return false;  // callback signaled interruption
             }
 
             // Tool calls in the stream chunk — merge into existing calls by index.
@@ -230,6 +234,8 @@ void LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
     } catch (const json::parse_error&) {
         // Ignore malformed SSE lines
     }
+
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -399,39 +405,10 @@ ChatResponse chat_stream_impl(
             // SSE lines start with "data: "
             if (line.rfind("data:", 0) == 0) {
                 std::string data_payload = line.substr(5);
-                LLMClient::parse_sse_chunk(data_payload, resp);
-
-                // Call the token callback for content and reasoning tokens
-                try {
-                    json data = json::parse(data_payload);
-                    if (data.contains("choices") && !data["choices"].empty()) {
-                        auto& choice = data["choices"][0];
-                        if (choice.contains("delta")) {
-                            auto& delta = choice["delta"];
-
-                            // Reasoning/thinking tokens first
-                            if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
-                                std::string token = delta["reasoning_content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, true)) {
-                                    // ESC pressed — release handle immediately to stop generation
-                                    interrupted.store(true);
-                                    break;
-                                }
-                            }
-
-                            // Normal content tokens
-                            if (delta.contains("content") && !delta["content"].is_null()) {
-                                std::string token = delta["content"].get<std::string>();
-                                if (!token.empty() && !on_token(token, false)) {
-                                    // ESC pressed — release handle immediately to stop generation
-                                    interrupted.store(true);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } catch (...) {
-                    //std::cerr << "[LLMClient] Failed to parse SSE token data for callback" << std::endl;
+                if (!LLMClient::parse_sse_chunk(data_payload, resp, on_token)) {
+                    // Token callback signaled interruption — stop generation
+                    interrupted.store(true);
+                    break;
                 }
             }
         }

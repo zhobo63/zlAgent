@@ -98,7 +98,8 @@ public:
         bool stream = false);
 
     // Parse a single SSE "data: ..." chunk (streaming) — handles delta tokens.
-    static void parse_sse_chunk(const std::string& data_line, ChatResponse& resp);
+    // Returns false if the token callback signals interruption; true otherwise.
+    static bool parse_sse_chunk(const std::string& data_line, ChatResponse& resp, TokenCallback on_token = nullptr);
 
     // Parse a full non-streaming JSON response — handles message structure.
     static void parse_full_response(const std::string& json_str, ChatResponse& resp);

@@ -173,7 +173,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         for (auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments (streaming truncation)
             if (tc.arguments.empty()) {
-                LOG_WARN("Tool", "\nSkipping '" + tc.name + "' — empty arguments from LLM, feeding error back");
+                LOG_WARN("Tool", "\nSkipping '" + tc.name + u8"' — empty arguments from LLM, feeding error back");
                 ChatMessage tool_msg{"tool", "[Error] Tool call was truncated: missing arguments for '" + tc.name + "'. Please retry with complete arguments.", tc.name};
                 if (!tc.id.empty()) {
                     tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;

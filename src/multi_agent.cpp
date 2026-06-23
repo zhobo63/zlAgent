@@ -84,7 +84,7 @@ ChatResponse SubAgent::run_loop(const std::string& task) {
         for (const auto& tc : resp.tool_calls) {
             // Guard: skip if LLM returned empty arguments
             if (tc.arguments.empty()) {
-                LOG_WARN("SubAgent", "Skipping '" + tc.name + "' — empty arguments from LLM");
+                LOG_WARN("SubAgent", "Skipping '" + tc.name + u8"' — empty arguments from LLM");
                 ChatMessage tool_msg{"tool",
                     "[Error] Tool call was truncated: missing arguments for '" + tc.name + "'. Please retry with complete arguments.",
                     tc.name};
