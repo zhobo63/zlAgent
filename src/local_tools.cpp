@@ -135,68 +135,6 @@ std::string LocalToolDiscovery::resolve_path(const std::string& exe_name) {
 
 std::string LocalToolDiscovery::get_version(const std::string& full_path) {
     if (full_path.empty()) return "unknown";
-
-#ifdef _WIN32
-    // Try --version first, then -version
-    std::string cmd = "\"" + full_path + "\" --version 2>&1";
-    if (cmd.find("cl") != std::string::npos) {
-        cmd = "\"" + full_path + "\" 2>&1";  // cl doesn't support --version
-		return "unknown";  // For cl, we will just return unknown for version to avoid long hangs. In practice, cl is usually run in a dev cmd environment where the version is known.
-    }
-
-    HANDLE hReadPipe, hWritePipe;
-    SECURITY_ATTRIBUTES sa;
-    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-    sa.bInheritHandle = TRUE;
-    sa.lpSecurityDescriptor = NULL;
-
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) return "unknown";
-
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
-    si.dwFlags |= STARTF_USESTDHANDLES;
-
-    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-    std::string full_cmd = "cmd.exe /c chcp 65001 >nul && " + cmd;
-    std::wstring wcmd = agent::utf8_to_wide(full_cmd);
-
-    if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
-                        nullptr, nullptr, &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
-        return "unknown";
-    }
-
-    WaitForSingleObject(pi.hProcess, 5000);
-
-    std::string raw_output;
-    char buffer[4096];
-    DWORD bytesRead;
-    CloseHandle(hWritePipe);
-
-    while (true) {
-        if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
-        if (bytesRead == 0) break;
-        buffer[bytesRead] = '\0';
-        raw_output += buffer;
-    }
-
-    CloseHandle(hReadPipe);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
-    std::string output = raw_output;
-
-    // Extract first line as version
-    size_t nl = output.find('\n');
-    if (nl != std::string::npos) output.erase(nl);
-    return output.empty() ? "unknown" : output;
-#else
     std::string cmd = "\"" + full_path + "\" --version 2>&1 | head -1";
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) return "unknown";
@@ -212,7 +150,6 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
 
     pclose(pipe);
     return "unknown";
-#endif
 }
 
 // ============================================================================
@@ -469,64 +406,6 @@ std::string LocalExecutableTool::execute(const std::string& json_args) {
 }
 
 std::string LocalExecutableTool::run_command(const std::string& full_cmd, const std::string& cwd) {
-#ifdef _WIN32
-    HANDLE hReadPipe, hWritePipe;
-    SECURITY_ATTRIBUTES sa;
-    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-    sa.bInheritHandle = TRUE;
-    sa.lpSecurityDescriptor = NULL;
-
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-        return "Error: Failed to create pipe.";
-    }
-
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
-    si.dwFlags |= STARTF_USESTDHANDLES;
-
-    // Set working directory
-    std::wstring cwd_wide = L".";
-    if (!cwd.empty()) {
-        cwd_wide = agent::utf8_to_wide(cwd);
-    }
-
-    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-    std::string full_cmd_win = "cmd.exe /c chcp 65001 >nul && " + full_cmd;
-    std::wstring wcmd = agent::utf8_to_wide(full_cmd_win);
-
-    if (!CreateProcessW(nullptr, const_cast<wchar_t*>(wcmd.c_str()), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
-                        nullptr, cwd_wide.c_str(), &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
-        return "Error: Failed to execute '" + info_.name + "'.";
-    }
-
-    WaitForSingleObject(pi.hProcess, 30000);  // 30s timeout
-
-    std::string raw_output;
-    char buffer[4096];
-    DWORD bytesRead;
-    CloseHandle(hWritePipe);
-
-    while (true) {
-        if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
-        if (bytesRead == 0) break;
-        buffer[bytesRead] = '\0';
-        raw_output += buffer;
-    }
-
-    CloseHandle(hReadPipe);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
-    return raw_output.empty() ? "(no output)" : raw_output;
-#else
-    // Linux/macOS implementation using popen
     std::string cmd = full_cmd;
     if (!cwd.empty()) {
         cmd = "cd \"" + cwd + "\" && " + cmd;
@@ -546,11 +425,10 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
 
     int status = pclose(pipe);
     if (status != 0 && output.empty()) {
-        return "Error: Command exited with code " + std::to_string(WEXITSTATUS(status));
+        return "Error: Command exited with code " + std::to_string(status);
     }
 
     return output.empty() ? "(no output)" : output;
-#endif
 }
 
 // ============================================================================

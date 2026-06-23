@@ -51,74 +51,6 @@ public:
                 }
             }
 
-#ifdef _WIN32
-            // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-            std::string full_cmd = "cmd.exe /c \"chcp 65001 >nul && " + command + "\"";
-
-            wchar_t cwd_wide[1024] = L".";
-            if (!cwd.empty()) {
-                int len = MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, nullptr, 0);
-                MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, cwd_wide, 1024);
-            }
-
-            HANDLE hReadPipe, hWritePipe;
-            SECURITY_ATTRIBUTES sa;
-            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-            sa.bInheritHandle = TRUE;
-            sa.lpSecurityDescriptor = NULL;
-
-            if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-                return "Error: Failed to create pipe.";
-            }
-
-            STARTUPINFOW si;
-            PROCESS_INFORMATION pi;
-            ZeroMemory(&si, sizeof(si));
-            si.cb = sizeof(si);
-            si.hStdOutput = hWritePipe;
-            si.hStdError = hWritePipe;
-            si.dwFlags |= STARTF_USESTDHANDLES;
-
-            wchar_t cmd_wide[4096] = { 0 };
-            MultiByteToWideChar(CP_UTF8, 0, full_cmd.c_str(), -1, cmd_wide, 4096);
-
-            if (!CreateProcessW(nullptr, cmd_wide, nullptr, nullptr, TRUE,
-                                CREATE_NO_WINDOW, nullptr, cwd_wide, &si, &pi)) {
-                CloseHandle(hReadPipe);
-                CloseHandle(hWritePipe);
-                return "Error: Failed to execute command.";
-            }
-
-            WaitForSingleObject(pi.hProcess, 30000);
-
-            std::string raw_output;
-            char buffer[4096] = { 0 };
-            DWORD bytesRead;
-            CloseHandle(hWritePipe);
-
-            while (true) {
-                if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
-                if (bytesRead == 0) break;
-                buffer[bytesRead] = '\0';
-                raw_output += buffer;
-            }
-
-            CloseHandle(hReadPipe);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-
-            // Sanitize: remove null bytes and control characters that would break JSON serialization.
-            std::string sanitized;
-            sanitized.reserve(raw_output.size());
-            for (unsigned char c : raw_output) {
-                if (c == 0) continue;                          // drop null bytes
-                if (c >= 0x20 || c == '\n' || c == '\r')     // printable + newline / carriage return
-                    sanitized += static_cast<char>(c);
-            }
-
-            // cmd.exe is forced to UTF-8 via chcp 65001, so output is already valid UTF-8.
-            return sanitized.empty() ? "(no output)" : sanitized;
-#else
             // Linux/macOS: popen with timeout via fork+exec
             std::string shell_cmd = command;
             if (!cwd.empty()) {
@@ -140,7 +72,7 @@ public:
             if (status != 0) {
                 // Command exited with error, but we still return whatever output exists
                 if (output.empty()) {
-                    return "Error: Command failed with exit code " + std::to_string(WEXITSTATUS(status)) + ".";
+                    return "Error: Command failed with exit code " + std::to_string(status) + ".";
                 }
             }
 
@@ -154,7 +86,6 @@ public:
             }
 
             return sanitized.empty() ? "(no output)" : sanitized;
-#endif
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }

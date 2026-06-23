@@ -222,103 +222,25 @@ std::string TerminalCommandDetector::to_lower(const std::string& s) {
 
 bool TerminalCommandDetector::execute_directly(const std::string& command) {
     LOG_INFO("Terminal", "Executing directly: " + command);
-    std::cout << ">" << command << std::endl;
-    system(command.c_str());
-    return true;
 
-//#ifdef _WIN32
-//    // Force UTF-8 output from cmd.exe.
-//    std::string full_cmd = "cmd.exe /c \"chcp 65001 >nul && " + command + "\"";
-//
-//
-//    HANDLE hReadPipe, hWritePipe;
-//    SECURITY_ATTRIBUTES sa;
-//    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-//    sa.bInheritHandle = TRUE;
-//    sa.lpSecurityDescriptor = NULL;
-//
-//    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-//        std::cerr << "Error: Failed to create pipe." << std::endl;
-//        return false;
-//    }
-//
-//    STARTUPINFOW si;
-//    PROCESS_INFORMATION pi;
-//    ZeroMemory(&si, sizeof(si));
-//    si.cb = sizeof(si);
-//    si.hStdOutput = hWritePipe;
-//    si.hStdError = hWritePipe;
-//    si.dwFlags |= STARTF_USESTDHANDLES;
-//
-//    wchar_t cmd_wide[4096] = { 0 };
-//    MultiByteToWideChar(CP_UTF8, 0, full_cmd.c_str(), -1, cmd_wide, 4096);
-//
-//    if (!CreateProcessW(nullptr, cmd_wide, nullptr, nullptr, TRUE,
-//                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-//        CloseHandle(hReadPipe);
-//        CloseHandle(hWritePipe);
-//        std::cerr << "Error: Failed to execute command." << std::endl;
-//        return false;
-//    }
-//
-//    DWORD wait_result = WaitForSingleObject(pi.hProcess, 30000);
-//
-//    // Read output.
-//    char buffer[4096] = { 0 };
-//    DWORD bytesRead;
-//    CloseHandle(hWritePipe);
-//
-//    while (true) {
-//        if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
-//        if (bytesRead == 0) break;
-//        // Sanitize: drop null bytes and control chars.
-//        for (DWORD i = 0; i < bytesRead; ++i) {
-//            unsigned char c = static_cast<unsigned char>(buffer[i]);
-//            if (c >= 0x20 || c == '\n' || c == '\r')
-//                std::cout << static_cast<char>(c);
-//        }
-//    }
-//
-//    CloseHandle(hReadPipe);
-//    CloseHandle(pi.hProcess);
-//    CloseHandle(pi.hThread);
-//
-//    if (wait_result == WAIT_TIMEOUT) {
-//        LOG_WARN("Terminal", "Command timed out after 30 seconds");
-//        std::cerr << "Warning: Command timed out." << std::endl;
-//        return false;
-//    }
-//
-//    // Get exit code.
-//    DWORD exit_code = 0;
-//    GetExitCodeProcess(pi.hProcess, &exit_code);
-//    return (exit_code == 0);
-//#else
-//    FILE* pipe = popen(command.c_str(), "r");
-//    if (!pipe) {
-//        std::cerr << "Error: Failed to execute command." << std::endl;
-//        return false;
-//    }
-//
-//    char buffer[4096] = { 0 };
-//    while (fgets(buffer, sizeof(buffer), pipe)) {
-//        // Sanitize output.
-//        for (char& c : buffer) {
-//            unsigned char uc = static_cast<unsigned char>(c);
-//            if (uc == 0 || (uc < 0x20 && uc != '\n' && uc != '\r'))
-//                c = ' ';  // replace bad chars with space
-//        }
-//        std::cout << buffer;
-//    }
-//
-//    int status = pclose(pipe);
-//    if (status != 0) {
-//        LOG_WARN("Terminal", "Command failed with exit code " + std::to_string(WEXITSTATUS(status)));
-//        return false;
-//    }
-//
-//    return true;
-//#endif
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        LOG_ERROR("Terminal", "Failed to execute command:" + command);
+        return false;
+    }
+
+    char buffer[4096] = { 0 };
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        std::cout << buffer;
+    }
+
+    int status = pclose(pipe);
+    if (status != 0) {
+        LOG_WARN("Terminal", "Command failed with exit code " + std::to_string(status));
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace agent

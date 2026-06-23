@@ -11,6 +11,8 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#define popen _popen
+#define pclose _pclose
 #endif
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT

@@ -20,66 +20,6 @@ namespace fs = std::filesystem;
 // Shared utility: cross-platform command execution (used by run_build + git tools)
 // -----------------------------------------------------------------------
 static std::string execute_shell_command(const std::string& cmd, const std::string& cwd) {
-#ifdef _WIN32
-    // Force UTF-8 output from cmd.exe to avoid BIG5/CP950 encoding issues.
-    std::string full_cmd = "cmd.exe /c \"chcp 65001 >nul && " + cmd + "\"";
-    LOG_DEBUG("LocalTools", "Executing command: " + full_cmd + " in cwd: " + (cwd.empty() ? "(current)" : cwd));
-
-    wchar_t cwd_wide[1024] = L".";
-    if (!cwd.empty()) {
-        int len = MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, nullptr, 0);
-        MultiByteToWideChar(CP_UTF8, 0, cwd.c_str(), -1, cwd_wide, 1024);
-    }
-
-    HANDLE hReadPipe, hWritePipe;
-    SECURITY_ATTRIBUTES sa;
-    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-    sa.bInheritHandle = TRUE;
-    sa.lpSecurityDescriptor = NULL;
-
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-        return "Error: Failed to create pipe.";
-    }
-
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
-    si.dwFlags |= STARTF_USESTDHANDLES;
-
-    wchar_t cmd_wide[4096];
-    MultiByteToWideChar(CP_UTF8, 0, full_cmd.c_str(), -1, cmd_wide, 4096);
-
-    if (!CreateProcessW(nullptr, cmd_wide, nullptr, nullptr, TRUE,
-                        CREATE_NO_WINDOW, nullptr, cwd_wide, &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
-        return "Error: Failed to execute command.";
-    }
-
-    WaitForSingleObject(pi.hProcess, 60000); // 60s timeout
-
-    std::string raw_output;
-    char buffer[4096];
-    DWORD bytesRead;
-    CloseHandle(hWritePipe);
-
-    while (true) {
-        if (!ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, nullptr)) break;
-        if (bytesRead == 0) break;
-        buffer[bytesRead] = '\0';
-        raw_output += buffer;
-    }
-
-    CloseHandle(hReadPipe);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    // cmd.exe is forced to UTF-8 via chcp 65001, so raw_output is already valid UTF-8.
-    return raw_output;
-#else
     std::string shell_cmd = cmd;
     if (!cwd.empty()) {
         shell_cmd = "cd '" + cwd + "' && " + cmd;
@@ -96,7 +36,6 @@ static std::string execute_shell_command(const std::string& cmd, const std::stri
 
     pclose(pipe);
     return output;
-#endif
 }
 
 // -----------------------------------------------------------------------
