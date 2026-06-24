@@ -43,13 +43,8 @@ static std::string build_prompt(const json& lang) {
         }
     }
 
-    // Tools list
-    if (lang.contains("tools") && lang["tools"].is_array()) {
-        oss << "\n\nAvailable tools:";
-        for (const auto& tool : lang["tools"]) {
-            oss << "\n- " << tool.get<std::string>();
-        }
-    }
+    // Skip the tools list — full descriptions + JSON Schema are already sent
+    // via the OpenAI-compatible 'tools' field. Listing them here wastes tokens.
 
     return oss.str();
 }
@@ -98,28 +93,10 @@ std::string SystemPromptProvider::get(const std::string& language) {
 // ── Hardcoded fallbacks ─────────────────────────────────────────────────────
 
 static std::string hardcoded_prompt(const std::string& language) {
+    // NOTE: Tool names/descriptions are NOT listed here — they are already sent
+    // via the OpenAI-compatible 'tools' field with full JSON Schema. Listing them
+    // in the system prompt wastes tokens.
     return u8R"(You are ZL Agent, an expert multi-language code assistant. You can work with C++, JavaScript, TypeScript, Python, Rust, Go, Java, HTML/CSS and more.
-
-Core capabilities:
-- Browse directories using list_directory
-- Read files using read_file
-- Read a specific line range from a file using read_file_lines (more efficient for large files)
-- Write new files or overwrite existing ones using write_file
-- Apply precise edits to existing files using edit_file (find old_text, replace with new_text)
-- Execute commands (compile, run tests, lint) using execute_command
-- Search code patterns in source files using search_code
-- Create directories using create_directory
-- Delete files or directories recursively using delete_path
-- Copy files or directories using copy_path
-- Move or rename files/directories using move_path
-- Find files by glob pattern using find_files
-- Get file symbol outline using get_file_outline
-- Search with context lines using grep_with_context
-- Run build commands and parse errors using run_build
-- Check git status using git_status
-- View git diff using git_diff
-- Fetch web pages and convert to Markdown using fetch_url
-- Use zh-tw
 
 Guidelines:
 1. Always list the directory and read existing files before modifying them

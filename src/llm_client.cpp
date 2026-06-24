@@ -56,9 +56,18 @@ std::string post_json_impl(const std::string& path, const std::string& json_body
     client.set_write_timeout(30, 0);
 
     auto res = client.Post(path, json_body, "application/json");
-    if (res && res->status == 200) {
+    if (!res) {
+        LOG_ERROR("LLMClient", std::string{"Post failed: error="} +
+                  std::to_string(static_cast<int>(res.error())) +
+                  " body_size=" + std::to_string(json_body.size()));
+        return "{}";
+    }
+    if (res->status == 200) {
         return res->body;
     }
+    LOG_ERROR("LLMClient", std::string{"Post failed: status="} +
+              std::to_string(res->status) + " body_size=" +
+              std::to_string(json_body.size()) + " response=" + res->body);
     return "{}";
 }
 
@@ -88,6 +97,32 @@ std::string LLMClient::build_chat_json(
     double temperature,
     int max_tokens,
     bool stream) {
+
+    // Clamp max_tokens so it doesn't exceed the model's context window.
+    // Local LLMs (LM Studio / Ollama) return 500 when max_tokens is too large.
+    // We cap at ~75% of the context length to leave room for the prompt itself.
+    {
+        int ctx_len = get_model_context_length(model);
+        if (ctx_len > 0) {
+            constexpr double kOutputFraction = 0.75;
+            int safe_cap = static_cast<int>(static_cast<double>(ctx_len) * kOutputFraction);
+            if (max_tokens > safe_cap) {
+                LOG_WARN("LLMClient", std::string{"Clamping max_tokens from "} +
+                         std::to_string(max_tokens) + " to " + std::to_string(safe_cap) +
+                         " (model=" + model + ", ctx=" + std::to_string(ctx_len) + ")");
+                max_tokens = safe_cap;
+            }
+        } else {
+            // Unknown model — use a conservative default.
+            constexpr int kDefaultCap = 8192;
+            if (max_tokens > kDefaultCap) {
+                LOG_WARN("LLMClient", std::string{"Clamping max_tokens from "} +
+                         std::to_string(max_tokens) + " to " + std::to_string(kDefaultCap) +
+                         " (unknown model: " + model + ")");
+                max_tokens = kDefaultCap;
+            }
+        }
+    }
 
     json req;
     req["model"] = model;
@@ -132,10 +167,14 @@ std::string LLMClient::build_chat_json(
             json func;
             func["name"] = t.name;
             func["description"] = t.description;
-            // parameters_schema is already a JSON string, parse it
-            try {
-                func["parameters"] = json::parse(t.parameters_schema);
-            } catch (...) {
+            // parameters_schema may be empty when using compact definitions
+            if (!t.parameters_schema.empty()) {
+                try {
+                    func["parameters"] = json::parse(t.parameters_schema);
+                } catch (...) {
+                    func["parameters"] = json::object();
+                }
+            } else {
                 func["parameters"] = json::object();
             }
             tool_def["function"] = func;

@@ -136,7 +136,10 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         }
 
         const auto& messages = memory_.get_messages();
-        auto tool_defs = registry_.get_definitions();
+        // Use compact definitions (name + description only) to reduce prompt size.
+        // Local LLMs can infer parameter names from the tool name/description,
+        // so sending full JSON Schema wastes tokens unnecessarily.
+        auto tool_defs = registry_.get_compact_definitions();
 
         // Call LLM with streaming
         ChatResponse resp = llm_.chat_stream(messages, on_token, tool_defs);

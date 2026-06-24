@@ -16,9 +16,10 @@ namespace agent {
  */
 class Memory {
 public:
-    static constexpr int  DEFAULT_MAX_MESSAGES = 50;   // trigger summarization at this count
-    static constexpr int  MIN_RECENT_KEEP      = 10;   // always keep at least N recent messages
-    static constexpr size_t MAX_SUMMARY_INPUT   = 2048; // truncate individual messages for summary
+    static constexpr int  DEFAULT_MAX_MESSAGES = 50;     // trigger summarization at this count
+    static constexpr int  MIN_RECENT_KEEP      = 10;     // always keep at least N recent messages
+    static constexpr size_t MAX_SUMMARY_INPUT   = 2048;  // truncate individual messages for summary
+    static constexpr size_t MAX_TOKENS_BEFORE_SUMMARIZE = 65536; // trigger summarization when total tokens exceed this
 
     explicit Memory(int max_messages = DEFAULT_MAX_MESSAGES);
 

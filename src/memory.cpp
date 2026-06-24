@@ -42,8 +42,17 @@ void Memory::set_system_prompt(const std::string& prompt) {
 // ---------------------------------------------------------------------------
 
 bool Memory::summarize(LLMClient& llm) {
-    if (static_cast<int>(history_.size()) <= max_messages_) {
+    bool too_many_messages = static_cast<int>(history_.size()) > max_messages_;
+    bool too_many_tokens   = cached_tokens_ > MAX_TOKENS_BEFORE_SUMMARIZE;
+
+    if (!too_many_messages && !too_many_tokens) {
         return false;  // no need to compress yet
+    }
+
+    if (too_many_tokens) {
+        LOG_INFO("Memory", std::string{"Summarizing: token budget exceeded ("} +
+                 std::to_string(cached_tokens_) + " > " +
+                 std::to_string(MAX_TOKENS_BEFORE_SUMMARIZE) + ")");
     }
 
     // Find system prompt index (always keep it at the front)
