@@ -167,14 +167,11 @@ std::string LLMClient::build_chat_json(
             json func;
             func["name"] = t.name;
             func["description"] = t.description;
-            // parameters_schema may be empty when using compact definitions
-            if (!t.parameters_schema.empty()) {
-                try {
-                    func["parameters"] = json::parse(t.parameters_schema);
-                } catch (...) {
-                    func["parameters"] = json::object();
-                }
-            } else {
+            // Parse and attach the parameters schema — required by OpenAI API.
+            try {
+                func["parameters"] = json::parse(t.parameters_schema);
+            } catch (...) {
+                // Fallback: send as empty object so the request is still valid.
                 func["parameters"] = json::object();
             }
             tool_def["function"] = func;
@@ -246,7 +243,9 @@ bool LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
             //   later chunks → {index, function:{arguments}} (id may be absent)
             if (delta.contains("tool_calls")) {
                 resp.has_tool_calls = true;
+                LOG_INFO("LLMClient", "Tool call detected in stream, total so far: " + std::to_string(resp.tool_calls.size()));
                 for (auto& tc : delta["tool_calls"]) {
+                    LOG_DEBUG("tool_calls", tc.dump());
                     int index = 0;
                     if (tc.contains("index") && !tc["index"].is_null())
                         index = tc["index"].get<int>();
@@ -270,8 +269,8 @@ bool LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
                 }
             }
         }
-    } catch (const json::parse_error&) {
-        // Ignore malformed SSE lines
+    } catch (const json::parse_error& e) {
+        LOG_WARN("LLMClient", "Malformed SSE chunk ignored: " + std::string(e.what()));
     }
 
     return true;
@@ -307,6 +306,7 @@ void LLMClient::parse_full_response(const std::string& json_str, ChatResponse& r
         // Tool calls
         if (msg.contains("tool_calls")) {
             resp.has_tool_calls = true;
+            LOG_INFO("LLMClient", "Tool calls in full response: " + std::to_string(msg["tool_calls"].size()));
             for (auto& tc : msg["tool_calls"]) {
                 ChatResponse::ToolCall call;
                 if (tc.contains("id") && !tc["id"].is_null())
@@ -466,6 +466,9 @@ ChatResponse chat_stream_impl(
         resp.has_tool_calls = false;
         resp.tool_calls.clear();
     }
+
+    LOG_DEBUG("LLMClient", "Stream complete: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
+             ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));
 
     // If the server didn't return usage in the stream, estimate tokens ourselves.
     if (resp.prompt_tokens == 0 && !messages.empty()) {

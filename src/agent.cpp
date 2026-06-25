@@ -1,7 +1,6 @@
 ﻿#include "pch.h"
 
 #include "agent.h"
-#include "wide_string.h"
 #include "local_tools.h"
 #include "task_planner.h"
 #include "self_reflector.h"
@@ -136,10 +135,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         }
 
         const auto& messages = memory_.get_messages();
-        // Use compact definitions (name + description only) to reduce prompt size.
-        // Local LLMs can infer parameter names from the tool name/description,
-        // so sending full JSON Schema wastes tokens unnecessarily.
-        auto tool_defs = registry_.get_compact_definitions();
+        auto tool_defs = registry_.get_definitions();
 
         // Call LLM with streaming
         ChatResponse resp = llm_.chat_stream(messages, on_token, tool_defs);
@@ -155,6 +151,8 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         }
 
         // If no tool calls, return the response
+        LOG_DEBUG("Agent", "LLM response: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
+                 ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));
         if (!resp.has_tool_calls || resp.tool_calls.empty()) {
             resp.prompt_tokens = total_prompt;
             resp.completion_tokens = total_completion;

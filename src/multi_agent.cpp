@@ -2,7 +2,6 @@
 
 #include "multi_agent.h"
 #include "logger.h"
-#include "wide_string.h"
 
 namespace agent {
 

@@ -4,7 +4,6 @@
 #include "logger.h"
 #include <cstring>
 #include <regex>
-#include "wide_string.h"
 
 namespace agent {
 

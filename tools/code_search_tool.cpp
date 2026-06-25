@@ -2,15 +2,8 @@
 
 #include "tool.h"
 #include "encoding.h"
-#include "wide_string.h"
 #include <regex>
 #include <cstring>
-
-#ifndef _WIN32
-#include <dirent.h>
-#include <sys/stat.h>
-#include <cstring>
-#endif
 
 namespace agent {
 using json = nlohmann::json;
@@ -74,59 +67,19 @@ private:
     void search_directory(const std::string& dir, const std::string& file_pattern,
                           const std::regex& re, std::ostringstream& results,
                           int& match_count, int max_results) {
-#ifdef _WIN32
-        std::string search_path = dir + "\\*";
-        if (!file_pattern.empty()) {
-            search_path = dir + "\\" + file_pattern;
-        }
-
-        std::wstring wsearch = agent::utf8_to_wide(search_path);
-        WIN32_FIND_DATAW find_data;
-        HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
-        if (hFind == INVALID_HANDLE_VALUE) return;
-
-        do {
-            std::string fname = agent::wide_to_utf8(find_data.cFileName);
-            if (fname == "." || fname == "..") continue;
-
-            std::string full_path = dir + "\\" + fname;
-
-            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                search_directory(full_path, file_pattern, re, results, match_count, max_results);
-            } else {
-                search_file(full_path, re, results, match_count, max_results);
-            }
-
+        namespace fs = std::filesystem;
+        LOG_DEBUG("CodeSearchTool", "search_directory:" + dir + " pattern:" + file_pattern);
+        for (const auto& entry : fs::recursive_directory_iterator(dir)) {
             if (match_count >= max_results) break;
-        } while (FindNextFileW(hFind, &find_data) && match_count < max_results);
 
-        FindClose(hFind);
-#else
-        DIR* dir_handle = opendir(dir.c_str());
-        if (!dir_handle) return;
+            if (entry.is_regular_file()) {
+                // Check file pattern filter
+                std::string fname = entry.path().filename().string();
+                if (!file_pattern.empty() && !match_glob(fname, file_pattern)) continue;
 
-        struct dirent* entry;
-        while ((entry = readdir(dir_handle)) != nullptr && match_count < max_results) {
-            std::string name = entry->d_name;
-            if (name == "." || name == "..") continue;
-
-            // Check file pattern filter
-            if (!file_pattern.empty() && !match_glob(name, file_pattern)) continue;
-
-            std::string full_path = dir + "/" + name;
-
-            struct stat st;
-            if (stat(full_path.c_str(), &st) != 0) continue;
-
-            if (S_ISDIR(st.st_mode)) {
-                search_directory(full_path, file_pattern, re, results, match_count, max_results);
-            } else {
-                search_file(full_path, re, results, match_count, max_results);
+                search_file(entry.path().string(), re, results, match_count, max_results);
             }
         }
-
-        closedir(dir_handle);
-#endif
     }
 
     // Simple glob matcher for patterns like "*.cpp" or "*.h"
@@ -147,6 +100,7 @@ private:
 
     void search_file(const std::string& filepath, const std::regex& re,
                      std::ostringstream& results, int& match_count, int max_results) {
+        LOG_DEBUG("CodeSearchTool", "search_file:" + filepath);
         std::ifstream file(filepath);
         if (!file.is_open()) return;
 

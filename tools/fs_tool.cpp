@@ -296,7 +296,7 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
-            std::string glob = args.value("glob", "");
+            std::string glob = args.value("glob", args.value("pattern", ""));
             std::string directory = args.value("directory", ".");
 
             if (glob.empty()) return "Error: No glob pattern provided.";

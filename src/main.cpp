@@ -19,7 +19,6 @@
 #include "tools.h"
 #include "plugin_loader.h"
 #include "local_tools.h"
-#include "wide_string.h"
 #include <isocline.h>
 
 // ── Input history (managed by isocline) ─────────

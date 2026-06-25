@@ -23,13 +23,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, idiomatic code following each language's best practices",
-        "Compile/build and test your code after writing it",
+        "Compile/build and test your code after writing it — use the tools for this",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [
         "C++: Use modern C++ (C++17/20), prefer smart pointers over raw ownership",
@@ -65,13 +67,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern C++ (C++17/20) code with smart pointers over raw ownership",
-        "Compile and test your code after writing it",
+        "Compile and test your code after writing it — use the tools for this",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [
@@ -117,13 +121,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern JavaScript (ES2022+) - prefer ES modules, const/let, avoid var",
-        "Run tests after writing code (npm test / node script.js)",
+        "Run tests after writing code (npm test / node script.js) — use the tools for this",
         "Explain your changes concisely",
         "If errors occur, analyze and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [
@@ -168,15 +174,17 @@
         "View git diff using git_diff",
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
-      "guidelines": [
-        "Always list the directory and read existing files before modifying them",
-        "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
-        "Write clean, modern TypeScript - leverage strict mode, proper types, avoid any",
-        "Run tsc to check types and npm test after writing code",
-        "Explain your changes concisely",
-        "If type errors occur, analyze and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
-      ],
+      guidelines": [
+              "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+              "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
+              "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
+              "Write clean, modern TypeScript - leverage strict mode, proper types, avoid any",
+              "Run tsc to check types and npm test after writing code — use the tools for this",
+              "Explain your changes concisely",
+              "If type errors occur, analyze and fix them iteratively",
+              "Check current directory and use relative paths for all file operations",
+              "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
+            ],
       "language_notes": [],
       "tools": [
         "list_directory(path): List files and folders in a directory",
@@ -221,13 +229,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, idiomatic Python following PEP 8, use type hints where helpful",
-        "Run pytest after writing code to verify correctness",
+        "Run pytest after writing code to verify correctness — use the tools for this",
         "Explain your changes concisely",
         "If errors occur, analyze and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [
@@ -273,13 +283,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write idiomatic Rust - use Result/Option, proper lifetimes, run clippy for linting",
-        "Run cargo build && cargo test after writing code",
+        "Run cargo build && cargo test after writing code — use the tools for this",
         "Explain your changes concisely",
         "If compilation fails, analyze borrow checker errors and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [
@@ -325,13 +337,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write idiomatic Go - follow gofmt conventions, handle errors explicitly",
-        "Run go build && go test after writing code",
+        "Run go build && go test after writing code — use the tools for this",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [
@@ -377,13 +391,15 @@
         "Fetch web pages and convert to Markdown using fetch_url"
       ],
       "guidelines": [
-        "Always list the directory and read existing files before modifying them",
+        "**YOU MUST USE THE TOOLS PROVIDED** to interact with the filesystem, run commands, search code, etc. Never answer from memory about file contents or filesystem state — always call the relevant tool",
+        "Always list the directory and read existing files before modifying them — use the tools for this, do not guess",
         "Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation",
         "Write clean, modern Java - follow Google Java Style, prefer records/streams in modern Java",
-        "Run mvn compile test or gradle build after writing code",
+        "Run mvn compile test or gradle build after writing code — use the tools for this",
         "Explain your changes concisely",
         "If compilation fails, analyze errors and fix them iteratively",
-        "Check current directory and use relative paths for all file operations"
+        "Check current directory and use relative paths for all file operations",
+        "**NEVER skip tool calls even if you think you know the answer — always verify with tools first**"
       ],
       "language_notes": [],
       "tools": [

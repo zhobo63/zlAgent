@@ -2,7 +2,6 @@
 
 #include "logger.h"
 #include "plugin_loader.h"
-#include "wide_string.h"
 
 #ifdef _WIN32
 #include <direct.h>
@@ -136,43 +135,19 @@ ToolPtr PluginLoader::load_plugin(const std::string& dll_path) {
 std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
     std::vector<ToolPtr> plugins;
 
-#ifdef _WIN32
-    // Scan directory for tool_*.dll files — use Wide API for Unicode support.
-    std::string search_path = plugin_dir + "\\tool_*.dll";
-    std::wstring wsearch = agent::utf8_to_wide(search_path);
-
-    WIN32_FIND_DATAW find_data;
-    HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
-
-    if (hFind == INVALID_HANDLE_VALUE) {
-        LOG_INFO("Plugin", "No plugins found in '" + plugin_dir + "/'");
-        return plugins;
-    }
-
-    do {
-        std::string dll_name = agent::wide_to_utf8(find_data.cFileName);
-        if (dll_name == "." || dll_name == "..") continue;
-
-        std::string full_path = plugin_dir + "\\" + dll_name;
-
-        auto tool = load_plugin(full_path);
-        if (tool) {
-            plugins.push_back(std::move(tool));
-        }
-    } while (FindNextFileW(hFind, &find_data));
-
-    FindClose(hFind);
-#else
-    // Linux/macOS: scan directory for tool_*.so / tool_*.dylib files
+    // Determine the shared library extension for this platform
     std::string ext;
-#ifdef __APPLE__
+#ifdef _WIN32
+    ext = ".dll";
+#elif defined(__APPLE__)
     ext = ".dylib";
 #else
     ext = ".so";
 #endif
 
+    namespace fs = std::filesystem;
+
     try {
-        namespace fs = std::filesystem;
         if (!fs::exists(plugin_dir) || !fs::is_directory(plugin_dir)) {
             LOG_INFO("Plugin", "No plugins found in '" + plugin_dir + "/'");
             return plugins;
@@ -180,11 +155,12 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
 
         for (const auto& entry : fs::directory_iterator(plugin_dir)) {
             if (!entry.is_regular_file()) continue;
-            std::string filename = entry.filename().string();
+            std::string filename = entry.path().filename().string();
 
-            // Match tool_*.so or tool_*.dylib
-            if (filename.rfind("tool_", 0) != 0 && filename.find(ext) == std::string::npos) continue;
-            if (filename.size() < ext.size() || filename.compare(filename.size() - ext.size(), ext.size(), ext) != 0) continue;
+            // Match tool_*.dll / tool_*.so / tool_*.dylib
+            if (filename.rfind("tool_", 0) != 0) continue;
+            if (filename.size() < ext.size()) continue;
+            if (filename.compare(filename.size() - ext.size(), ext.size(), ext) != 0) continue;
 
             auto tool = load_plugin(entry.path().string());
             if (tool) {
@@ -194,7 +170,6 @@ std::vector<ToolPtr> PluginLoader::load_plugins(const std::string& plugin_dir) {
     } catch (const fs::filesystem_error& e) {
         LOG_ERROR("Plugin", "Error scanning directory '" + plugin_dir + "': " + e.what());
     }
-#endif
 
     if (!plugins.empty()) {
         LOG_INFO("Plugin", std::to_string(plugins.size()) + " plugin(s) loaded successfully.");

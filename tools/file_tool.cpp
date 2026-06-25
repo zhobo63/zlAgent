@@ -3,13 +3,9 @@
 #include "tool.h"
 #include "file_utils.h"
 #include "encoding.h"
-#include "wide_string.h"
 #include "safety_guard.h"
 
-#ifndef _WIN32
-#include <dirent.h>
-#include <sys/stat.h>
-#endif
+#include <filesystem>
 
 namespace agent {
 using json = nlohmann::json;
@@ -205,66 +201,30 @@ public:
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
             std::string path = args.value("path", "");
-            if (path.empty()) return "Error: No directory path provided.";
+            if (path.empty()) {
+                path = "./";
+            }
 
-#ifdef _WIN32
-            const char sep = '\\';
-#else
-            const char sep = '/';
-#endif
-            if (!path.empty() && path.back() != sep)
-                path += sep;
+namespace fs = std::filesystem;
+
+            if (!path.empty() && path.back() != '/' && path.back() != '\\')
+                path += '/';
 
             std::string folders, files;
             int folder_count = 0, file_count = 0;
 
-#ifdef _WIN32
-            std::wstring wsearch = agent::utf8_to_wide(path + "*");
-            WIN32_FIND_DATAW find_data;
-            HANDLE hFind = FindFirstFileW(wsearch.c_str(), &find_data);
-            if (hFind == INVALID_HANDLE_VALUE) {
-                return "Error: Cannot access directory '" + path + "'";
-            }
-
-            do {
-                std::string name = agent::wide_to_utf8(find_data.cFileName);
+            for (const auto& entry : fs::directory_iterator(path)) {
+                std::string name = entry.path().filename().string();
                 if (name == "." || name == "..") continue;
 
-                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                if (entry.is_directory()) {
                     folders += "  " + name + "/\n";
                     folder_count++;
                 } else {
                     files += "  " + name + "\n";
                     file_count++;
                 }
-            } while (FindNextFileW(hFind, &find_data) != 0);
-
-            FindClose(hFind);
-#else
-            DIR* dir = opendir(path.c_str());
-            if (!dir) {
-                return "Error: Cannot open directory '" + path + "'";
             }
-
-            struct dirent* entry;
-            while ((entry = readdir(dir)) != nullptr) {
-                std::string name = entry->d_name;
-                if (name == "." || name == "..") continue;
-
-                std::string full = path + name;
-                struct stat st;
-                if (stat(full.c_str(), &st) == 0) {
-                    if (S_ISDIR(st.st_mode)) {
-                        folders += "  " + name + "/\n";
-                        folder_count++;
-                    } else {
-                        files += "  " + name + "\n";
-                        file_count++;
-                    }
-                }
-            }
-            closedir(dir);
-#endif
 
             std::stringstream result;
             result << "# Folders:\n";

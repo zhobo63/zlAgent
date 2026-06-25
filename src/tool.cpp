@@ -26,15 +26,6 @@ std::vector<ToolDefinition> ToolRegistry::get_definitions() const {
     return defs;
 }
 
-std::vector<ToolDefinition> ToolRegistry::get_compact_definitions() const {
-    std::vector<ToolDefinition> defs;
-    defs.reserve(tools_.size());
-    for (const auto& pair : tools_) {
-        defs.push_back(pair.second->compact_definition());
-    }
-    return defs;
-}
-
 std::string ToolRegistry::execute(const std::string& tool_name, const std::string& json_args) {
     auto it = tools_.find(tool_name);
     if (it != tools_.end()) {
