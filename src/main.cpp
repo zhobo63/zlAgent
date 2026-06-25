@@ -64,7 +64,7 @@ static void print_status_bar(const AgentState& s, bool newline_after = true) {
 
     // Build the bar content (single line)
     std::ostringstream bar;
-    bar << u8"├─";
+    bar << u8"\n├─";
     bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
     bar << TUI::color(u8"🧠 " + std::to_string(s.tokens_used) + "/" + std::to_string(s.max_tokens), token_fg) << u8" │ ";
     bar << TUI::color(u8"⚡ " + std::to_string(s.current_iteration) + "/" + std::to_string(s.max_iterations), iter_fg) << u8" │ ";
@@ -374,7 +374,6 @@ int main() {
     }
 
     // Print initial status bar
-    print_status_bar(g_state);
     std::cout << u8"\nReady. Type your request (or '/help' for commands):" << std::endl;
     if (cfg.terminal_commands.enabled) {
         std::cout << u8"  💡 Shell commands are auto-detected and executed directly." << std::endl;
@@ -382,6 +381,8 @@ int main() {
 
     // Interactive loop with streaming output.
     while (true) {
+        print_status_bar(g_state);
+        TUI::reset();
         char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
         if (!raw) break;  // Ctrl-C / Ctrl-D
         std::string input(raw);
@@ -394,8 +395,6 @@ int main() {
                 std::cout << "\nSaving session to long-term memory..." << std::endl;
                 long_term_memory->save_session(ag.get_memory(), ag.get_llm());
             }
-            g_state.current_phase = "Idle";
-            print_status_bar(g_state);
             std::cout << u8"\nGoodbye!" << std::endl;
             break;
         }
@@ -514,10 +513,6 @@ int main() {
                 std::cout << "/" << usage_info.max_tokens;
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
-
-        // Print status bar after response
-        print_status_bar(g_state);
-        std::cout << "\n";
     }
 
     return 0;
