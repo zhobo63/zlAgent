@@ -5,8 +5,6 @@
 #include "encoding.h"
 #include "safety_guard.h"
 
-#include <filesystem>
-
 namespace agent {
 using json = nlohmann::json;
 

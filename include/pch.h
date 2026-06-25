@@ -30,6 +30,10 @@
 #include <cctype>
 #include <clocale>
 #include <thread>
+#include <mutex>
+#include <chrono>
+#include <atomic>
+#include <iomanip>
 
 #ifdef _WIN32
 #include <conio.h>

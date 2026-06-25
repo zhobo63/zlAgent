@@ -24,6 +24,89 @@
 // ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
 
+// ── ANSI color helpers ───────────────────────────
+static std::string ansi_color(int fg, bool bold = false) {
+    return "\033[" + std::to_string(bold ? 1 : 0) + ";" + std::to_string(30 + fg) + "m";
+}
+static const char* ANSI_RESET   = "\033[0m";
+// Black=0, Red=1, Green=2, Yellow=3, Blue=4, Magenta=5, Cyan=6, White=7
+
+// ── Agent runtime state (mirrors ftxui.md spec) ───
+struct AgentState {
+    bool connected = true;
+    std::string model_name;
+    int tokens_used = 0;
+    int max_tokens = 8192;
+    int current_iteration = 0;
+    int max_iterations = 10;
+    bool task_planning = false;
+    bool self_reflection = false;
+    bool multi_agent = false;
+    int memory_count = 0;
+    int facts_count = 0;
+    std::string current_phase = "Idle"; // Idle / Thinking / Executing / Reviewing
+};
+static AgentState g_state;
+
+// ── Helper to update TUI state from agent ────────────────────────
+static void update_tui_state(AgentState& s, const agent::Agent& ag,
+                             const std::unique_ptr<agent::LongTermMemory>& ltm) {
+    s.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
+    if (ltm) {
+        auto facts = ltm->get_facts();
+        s.facts_count = static_cast<int>(facts.size());
+    }
+}
+
+// ── Status bar renderer (pure std::cout + ANSI) ───
+static void print_status_bar(const AgentState& s, bool newline_after = true) {
+    // Token ratio color: <50% green → <80% yellow → ≥80% red
+    double token_ratio = (s.max_tokens > 0) ? (double)s.tokens_used / s.max_tokens : 0;
+    int token_fg = token_ratio < 0.5 ? 2 : token_ratio < 0.8 ? 3 : 1; // green/yellow/red
+
+    // Iteration ratio color: ≥80% red, else cyan
+    double iter_ratio = (s.max_iterations > 0) ? (double)s.current_iteration / s.max_iterations : 0;
+    int iter_fg = iter_ratio >= 0.8 ? 1 : 6; // red or cyan
+
+    // Phase color + bold
+    struct PhaseInfo { const char* name; int fg; };
+    auto phase_info = [&]() -> PhaseInfo {
+        if (s.current_phase == "Thinking")  return {"Thinking", 3};
+        if (s.current_phase == "Executing") return {"Executing", 6};
+        if (s.current_phase == "Reviewing") return {"Reviewing", 5};
+        return {"Idle", 8}; // gray
+    }();
+
+    // Feature toggles: enabled=green check, disabled=gray cross
+    auto feat = [](const char* label, bool on) -> std::string {
+        return on ? ansi_color(2) + u8"✓ " + label : ansi_color(8) + u8"✗ " + label;
+    };
+
+    // Build the bar content (single line)
+    std::ostringstream bar;
+    bar << u8"├─";
+    bar << ansi_color(4, true) << u8"🤖 " << s.model_name << ANSI_RESET << u8" │ ";
+    bar << ansi_color(token_fg) << u8"🧠 " << s.tokens_used << "/" << s.max_tokens << ANSI_RESET << u8" │ ";
+    bar << ansi_color(iter_fg) << u8"⚡ " << s.current_iteration << "/" << s.max_iterations << ANSI_RESET << u8" │ ";
+    bar << feat("Plan", s.task_planning) << ANSI_RESET;
+    bar << feat("Reflect", s.self_reflection) << ANSI_RESET;
+    bar << feat("MultiAgent", s.multi_agent) << ANSI_RESET << u8" │ ";
+    bar << ansi_color(5) << u8"💾 Msg:" << s.memory_count << " Fact:" << s.facts_count << ANSI_RESET << u8" │ ";
+    bar << ansi_color(phase_info.fg, true) << u8"▶ " << phase_info.name << ANSI_RESET;
+    bar << u8" ─┤";
+
+    std::cout << bar.str();
+    if (newline_after) std::cout << std::endl;
+}
+
+// ── Print status bar inline (no newline, for dynamic updates) ────────────
+static void print_status_bar_inline(const AgentState& s) {
+    // Move cursor to bottom of screen and clear line
+    std::cout << "\033[1;H" << "\033[K";
+    print_status_bar(s, false);
+    std::cout << std::flush;
+}
+
 int main() {
 #ifdef _WIN32
     // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
@@ -41,14 +124,14 @@ int main() {
 
     // Set log level early so all subsequent LOG_* calls respect it.
     agent::set_log_level(agent::parse_log_level(cfg.logging.level));
-    LOG_INFO("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
 
-    std::cout << "========================================" << std::endl;
-    std::cout << "  ZL Agent - Code Assistant" << std::endl;
-    std::cout << "  LLM: " << cfg.llm.url << std::endl;
-    std::cout << "========================================" << std::endl;
+    std::cout << u8"╭─────────────────────────────╮" << std::endl;
+    std::cout << u8"│  ZL Agent - Code Assistant  │" << std::endl;
+    std::cout << u8"╰─────────────────────────────╯" << std::endl;
     std::cout << std::endl;
 
+    LOG_INFO("LLM", cfg.llm.url);
+    LOG_DEBUG("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
     agent::Agent ag(cfg.llm.url, cfg.llm.model);
 
     // === Safety setup ===
@@ -99,6 +182,14 @@ int main() {
     ag.set_self_reflection(cfg.features.self_reflection);
     ag.set_multi_agent(cfg.features.multi_agent);
     ag.set_max_reflection_retries(cfg.features.max_reflection_retries);
+
+    // ── Initialize TUI state (mirrors ftxui.md spec) ─────────
+    g_state.model_name       = cfg.llm.model;
+    g_state.max_tokens       = cfg.llm.max_tokens > 0 ? cfg.llm.max_tokens : 8192;
+    g_state.max_iterations   = cfg.agent_.max_iterations;
+    g_state.task_planning    = ag.task_planning_enabled();
+    g_state.self_reflection  = ag.self_reflection_enabled();
+    g_state.multi_agent      = ag.multi_agent_enabled();
     ag.set_local_tools_enabled(cfg.local_tools.enabled);
 
     // User Reply mode: allow user intervention during reasoning loop.
@@ -297,7 +388,16 @@ int main() {
             cfg.terminal_commands.confirm_commands);
     }
 
-    std::cout << "\nReady. Type your request (or '/help' for commands):" << std::endl;
+    // Update memory stats before first prompt
+    g_state.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
+    if (long_term_memory) {
+        auto facts = long_term_memory->get_facts();
+        g_state.facts_count = static_cast<int>(facts.size());
+    }
+
+    // Print initial status bar
+    print_status_bar(g_state);
+    std::cout << u8"\nReady. Type your request (or '/help' for commands):" << std::endl;
     if (cfg.terminal_commands.enabled) {
         std::cout << u8"  💡 Shell commands are auto-detected and executed directly." << std::endl;
     }
@@ -316,7 +416,9 @@ int main() {
                 std::cout << "\nSaving session to long-term memory..." << std::endl;
                 long_term_memory->save_session(ag.get_memory(), ag.get_llm());
             }
-            std::cout << "Goodbye!" << std::endl;
+            g_state.current_phase = "Idle";
+            print_status_bar(g_state);
+            std::cout << u8"\nGoodbye!" << std::endl;
             break;
         }
 
@@ -388,6 +490,13 @@ int main() {
 
         bool in_reasoning = false;
         ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
+            // Update TUI state: phase + tokens
+            g_state.tokens_used += static_cast<int>(token.length());
+            if (is_reasoning_flag)
+                g_state.current_phase = "Thinking";
+            else
+                g_state.current_phase = "Executing";
+
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
@@ -410,6 +519,14 @@ int main() {
             std::cout << "\033[0m";
         }
 
+        // Update TUI state: memory stats + reset phase
+        g_state.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
+        if (long_term_memory) {
+            auto facts = long_term_memory->get_facts();
+            g_state.facts_count = static_cast<int>(facts.size());
+        }
+        g_state.current_phase = "Idle";
+
         // Display token usage if available
         if (usage_info.total_tokens() > 0) {
             std::cout << u8"\n\n⏱  Tokens: ";
@@ -420,6 +537,8 @@ int main() {
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
 
+        // Print status bar after response
+        print_status_bar(g_state);
         std::cout << "\n";
     }
 
