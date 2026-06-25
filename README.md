@@ -26,7 +26,6 @@
 │   ├── system_prompt.cpp # 多語言系統提示詞實現
 │   ├── language_detector.cpp # 自動語言偵測實現
 │   ├── main.cpp          # 互動式 CLI 入口
-│   ├── main_ftxui.cpp    # 🆕 FTXUI TUI 入口（全螢幕終端介面）
 │   ├── agent.cpp         # 推理循環 + Plan→Execute 高級管道
 │   ├── llm_client.cpp    # HTTP Client 實現
 │   ├── tool.cpp          # ToolRegistry 實現
@@ -43,7 +42,6 @@
 │   └── fs_tool.cpp           # create_directory / delete_path / copy_path / move_path / find_files / get_file_outline / grep_with_context / run_build / git_status / git_diff / fetch_url
 ├── plugins/              # 外掛目錄（tool_*.dll / tool_*.so）
 ├── zlagent.ini           # 全域設定檔
-├── third_party/ftxui     # 🆕 FTXUI 子項目（TUI 框架）
 └── CMakeLists.txt        # 構建配置 (C++17, CMake 3.16+)
 ```
 
@@ -63,19 +61,6 @@ cmake .. -G "Visual Studio 17 2022"   # MSVC
 cmake --build . --config Release
 ```
 
-### FTXUI TUI 構建
-
-預設會一併編譯 `zlagent_ftxui.exe`（FTXUI 全螢幕終端介面）。若不需要可關閉：
-
-```bash
-cmake .. -DBUILD_FTXUI_TUI=OFF   # 不編譯 FTXUI TUI
-cmake --build . --config Release
-```
-
-構建完成後會產生兩個執行檔：
-- `zlagent.exe` — 傳統 CLI（isocline）
-- `zlagent_ftxui.exe` — FTXUI TUI（全螢幕，含即時狀態列）
-
 ## 使用
 
 ### CLI 模式（預設）
@@ -83,32 +68,6 @@ cmake --build . --config Release
 1. 啟動 LM Studio，載入模型，開啟本地伺服器（預設 `http://127.0.0.1:1234`）
 2. 運行 `zlagent.exe`
 3. 輸入你的需求，Agent 會自動調用工具完成任務
-
-### FTXUI TUI 模式
-
-1. 啟動 LM Studio，載入模型，開啟本地伺服器（預設 `http://127.0.0.1:1234`）
-2. 運行 `zlagent_ftxui.exe`
-3. 全螢幕終端介面，底部狀態列即時顯示 Agent 運行狀況
-
-**狀態列資訊：**
-
-| 區塊 | 內容 | 顏色邏輯 |
-|------|------|----------|
-| 🔗 Connected / ❌ Disconnected | 連線狀態 | 綠=連線，紅=斷線 |
-| 🤖 qwen2.5-coder-7b | 模型名稱 | 藍色粗體 |
-| 🧠 3,500/8K | Token 用量 | <50% 綠 → <80% 黃 → ≥80% 紅 |
-| ⚡ 3/10 | 迭代次數 | 接近上限時變紅 |
-| ✓ Plan / ✗ MultiAgent | 功能開關 | 啟用=綠勾，關閉=灰叉 |
-| 💾 Msg:15 Fact:3 | 記憶統計 | 紫色 |
-| ▶ Thinking / Executing / Reviewing / Idle | 當前階段 | 動態變色+粗體 |
-| /help /model Ctrl+C Quit | 快捷鍵提示 | 灰色，右對齊 |
-
-**TUI 命令：**
-
-- `/help` — 顯示可用命令列表
-- `/model` — 列出並切換模型
-- `/clear` — 清除對話歷史
-- `Ctrl+C` — 退出
 
 ### 示例對話
 
@@ -563,7 +522,6 @@ model = deepseek-r1-distill-qwen-7b    ; 動態切換後持久化
 |------|------|
 | HTTP Client | httplib.h (single-header, cross-platform) |
 | JSON 解析 | nlohmann/json (header-only) |
-| TUI 框架 | FTXUI v7.0.0（子項目） |
 | CLI 輸入 | isocline（portable readline） |
 | C++ 標準 | C++17 |
 | 跨平台 | ✅ Windows / Linux / macOS |

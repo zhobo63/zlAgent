@@ -69,6 +69,10 @@ private:
                           int& match_count, int max_results) {
         namespace fs = std::filesystem;
         LOG_DEBUG("CodeSearchTool", "search_directory:" + dir + " pattern:" + file_pattern);
+        if (dir.empty() || dir[0] == '.') {
+            LOG_DEBUG("CodeSearchTool", "search_directory ignore");
+            return;
+        }
         for (const auto& entry : fs::recursive_directory_iterator(dir)) {
             if (match_count >= max_results) break;
 

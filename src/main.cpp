@@ -20,16 +20,10 @@
 #include "plugin_loader.h"
 #include "local_tools.h"
 #include <isocline.h>
+#include "tui.h"
 
 // ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
-
-// ── ANSI color helpers ───────────────────────────
-static std::string ansi_color(int fg, bool bold = false) {
-    return "\033[" + std::to_string(bold ? 1 : 0) + ";" + std::to_string(30 + fg) + "m";
-}
-static const char* ANSI_RESET   = "\033[0m";
-// Black=0, Red=1, Green=2, Yellow=3, Blue=4, Magenta=5, Cyan=6, White=7
 
 // ── Agent runtime state (mirrors ftxui.md spec) ───
 struct AgentState {
@@ -58,41 +52,26 @@ static void update_tui_state(AgentState& s, const agent::Agent& ag,
     }
 }
 
-// ── Status bar renderer (pure std::cout + ANSI) ───
+// ── Status bar renderer (pure std::cout + ANSI via TUI) ───
 static void print_status_bar(const AgentState& s, bool newline_after = true) {
     // Token ratio color: <50% green → <80% yellow → ≥80% red
     double token_ratio = (s.max_tokens > 0) ? (double)s.tokens_used / s.max_tokens : 0;
-    int token_fg = token_ratio < 0.5 ? 2 : token_ratio < 0.8 ? 3 : 1; // green/yellow/red
+    AnsiColor token_fg = token_ratio < 0.5 ? AnsiColor::Green : token_ratio < 0.8 ? AnsiColor::Yellow : AnsiColor::Red;
 
     // Iteration ratio color: ≥80% red, else cyan
     double iter_ratio = (s.max_iterations > 0) ? (double)s.current_iteration / s.max_iterations : 0;
-    int iter_fg = iter_ratio >= 0.8 ? 1 : 6; // red or cyan
-
-    // Phase color + bold
-    struct PhaseInfo { const char* name; int fg; };
-    auto phase_info = [&]() -> PhaseInfo {
-        if (s.current_phase == "Thinking")  return {"Thinking", 3};
-        if (s.current_phase == "Executing") return {"Executing", 6};
-        if (s.current_phase == "Reviewing") return {"Reviewing", 5};
-        return {"Idle", 8}; // gray
-    }();
-
-    // Feature toggles: enabled=green check, disabled=gray cross
-    auto feat = [](const char* label, bool on) -> std::string {
-        return on ? ansi_color(2) + u8"✓ " + label : ansi_color(8) + u8"✗ " + label;
-    };
+    AnsiColor iter_fg = iter_ratio >= 0.8 ? AnsiColor::Red : AnsiColor::Cyan;
 
     // Build the bar content (single line)
     std::ostringstream bar;
     bar << u8"├─";
-    bar << ansi_color(4, true) << u8"🤖 " << s.model_name << ANSI_RESET << u8" │ ";
-    bar << ansi_color(token_fg) << u8"🧠 " << s.tokens_used << "/" << s.max_tokens << ANSI_RESET << u8" │ ";
-    bar << ansi_color(iter_fg) << u8"⚡ " << s.current_iteration << "/" << s.max_iterations << ANSI_RESET << u8" │ ";
-    bar << feat("Plan", s.task_planning) << ANSI_RESET;
-    bar << feat("Reflect", s.self_reflection) << ANSI_RESET;
-    bar << feat("MultiAgent", s.multi_agent) << ANSI_RESET << u8" │ ";
-    bar << ansi_color(5) << u8"💾 Msg:" << s.memory_count << " Fact:" << s.facts_count << ANSI_RESET << u8" │ ";
-    bar << ansi_color(phase_info.fg, true) << u8"▶ " << phase_info.name << ANSI_RESET;
+    bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
+    bar << TUI::color(u8"🧠 " + std::to_string(s.tokens_used) + "/" + std::to_string(s.max_tokens), token_fg) << u8" │ ";
+    bar << TUI::color(u8"⚡ " + std::to_string(s.current_iteration) + "/" + std::to_string(s.max_iterations), iter_fg) << u8" │ ";
+    bar << TUI::check(u8"Plan", s.task_planning) << " ";
+    bar << TUI::check(u8"Reflect", s.self_reflection) << " ";
+    bar << TUI::check(u8"MultiAgent", s.multi_agent) << u8" │ ";
+    bar << TUI::color(u8"💾 Msg:" + std::to_string(s.memory_count) + " Fact:" + std::to_string(s.facts_count), AnsiColor::Magenta);
     bar << u8" ─┤";
 
     std::cout << bar.str();
@@ -101,10 +80,9 @@ static void print_status_bar(const AgentState& s, bool newline_after = true) {
 
 // ── Print status bar inline (no newline, for dynamic updates) ────────────
 static void print_status_bar_inline(const AgentState& s) {
-    // Move cursor to bottom of screen and clear line
-    std::cout << "\033[1;H" << "\033[K";
+    TUI::cls();
     print_status_bar(s, false);
-    std::cout << std::flush;
+    TUI::flush();
 }
 
 int main() {
@@ -500,23 +478,23 @@ int main() {
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
-                std::cout << "\033[2m";  // dim for thinking content
-                std::cout << u8"\n[🤔 thinking]" << std::endl;
+                TUI::printDim(u8"[🤔 thinking]");
             }
             // Transition from reasoning to content: restore normal brightness
             else if (!is_reasoning_flag && in_reasoning) {
                 in_reasoning = false;
-                std::cout << "\033[0m";   // reset (end dim)
+                TUI::reset();
             }
 
-            std::cout << token << std::flush;
+            std::cout << token;
+            TUI::flush();
             return true;  // keep streaming
         }, &usage_info);
 
         // Ensure terminal is back to normal even if reasoning was the last output.
         if (in_reasoning) {
             in_reasoning = false;
-            std::cout << "\033[0m";
+            TUI::reset();
         }
 
         // Update TUI state: memory stats + reset phase
