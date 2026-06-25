@@ -279,13 +279,8 @@ void register_command_handlers(
             const auto& s = sessions[i];
             std::string date = s.timestamp.substr(0, 10);
             LOG_INFO("Command", "  " + std::to_string(i + 1) + ". [" + date + "] **" + s.topic + "**");
-            std::string preview = s.summary;
-            if (preview.size() > 200) {
-                preview.resize(200);
-                preview += "...";
-            }
             // Indent summary lines.
-            std::istringstream iss(preview);
+            std::istringstream iss(s.summary);
             std::string line;
             while (std::getline(iss, line)) {
                 LOG_INFO("Command", "     " + line);
@@ -327,11 +322,7 @@ void register_command_handlers(
         prompt.push_back(sys_msg);
         for (const auto& m : messages) {
             if (m.role == "system") continue;
-            std::string content = m.content;
-            if (content.size() > 2048) {
-                content = content.substr(0, 2048) + "... [truncated]";
-            }
-            prompt.push_back(ChatMessage{m.role, content, m.name});
+            prompt.push_back(ChatMessage{m.role, m.content, m.name});
         }
 
         LOG_INFO("Command", "  Summarizing conversation...");
@@ -406,12 +397,7 @@ void register_command_handlers(
             const auto& r = results[i];
             LOG_INFO("Command", "  Result " + std::to_string(i + 1) + " (score: " + std::to_string(static_cast<double>(r.score)) + ")");
             LOG_INFO("Command", "  Source: " + r.source);
-            std::string preview = r.content;
-            if (preview.size() > 500) {
-                preview.resize(500);
-                preview += "...";
-            }
-            std::istringstream iss(preview);
+            std::istringstream iss(r.content);
             std::string line;
             while (std::getline(iss, line)) {
                 LOG_INFO("Command", "    " + line);

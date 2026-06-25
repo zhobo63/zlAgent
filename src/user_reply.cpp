@@ -58,7 +58,7 @@ UserReplyResult prompt_user_reply(
         std::cout << " Tool: " << tool_name;
     }
     std::cout << "\n"
-              << "    Args: " << truncate(json_args, 120) << "\n";
+              << "    Args: " << json_args << "\n";
 
     if (is_error) {
         // Show only the first line of the error for brevity.

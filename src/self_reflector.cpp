@@ -32,14 +32,7 @@ ReflectionResult SelfReflector::review(const std::string& task_description,
     std::ostringstream oss;
     oss << "Task: " << task_description << "\n\n";
     oss << "Agent output:\n---\n";
-
-    // Truncate very long outputs to avoid wasting tokens.
-    std::string truncated = agent_output;
-    if (truncated.size() > 3000) {
-        truncated.resize(3000);
-        truncated += "\n...(truncated)";
-    }
-    oss << truncated << "\n---\n";
+    oss << agent_output << "\n---\n";
 
     ChatMessage user_msg{"user", oss.str(), ""};
 

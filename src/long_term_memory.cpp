@@ -56,11 +56,7 @@ std::string LongTermMemory::generate_summary(
     // Include a representative sample of the conversation.
     for (const auto& m : messages) {
         if (m.role == "system") continue;  // skip system prompts
-        std::string content = m.content;
-        if (content.size() > 1024) {
-            content = content.substr(0, 1024) + "... [truncated]";
-        }
-        prompt.push_back(ChatMessage{m.role, content, m.name});
+        prompt.push_back(ChatMessage{m.role, m.content, m.name});
     }
 
     auto resp = llm.chat(prompt);
@@ -116,11 +112,7 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
 
     for (const auto& m : messages) {
         if (m.role == "system") continue;
-        std::string content = m.content;
-        if (content.size() > 1024) {
-            content = content.substr(0, 1024) + "... [truncated]";
-        }
-        prompt.push_back(ChatMessage{m.role, content, m.name});
+        prompt.push_back(ChatMessage{m.role, m.content, m.name});
     }
 
     auto resp = llm.chat(prompt);

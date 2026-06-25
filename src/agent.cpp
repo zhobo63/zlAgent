@@ -254,9 +254,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             }
             memory_.add(tool_msg);
 
-            std::string preview = result.substr(0, 200);
-            if (result.size() > 200) preview += "...";
-            LOG_INFO(u8"🛠️Tool", "Result: " + preview + "\n");
+            LOG_INFO(u8"🛠️Tool", "Result: " + result + "\n");
         }
 
         // Loop again - LLM will see tool results and decide next action
