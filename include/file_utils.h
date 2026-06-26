@@ -16,4 +16,9 @@ bool ReadFileLines(const std::string& path, int startLine, int endLine,
 /// Format: " 10 | some text\n" per line. Returns empty string on failure.
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine);
 
+/// Generate a colored unified diff between old_text and new_text.
+/// Returns ANSI-colored string with red for removed lines (-) and green for added lines (+).
+/// Context lines (unchanged) are shown without color.
+std::string DiffEdit(const std::string& old_text, const std::string& new_text);
+
 } // namespace agent

@@ -1,8 +1,18 @@
 ﻿#include "pch.h"
 
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "json.hpp"
+#include "tui.h"
 #include "user_reply.h"
+#include "file_utils.h"
 
 namespace agent {
+using json = nlohmann::json;
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -24,7 +34,8 @@ static std::string truncate(const std::string& s, size_t max_len) {
 UserReplyMode parse_reply_mode(const std::string& value) {
     auto lower = to_lower(value);
     if (lower == "off")       return UserReplyMode::Off;
-    if (lower == "on_error")  return UserReplyMode::OnError;
+    if (lower == "exec")      return UserReplyMode::Exec;
+    if (lower == "edit")      return UserReplyMode::Edit;
     if (lower == "always")    return UserReplyMode::Always;
     return UserReplyMode::Off; // default fallback
 }
@@ -32,7 +43,8 @@ UserReplyMode parse_reply_mode(const std::string& value) {
 const char* reply_mode_to_string(UserReplyMode mode) {
     switch (mode) {
         case UserReplyMode::Off:     return "off";
-        case UserReplyMode::OnError:  return "on_error";
+        case UserReplyMode::Exec:    return "exec";
+        case UserReplyMode::Edit:    return "edit";
         case UserReplyMode::Always:   return "always";
     }
     return "off";
@@ -46,7 +58,7 @@ UserReplyResult prompt_user_reply(
     const std::string& error_message) {
 
     UserReplyResult result;
-    result.action = ReplyAction::Continue; // default
+    result.action = ReplyAction::Yes; // default
 
     bool is_error = !error_message.empty();
 
@@ -72,50 +84,28 @@ UserReplyResult prompt_user_reply(
         std::cout << "\n"
                   << "    What would you like to do?\n"
                   << "    y/yes   - Retry with same arguments\n"
-                  << "    n/no    - Skip this tool call\n"
-                  << "    abort   - Stop the reasoning loop\n"
-                  << "    edit:{json}  - Modify and retry\n"
-                  << "    <free text> - Inject custom message\n";
+                  << "    n/no    - Skip this tool call\n";
     } else {
         std::cout << "\n"
                   << "    What would you like to do?\n"
                   << "    y/yes   - Continue (default)\n"
-                  << "    n/no    - Skip this tool call\n"
-                  << "    abort   - Stop the reasoning loop\n"
-                  << "    edit:{json}  - Modify arguments\n"
-                  << "    <free text> - Inject custom message\n";
+                  << "    n/no    - Skip this tool call\n";
     }
 
     std::cout << "\n    Reply: ";
     std::string input;
     if (!std::getline(std::cin, input)) {
         // EOF — treat as abort.
-        result.action = ReplyAction::Abort;
+        result.action = ReplyAction::No;
         return result;
     }
 
     auto lower_input = to_lower(input);
 
     if (lower_input == "y" || lower_input == "yes") {
-        result.action = ReplyAction::Continue;
+        result.action = ReplyAction::Yes;
     } else if (lower_input == "n" || lower_input == "no" || lower_input == "skip") {
-        result.action = ReplyAction::Skip;
-    } else if (lower_input == "abort") {
-        result.action = ReplyAction::Abort;
-    } else if (lower_input.size() > 5 && lower_input.substr(0, 5) == "edit:") {
-        // Extract the JSON portion after "edit:".
-        std::string args = input.substr(5);
-        // Trim leading whitespace.
-        size_t start = args.find_first_not_of(" \t");
-        if (start != std::string::npos) {
-            args = args.substr(start);
-        }
-        result.action = ReplyAction::Edit;
-        result.modified_args = args;
-    } else {
-        // Free text — inject as a custom user message.
-        result.action = ReplyAction::Custom;
-        result.custom_message = input;
+        result.action = ReplyAction::No;
     }
 
     return result;

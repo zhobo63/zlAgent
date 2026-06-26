@@ -101,22 +101,16 @@ static ReplyDirective handle_user_reply(
     const std::string& result,
     const UserReplyResult& reply) {
 
-    switch (reply.action) {
-        case ReplyAction::Skip:
-            LOG_WARN("Tool", "Skipped: " + tc.name);
-            return ReplyDirective::Skip;
-        case ReplyAction::Edit:
-            tc.arguments = reply.modified_args;
-            break;
-        default: // Continue
-            break;
+    if (reply.action == ReplyAction::No) {
+        LOG_WARN("Tool", "Skipped: " + tc.name);
+        return ReplyDirective::Skip;
     }
 
     if (result.empty()) {
-        // Pre-execution: fall through to execute with (possibly modified) args.
+        // Pre-execution: fall through to execute with args.
         return ReplyDirective::Continue;
     }
-    // Post-execution: re-execute with (possibly modified) args.
+    // Post-execution: re-execute with args.
     return ReplyDirective::ReExecute;
 }
 
@@ -183,21 +177,25 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
                 continue;
             }
 
-            // ── User Reply: pre-execution check (Always mode) ──
-            if (user_reply_mode_ == UserReplyMode::Always) {
+            // ── User Reply: pre-execution check (Exec/Edit/Always mode) ──
+            if (user_reply_mode_ == UserReplyMode::Exec && tc.name == "execute_command") {
                 auto reply = prompt_user_reply(tc.name, tc.arguments);
-                if (reply.action == ReplyAction::Abort) {
-                    resp.prompt_tokens = total_prompt;
-                    resp.completion_tokens = total_completion;
-                    return ChatResponse{"[User aborted]"};
-                }
-                if (reply.action == ReplyAction::Custom) {
-                    memory_.add(ChatMessage{"user", reply.custom_message});
-                    return reasoning_loop_stream(user_input, on_token);
-                }
-                auto dir = handle_user_reply(tc, "", reply);
-                if (dir == ReplyDirective::Skip)
+                if (reply.action == ReplyAction::No) {
+                    LOG_WARN("Tool", "Skipped: " + tc.name);
                     continue;
+                }
+            } else if (user_reply_mode_ == UserReplyMode::Edit && (tc.name == "edit_file" || tc.name == "write_file")) {
+                auto reply = prompt_user_reply(tc.name, tc.arguments);
+                if (reply.action == ReplyAction::No) {
+                    LOG_WARN("Tool", "Skipped: " + tc.name);
+                    continue;
+                }
+            } else if (user_reply_mode_ == UserReplyMode::Always) {
+                auto reply = prompt_user_reply(tc.name, tc.arguments);
+                if (reply.action == ReplyAction::No) {
+                    LOG_WARN("Tool", "Skipped: " + tc.name);
+                    continue;
+                }
             }
 
             // Validate arguments are well-formed JSON before executing
@@ -219,33 +217,6 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
-
-            // ── User Reply: post-execution check (OnError mode) ──
-            if (user_reply_mode_ == UserReplyMode::OnError) {
-                auto lower_result = result;
-                std::transform(lower_result.begin(), lower_result.end(), lower_result.begin(),
-                               [](unsigned char c){ return std::tolower(c); });
-                bool is_error = lower_result.find("error") != std::string::npos
-                             || lower_result.find("fail") != std::string::npos;
-                if (is_error) {
-                    auto reply = prompt_user_reply(tc.name, tc.arguments, result);
-                    if (reply.action == ReplyAction::Abort) {
-                        resp.prompt_tokens = total_prompt;
-                        resp.completion_tokens = total_completion;
-                        return ChatResponse{"[User aborted]"};
-                    }
-                    if (reply.action == ReplyAction::Custom) {
-                        memory_.add(ChatMessage{"user", reply.custom_message});
-                        return reasoning_loop_stream(user_input, on_token);
-                    }
-                    auto dir = handle_user_reply(tc, result, reply);
-                    if (dir == ReplyDirective::Skip)
-                        continue;
-                    if (dir == ReplyDirective::ReExecute) {
-                        result = registry_.execute(tc.name, tc.arguments);
-                    }
-                }
-            }
 
             // Add tool response to memory
             ChatMessage tool_msg{"tool", result, tc.name};

@@ -10,7 +10,8 @@ namespace agent {
  */
 enum class UserReplyMode {
     Off,        // No pause, fully automatic (default)
-    OnError,    // Pause only when a tool execution fails
+    Exec,       // Pause before terminal command call
+    Edit,       // Pause before edit_file call
     Always      // Pause before every tool call
 };
 
@@ -18,26 +19,21 @@ enum class UserReplyMode {
  * Action taken by the user during an intervention prompt.
  */
 enum class ReplyAction {
-    Continue,   // Proceed with current parameters
-    Skip,       // Skip this tool call
-    Abort,      // Terminate the reasoning loop
-    Edit,       // Modify arguments and execute
-    Custom      // Inject custom message into conversation
+    Yes,   // Proceed with current parameters
+    No     // Skip this tool call
 };
 
 /**
  * Result of a user reply prompt.
  */
 struct UserReplyResult {
-    ReplyAction action = ReplyAction::Continue;
-    std::string modified_args;   // Only valid when action == Edit
-    std::string custom_message;  // Only valid when action == Custom
+    ReplyAction action = ReplyAction::Yes;
 };
 
 /**
  * Prompt the user for input during Agent reasoning loop.
  * Displays tool name, arguments, and optional error message, then waits
- * for the user to decide how to proceed.
+ * for the user to decide whether to proceed or skip.
  *
  * @param tool_name    Name of the tool about to be executed (or that failed).
  * @param json_args    JSON argument string for the tool call.

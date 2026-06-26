@@ -2,6 +2,7 @@
 
 #include "tool.h"
 #include "file_utils.h"
+#include "tui.h"
 #include "encoding.h"
 #include "safety_guard.h"
 
@@ -158,10 +159,8 @@ public:
                        "Provide more surrounding context to make the match unique.";
             }
 
-            // Replace
-            content.replace(pos, old_text.size(), new_text);
-
             // Write back
+            content.replace(pos, old_text.size(), new_text);
             std::ofstream outfile(path, std::ios::trunc);
             if (!outfile.is_open()) {
                 return "Error: Cannot write to file '" + path + "'";
@@ -169,7 +168,9 @@ public:
             outfile << content;
             outfile.close();
 
-            return "Successfully edited '" + path + "'. Replaced text with new_text.";
+            // Show diff of the change using TUI colors (red for removed, green for added)
+            std::string diff = DiffEdit(old_text, new_text);
+            return "Successfully edited '" + path + "'.\n" + diff;
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
