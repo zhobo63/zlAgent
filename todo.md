@@ -107,29 +107,6 @@ fallback 路徑捕獲到 step regex 就直接 push，沒有檢查步驟是否非
 
 ---
 
-### [x] 27. 錯誤訊息格式不一致
-**文件:** 多處 cerr/cout 輸出
-
-已修復：新增 `include/logger.h`，提供統一日誌系統。
-
-- **嚴重級別:** DEBUG / INFO / WARN / ERROR（可通過 INI `[logging] level = info` 配置）
-- **格式:** `[HH:MM:SS.fff] [LEVEL] [Component] message`
-- **顏色編碼:** DEBUG=灰色, INFO=綠色, WARN=黃色, ERROR=紅色
-- **輸出分流:** INFO/DEBUG → stdout；WARN/ERROR → stderr
-- **線程安全:** 內建 mutex 保護
-- **宏接口:** `LOG_DEBUG/INFO/WARN/ERROR(component, msg)`
-- 已遷移所有源文件中的 `std::cout`/`std::cerr` 調用（UI 交互元素除外）
-
----
-
-## P3 — 近期變更追蹤
-
-### [x] CLI 提示符模型顯示格式調整
-**文件:** `src/main.cpp:296`
-
-將 `[model_name]` 改為 `(model_name)`，避免與工具名稱的方括號混淆。
-
----
 
 ## 其他觀察
 

@@ -1137,7 +1137,7 @@ public:
     std::string description() const override {
         return "Fetch a URL and convert its HTML content to Markdown. "
                "Useful for reading documentation, API references, or web pages. "
-               "Max response size: 100KB, timeout: 15 seconds.";
+               "Timeout: 15 seconds.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -1191,17 +1191,14 @@ public:
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
             if (is_https) {
                 httplib::SSLClient cli(host.c_str(), port);
-                cli.set_connection_timeout(15000, 0);
-                cli.set_read_timeout(15000, 0);
-                cli.set_write_timeout(15000, 0);
+                cli.set_connection_timeout(CONNECT_TIMEOUT, 0);
+                cli.set_read_timeout(READ_TIMEOUT, 0);
+                cli.set_write_timeout(WRITE_TIMEOUT, 0);
                 auto res = cli.Get(path.c_str());
                 if (!res || res->status != 200) {
                     return "Error: HTTP status " + std::to_string(res ? res->status : 0);
                 }
-                if (res->body.size() > 100 * 1024) {
-                    return "Error: Response too large (>100KB).";
-                }
-                return html_to_markdown(res->body, url);
+                return html_to_markdown(truncate_body(res->body), url);
             }
 #endif
             {
@@ -1210,18 +1207,15 @@ public:
                 if (is_https) port = 443; else port = 80;
 
                 httplib::Client cli(http_host.c_str(), port);
-                cli.set_connection_timeout(15000, 0);
-                cli.set_read_timeout(15000, 0);
-                cli.set_write_timeout(15000, 0);
+                cli.set_connection_timeout(CONNECT_TIMEOUT, 0);
+                cli.set_read_timeout(READ_TIMEOUT, 0);
+                cli.set_write_timeout(WRITE_TIMEOUT, 0);
                 auto res = cli.Get(path.c_str());
                 if (!res || res->status != 200) {
                     return "Error: HTTP status " + std::to_string(res ? res->status : 0) +
                            " (HTTPS requires OpenSSL support).";
                 }
-                if (res->body.size() > 100 * 1024) {
-                    return "Error: Response too large (>100KB).";
-                }
-                return html_to_markdown(res->body, url);
+                return html_to_markdown(truncate_body(res->body), url);
             }
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
@@ -1299,9 +1293,9 @@ private:
         }
 
         std::string result = md.str();
-        // Limit output size to ~50KB for practicality
-        if (result.size() > 50 * 1024) {
-            result = result.substr(0, 50 * 1024);
+        // Limit output size for practicality
+        if (result.size() > MAX_MARKDOWN_OUTPUT_SIZE) {
+            result = result.substr(0, MAX_MARKDOWN_OUTPUT_SIZE);
             result += "\n\n... (truncated, content too large)";
         }
 
@@ -1437,6 +1431,16 @@ private:
         return result.str();
     }
 
+private:
+    static constexpr size_t MAX_BODY_SIZE = 100 * 1024;   // 5MB
+    static constexpr size_t MAX_MARKDOWN_OUTPUT_SIZE = 50 * 1024;
+
+    static std::string truncate_body(const std::string& body) {
+        if (body.size() <= MAX_BODY_SIZE) return body;
+        return body.substr(0, MAX_BODY_SIZE);
+    }
+
+public:
     static std::string& replace_all(std::string& str, const std::string& from, const std::string& to) {
         size_t pos = 0;
         while ((pos = str.find(from, pos)) != std::string::npos) {

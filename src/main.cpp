@@ -382,7 +382,7 @@ int main() {
     // Interactive loop with streaming output.
     while (true) {
         print_status_bar(g_state);
-        TUI::reset();
+        std::cout << std::endl;
         char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
         if (!raw) break;  // Ctrl-C / Ctrl-D
         std::string input(raw);

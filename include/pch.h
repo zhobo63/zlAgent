@@ -16,6 +16,9 @@
 #endif
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
+#define CONNECT_TIMEOUT 5
+#define READ_TIMEOUT 600
+#define WRITE_TIMEOUT 60
 
 // Core standard library headers used across the project
 #include <iostream>

@@ -52,8 +52,8 @@ std::string post_json_impl(const std::string& path, const std::string& json_body
     ClientType client(url.host, url.port);
     if (!client.is_valid()) return "{}";
 
-    client.set_read_timeout(30, 0);
-    client.set_write_timeout(30, 0);
+    client.set_read_timeout(READ_TIMEOUT, 0);
+    client.set_write_timeout(WRITE_TIMEOUT, 0);
 
     auto res = client.Post(path, json_body, "application/json");
     if (!res) {
@@ -373,8 +373,8 @@ ChatResponse chat_stream_impl(
     ClientType client(url.host, url.port);
     if (!client.is_valid()) return {};
 
-    client.set_read_timeout(120, 0);
-    client.set_write_timeout(30, 0);
+    client.set_read_timeout(READ_TIMEOUT, 0);
+    client.set_write_timeout(WRITE_TIMEOUT, 0);
 
     // Build JSON body using the shared helper.
     std::string json_body = LLMClient::build_chat_json(model, messages, tools,
