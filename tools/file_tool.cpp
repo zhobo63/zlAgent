@@ -173,7 +173,7 @@ class EditFileTool : public Tool {
 public:
     std::string name() const override { return "edit_file"; }
     std::string description() const override {
-        return "Apply precise edits to an existing file. Finds old_text and replaces it with new_text. Use for targeted modifications instead of overwriting the entire file.";
+        return "Apply precise edits to an existing file. Two modes: (1) text-based: provide old_text and new_text to find-and-replace; (2) line-based: provide start_line, end_line and new_text to replace a line range. Only one mode should be used at a time.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -181,10 +181,14 @@ public:
         schema["properties"]["path"]["type"] = "string";
         schema["properties"]["path"]["description"] = "The file path to edit";
         schema["properties"]["old_text"]["type"] = "string";
-        schema["properties"]["old_text"]["description"] = "Exact text to find and replace, must match uniquely";
+        schema["properties"]["old_text"]["description"] = "Exact text to find and replace (text-based mode). Must match uniquely.";
         schema["properties"]["new_text"]["type"] = "string";
         schema["properties"]["new_text"]["description"] = "The replacement text";
-        schema["required"] = {"path", "old_text", "new_text"};
+        schema["properties"]["start_line"]["type"] = "integer";
+        schema["properties"]["start_line"]["description"] = "Starting line number for range-based edit (1-based). Use with end_line instead of old_text.";
+        schema["properties"]["end_line"]["type"] = "integer";
+        schema["properties"]["end_line"]["description"] = "Ending line number for range-based edit (inclusive, 1-based). Use with start_line instead of old_text.";
+        schema["required"] = {"path", "new_text"};
         return schema.dump();
     }
 
@@ -194,8 +198,27 @@ public:
             std::string path = args.value("path", "");
             std::string old_text = args.value("old_text", "");
             std::string new_text = args.value("new_text", "");
-            std::string diff = DiffEdit(old_text, new_text);
-            std::cout << std::endl << path << std::endl << diff << std::endl;
+
+            if (!old_text.empty()) {
+                // Text-based mode
+                std::string diff = DiffEdit(old_text, new_text);
+                std::cout << std::endl << path << std::endl << diff << std::endl;
+            } else {
+                // Line-based mode
+                int start_line = args.value("start_line", 0);
+                int end_line   = args.value("end_line", 0);
+                if (!path.empty() && start_line > 0 && end_line >= start_line) {
+                    std::vector<std::pair<int, std::string>> lines;
+                    if (ReadFileLines(path, start_line, end_line, lines)) {
+                        std::string old_content;
+                        for (const auto& [num, content] : lines) {
+                            old_content += content + "\n";
+                        }
+                        std::string diff = DiffEdit(old_content, new_text);
+                        std::cout << std::endl << path << " (lines " << start_line << "-" << end_line << ")" << std::endl << diff << std::endl;
+                    }
+                }
+            }
         } catch (...) {}
     }
 
@@ -210,52 +233,126 @@ public:
             std::string path = args.value("path", "");
             std::string old_text = args.value("old_text", "");
             std::string new_text = args.value("new_text", "");
+            int start_line = args.value("start_line", 0);
+            int end_line   = args.value("end_line", 0);
 
             if (path.empty()) return "Error: No file path provided.";
-            if (old_text.empty()) return "Error: No old_text provided.";
+            if (new_text.empty() && old_text.empty()) return "Error: Neither old_text nor new_text provided.";
+
+            // Determine mode: text-based or line-based
+            bool text_mode = !old_text.empty();
+            bool line_mode = start_line > 0 && end_line >= start_line;
+
+            if (!text_mode && !line_mode) {
+                return "Error: Must provide either old_text (text-based mode) or start_line/end_line (line-based mode).";
+            }
+            if (text_mode && line_mode) {
+                return "Error: Cannot use both old_text and start_line/end_line at the same time. Choose one mode.";
+            }
 
             // Safety: path whitelist check.
             if (!SafetyGuard::get_instance().is_path_allowed(path)) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 
-            // Read the file
-            std::ifstream infile(path);
-            if (!infile.is_open()) {
-                return "Error: Cannot open file '" + path + "'";
-            }
-            std::stringstream ss;
-            ss << infile.rdbuf();
-            std::string content = ss.str();
-            infile.close();
+            if (text_mode) {
+                // --- Text-based mode: find old_text and replace with new_text ---
+                std::ifstream infile(path);
+                if (!infile.is_open()) {
+                    return "Error: Cannot open file '" + path + "'";
+                }
+                std::stringstream ss;
+                ss << infile.rdbuf();
+                std::string content = ss.str();
+                infile.close();
 
-            // Find old_text (support multi-line)
-            auto pos = content.find(old_text);
-            if (pos == std::string::npos) {
-                return "Error: old_text not found in file '" + path + "'. "
-                       "The text to replace must match exactly.\n"
-                       "Suggested: read the file first with read_file, then copy the exact text.";
-            }
+                auto pos = content.find(old_text);
+                if (pos == std::string::npos) {
+                    return "Error: old_text not found in file '" + path + "'. "
+                           "The text to replace must match exactly.\n"
+                           "Suggested: read the file first with read_file, then copy the exact text.";
+                }
 
-            // Check uniqueness - ensure old_text appears only once
-            auto pos2 = content.find(old_text, pos + 1);
-            if (pos2 != std::string::npos) {
-                return "Error: old_text matches multiple locations in '" + path + "'. "
-                       "Provide more surrounding context to make the match unique.";
-            }
+                auto pos2 = content.find(old_text, pos + 1);
+                if (pos2 != std::string::npos) {
+                    return "Error: old_text matches multiple locations in '" + path + "'. "
+                           "Provide more surrounding context to make the match unique.";
+                }
 
-            // Write back
-            content.replace(pos, old_text.size(), new_text);
-            std::ofstream outfile(path, std::ios::trunc);
-            if (!outfile.is_open()) {
-                return "Error: Cannot write to file '" + path + "'";
-            }
-            outfile << content;
-            outfile.close();
+                content.replace(pos, old_text.size(), new_text);
+                std::ofstream outfile(path, std::ios::trunc);
+                if (!outfile.is_open()) {
+                    return "Error: Cannot write to file '" + path + "'";
+                }
+                outfile << content;
+                outfile.close();
 
-            // Show diff of the change using TUI colors (red for removed, green for added)
-            std::string diff = DiffEdit(old_text, new_text);
-            return "Successfully edited '" + path + "'.\n" + diff;
+                std::string diff = DiffEdit(old_text, new_text);
+                return "Successfully edited '" + path + "'.\n" + diff;
+            } else {
+                // --- Line-based mode: replace lines start_line..end_line with new_text ---
+                if (new_text.empty()) return "Error: new_text is required in line-based mode.";
+
+                std::ifstream infile(path);
+                if (!infile.is_open()) {
+                    return "Error: Cannot open file '" + path + "'";
+                }
+
+                // Read all lines, preserving structure
+                std::vector<std::string> lines;
+                std::string line;
+                while (std::getline(infile, line)) {
+                    lines.push_back(line);
+                }
+                infile.close();
+
+                if (end_line > static_cast<int>(lines.size())) {
+                    return "Error: end_line " + std::to_string(end_line) +
+                           " exceeds file length (" + std::to_string(lines.size()) + " lines).";
+                }
+
+                // Capture the old content for diff
+                std::string old_content;
+                for (int i = start_line - 1; i <= end_line - 1; ++i) {
+                    old_content += lines[i] + "\n";
+                }
+
+                // Split new_text into lines
+                std::vector<std::string> insert_lines;
+                {
+                    std::istringstream iss(new_text);
+                    while (std::getline(iss, line)) {
+                        insert_lines.push_back(line);
+                    }
+                    if (!new_text.empty() && new_text.back() == '\n' && !insert_lines.empty()) {
+                        insert_lines.pop_back();
+                    }
+                }
+
+                // Replace the range [start_line-1, end_line-1] with insert_lines
+                int replace_start = start_line - 1;
+                int replace_end   = end_line;   // exclusive for erase
+                lines.erase(lines.begin() + replace_start, lines.begin() + replace_end);
+                for (int i = static_cast<int>(insert_lines.size()) - 1; i >= 0; --i) {
+                    lines.insert(lines.begin() + replace_start, insert_lines[i]);
+                }
+
+                // Write back
+                std::ofstream outfile(path, std::ios::trunc);
+                if (!outfile.is_open()) {
+                    return "Error: Cannot write to file '" + path + "'";
+                }
+                for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+                    outfile << lines[i];
+                    if (i < static_cast<int>(lines.size()) - 1)
+                        outfile << '\n';
+                }
+                outfile.close();
+
+                std::string diff = DiffEdit(old_content, new_text);
+                return "Successfully replaced lines " + std::to_string(start_line) + "-" +
+                       std::to_string(end_line) + " in '" + path + "'.\n" + diff;
+            }
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }

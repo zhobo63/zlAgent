@@ -22,13 +22,13 @@
 #include "completion.h"
 #include <isocline.h>
 #include "tui.h"
+#include "user_reply.h"
 
 // ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
 
 // ── Agent runtime state (mirrors ftxui.md spec) ───
 struct AgentState {
-    bool connected = true;
     std::string model_name;
     int tokens_used = 0;
     int max_tokens = 8192;
@@ -39,18 +39,22 @@ struct AgentState {
     bool multi_agent = false;
     int memory_count = 0;
     int facts_count = 0;
-    std::string current_phase = "Idle"; // Idle / Thinking / Executing / Reviewing
+    agent::UserReplyMode user_reply_mode = agent::UserReplyMode::Off;
 };
 static AgentState g_state;
 
 // ── Helper to update TUI state from agent ────────────────────────
 static void update_tui_state(AgentState& s, const agent::Agent& ag,
                              const std::unique_ptr<agent::LongTermMemory>& ltm) {
+    // Update memory stats before first prompt
     s.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
     if (ltm) {
         auto facts = ltm->get_facts();
         s.facts_count = static_cast<int>(facts.size());
     }
+
+    // Update user reply mode
+    s.user_reply_mode = ag.get_user_reply_mode();
 }
 
 // ── Status bar renderer (pure std::cout + ANSI via TUI) ───
@@ -72,6 +76,18 @@ static void print_status_bar(const AgentState& s, bool newline_after = true) {
     bar << TUI::check(u8"Plan", s.task_planning) << " ";
     bar << TUI::check(u8"Reflect", s.self_reflection) << " ";
     bar << TUI::check(u8"MultiAgent", s.multi_agent) << u8" │ ";
+
+    // User reply mode display
+    const char* reply_mode_icon = "";
+    AnsiColor reply_fg = AnsiColor::BrightBlack;
+    switch (s.user_reply_mode) {
+        case agent::UserReplyMode::Off:     reply_mode_icon = u8"❌ off"; break;
+        case agent::UserReplyMode::Exec:    reply_mode_icon = u8"🔧 exec"; reply_fg = AnsiColor::Yellow; break;
+        case agent::UserReplyMode::Edit:    reply_mode_icon = u8"✏️ edit"; reply_fg = AnsiColor::Cyan; break;
+        case agent::UserReplyMode::Always:  reply_mode_icon = u8"🔄 always"; reply_fg = AnsiColor::Magenta; break;
+    }
+    bar << "Confirm: " << TUI::color(reply_mode_icon, reply_fg) << u8" │ ";
+
     bar << TUI::color(u8"💾 Msg:" + std::to_string(s.memory_count) + " Fact:" + std::to_string(s.facts_count), AnsiColor::Magenta);
     bar << u8" ─┤";
 
@@ -374,12 +390,6 @@ int main() {
             cfg.terminal_commands.confirm_commands);
     }
 
-    // Update memory stats before first prompt
-    g_state.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
-    if (long_term_memory) {
-        auto facts = long_term_memory->get_facts();
-        g_state.facts_count = static_cast<int>(facts.size());
-    }
 
     // Print initial status bar
     std::cout << u8"\nReady. Type your request (or '/help' for commands):" << std::endl;
@@ -389,6 +399,7 @@ int main() {
 
     // Interactive loop with streaming output.
     while (true) {
+		update_tui_state(g_state, ag, long_term_memory);
         print_status_bar(g_state);
         std::cout << std::endl;
         char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
@@ -477,10 +488,6 @@ int main() {
         ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
             // Update TUI state: phase + tokens
             g_state.tokens_used += static_cast<int>(token.length());
-            if (is_reasoning_flag)
-                g_state.current_phase = "Thinking";
-            else
-                g_state.current_phase = "Executing";
 
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
@@ -504,14 +511,6 @@ int main() {
             TUI::reset();
         }
 
-        // Update TUI state: memory stats + reset phase
-        g_state.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
-        if (long_term_memory) {
-            auto facts = long_term_memory->get_facts();
-            g_state.facts_count = static_cast<int>(facts.size());
-        }
-        g_state.current_phase = "Idle";
-
         // Display token usage if available
         if (usage_info.total_tokens() > 0) {
             std::cout << u8"\n\n⏱  Tokens: ";
@@ -521,6 +520,7 @@ int main() {
                 std::cout << "/" << usage_info.max_tokens;
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
+        g_state.current_iteration ++;  // increment iteration only for content tokens
     }
 
     return 0;

@@ -41,7 +41,7 @@ public:
             if (directory.empty()) directory = ".";
 
             try {
-                std::regex re(pattern);
+                std::regex re(pattern, std::regex_constants::icase);
 
                 std::ostringstream results;
                 int match_count = 0;
@@ -69,20 +69,48 @@ private:
                           int& match_count, int max_results) {
         namespace fs = std::filesystem;
         LOG_DEBUG("CodeSearchTool", "search_directory:" + dir + " pattern:" + file_pattern);
-        if (dir.empty() || dir[0] == '.') {
-            LOG_DEBUG("CodeSearchTool", "search_directory ignore");
+        if (dir.empty()) {
+            LOG_DEBUG("CodeSearchTool", "search_directory ignore: empty dir");
             return;
         }
-        for (const auto& entry : fs::recursive_directory_iterator(dir)) {
-            if (match_count >= max_results) break;
 
-            if (entry.is_regular_file()) {
-                // Check file pattern filter
-                std::string fname = entry.path().filename().string();
-                if (!file_pattern.empty() && !match_glob(fname, file_pattern)) continue;
+        // Resolve the path so that "." and relative paths work correctly.
+        fs::path resolved = fs::absolute(dir);
+        if (!fs::exists(resolved) || !fs::is_directory(resolved)) {
+            LOG_DEBUG("CodeSearchTool", "search_directory ignore: not a valid directory");
+            return;
+        }
 
-                search_file(entry.path().string(), re, results, match_count, max_results);
+        search_dir_recursive(resolved, file_pattern, re, results, match_count, max_results);
+    }
+
+    // Manual recursive traversal so we can skip hidden directories entirely.
+    void search_dir_recursive(const std::filesystem::path& dir, const std::string& file_pattern,
+                              const std::regex& re, std::ostringstream& results,
+                              int& match_count, int max_results) {
+        namespace fs = std::filesystem;
+        try {
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                if (match_count >= max_results) break;
+
+                // Skip hidden directories (starting with '.') like .git, .hg, .vs, .vscode etc.
+                if (entry.is_directory()) {
+                    std::string dirname = entry.path().filename().string();
+                    if (!dirname.empty() && dirname[0] == '.') continue;
+                    search_dir_recursive(entry.path(), file_pattern, re, results, match_count, max_results);
+                    continue;
+                }
+
+                if (entry.is_regular_file()) {
+                    // Check file pattern filter
+                    std::string fname = entry.path().filename().string();
+                    if (!file_pattern.empty() && !match_glob(fname, file_pattern)) continue;
+
+                    search_file(entry.path().string(), re, results, match_count, max_results);
+                }
             }
+        } catch (const fs::filesystem_error&) {
+            // Skip directories we can't access.
         }
     }
 

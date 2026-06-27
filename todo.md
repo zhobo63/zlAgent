@@ -151,6 +151,13 @@ namespace agent [L9-576]
 
 - [INFO ] [Memory] Context compressed via summarization. 之後就壞了
 
+查找問題: 每次觸發 Context compressed via summarization. 時 本地模型出現錯誤 後續就無法對話 出現一樣的錯誤
+LM LOG:
+2026-06-27 19:13:45 [ERROR]
+ [qwopus3.6-35b-a3b-v1] Error rendering prompt with jinja template: "No user query found in messages.".
+
+This is usually an issue with the model's prompt template. If you are using a popular model, you can try to search the model under lmstudio-community, which will have fixed prompt templates. If you cannot find one, you are welcome to post this issue to our discord or issue tracker on GitHub. Alternatively, if you know how to write jinja templates, you can override the prompt template in My Models > model settings > Prompt Template.. Error Data: n/a, Additional Data: n/a
+
 ---
 
 ## P1 — Isocline 自動補全功能

@@ -140,7 +140,7 @@ static void arg_completer(ic_completion_env_t* cenv, const char* word_prefix) {
 static void on_completion(ic_completion_env_t* cenv, const char* prefix) {
     if (!prefix || strlen(prefix) == 0) {
         // Empty input — show all commands
-        ic_add_completions(cenv, "", ALL_COMMANDS);
+        //ic_add_completions(cenv, "", ALL_COMMANDS);
         return;
     }
 
@@ -160,25 +160,9 @@ static void on_completion(ic_completion_env_t* cenv, const char* prefix) {
 
     // ── Completing the command name itself (no arguments yet) ────────
     if (!has_space) {
-        // If prefix is just "/", show all commands
-        if (strcmp(prefix, "/") == 0) {
-            ic_add_completions(cenv, "", ALL_COMMANDS);
-            return;
-        }
-
-        // Filter: only add commands that start with the current prefix
-        bool has_match = false;
-        for (const char** cmd = ALL_COMMANDS; *cmd != nullptr; ++cmd) {
-            if (strncmp(prefix, *cmd, strlen(prefix)) == 0) {
-                ic_add_completion(cenv, *cmd);
-                has_match = true;
-            }
-        }
-
-        // If no match found and prefix is just "/", show all commands
-        if (!has_match && strcmp(prefix, "/") == 0) {
-            ic_add_completions(cenv, "", ALL_COMMANDS);
-        }
+        // Let isocline handle filtering; pass "/" as prefix so it knows
+        // what portion of the input to replace when completing.
+        ic_add_completions(cenv, "/", ALL_COMMANDS);
         return;
     }
 
@@ -193,8 +177,8 @@ static void on_completion(ic_completion_env_t* cenv, const char* prefix) {
 void register_completion() {
     // Enable auto-tab: single Tab = unique match completion, double Tab = show all options
     ic_enable_auto_tab(true);
-
-    ic_set_default_completer(on_completion, nullptr);
+    ic_enable_completion_preview(true);
+    //ic_set_default_completer(on_completion, nullptr);
 }
 
 } // namespace agent

@@ -335,8 +335,10 @@ void register_command_handlers(
         }
 
         // Clear history and insert the summary as the start of a new conversation.
+        // Use role "user" so that LM Studio's jinja prompt template sees a valid
+        // system → user → assistant flow after re-injecting the system prompt.
         memory.clear();
-        ChatMessage summary_msg{"assistant",
+        ChatMessage summary_msg{"user",
             "[Summary of previous conversation]\n" + resp.content};
         memory.add(summary_msg);
 

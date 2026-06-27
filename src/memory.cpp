@@ -103,8 +103,11 @@ bool Memory::summarize(LLMClient& llm) {
         return false;  // summarization failed
     }
 
-    // Replace the summarized range with a single summary message
-    ChatMessage summary_msg{"assistant", "[Summary of earlier conversation]\n" + resp.content};
+    // Replace the summarized range with a single summary message.
+    // Use role "user" so that LM Studio's jinja prompt template sees a valid
+    // system → user → assistant flow. An "assistant"-role summary after the
+    // system prompt would cause "No user query found in messages." errors.
+    ChatMessage summary_msg{"user", "[Summary of earlier conversation]\n" + resp.content};
     cached_tokens_ += TokenCounter::estimate_message(summary_msg);
 
     history_.erase(history_.begin() + static_cast<long>(summary_start),
