@@ -46,7 +46,7 @@ public:
             // Safety: check for dangerous commands and require confirmation.
             if (SafetyGuard::is_command_dangerous(command)) {
                 std::string op = "execute_command: " + command;
-                if (!SafetyGuard::confirm_dangerous_operation(op)) {
+                if (!SafetyGuard::get_instance().confirm_dangerous_operation(op)) {
                     return "Operation cancelled by user.";
                 }
             }

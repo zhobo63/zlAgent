@@ -17,7 +17,7 @@ public:
     // ── 1. Dangerous tool confirmation ─────────────────────
 
     // Ask the user to confirm a dangerous operation. Returns true if confirmed.
-    static bool confirm_dangerous_operation(const std::string& operation);
+    bool confirm_dangerous_operation(const std::string& operation);
 
     // Check if a command string contains destructive patterns (rm -rf, del /f, etc.).
     static bool is_command_dangerous(const std::string& command);
@@ -25,13 +25,16 @@ public:
     // ── 2. Path whitelist ──────────────────────────────────
 
     // Set allowed directories. Empty = no restriction.
-    static void set_path_whitelist(const std::vector<std::string>& dirs);
+    void set_path_whitelist(const std::vector<std::string>& dirs);
 
     // Check if a path is within the allowed directories. Returns true if allowed.
-    static bool is_path_allowed(const std::string& path);
+    bool is_path_allowed(const std::string& path) const;
 
     // Get current whitelist (for logging).
-    static const std::vector<std::string>& get_path_whitelist();
+    const std::vector<std::string>& get_path_whitelist() const;
+
+    // Reset whitelist to empty — useful for tests.
+    void reset_path_whitelist();
 
     // ── 3. Skill content check ─────────────────────────────
 
@@ -43,14 +46,17 @@ public:
     // Detect prompt injection attempts in user input. Returns true if suspicious.
     static bool is_prompt_injection(const std::string& input);
 
-private:
-    SafetyGuard() = default;
+    // Singleton accessor — provides global access to the SafetyGuard instance.
+    static SafetyGuard& get_instance();
 
     // Normalize a path (resolve .., convert separators).
     static std::string normalize_path(const std::string& path);
 
     // Check if path starts with any of the allowed directories.
-    static bool is_under_allowed_dir(const std::string& normalized_path);
+    bool is_under_allowed_dir(const std::string& normalized_path) const;
+
+    // Path whitelist — instance member to avoid global state.
+    std::vector<std::string> path_whitelist_;
 };
 
 } // namespace agent

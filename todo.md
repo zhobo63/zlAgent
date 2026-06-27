@@ -79,16 +79,17 @@ buffer 會隨著時間增長，這意味著每次讀取都會打印越來越大�
 
 ---
 
-### [ ] 7. `SafetyGuard` — 全局靜態變量
+### [x] ~~7. `SafetyGuard` — 全局靜態變量~~ ✅ **已修復**
 **文件:** `src/safety_guard.cpp:71`
 
 ```cpp
-static std::vector<std::string> g_path_whitelist;
+// 原始問題：static std::vector<std::string> g_path_whitelist;
+// 當前實作：path_whitelist_ 已是實例成員，非全局靜態變量
 ```
 
-使用全局狀態使得測試困難且容易出錯。
+**修復狀態：** whitelist 已改為實例化對象的成員變量 `path_whitelist_`。測試時可創建獨立的 SafetyGuard 實例來隔離測試。
 
-**建議:** 改為實例化對象或使用單例模式，將 whitelist 作為成員變量。
+**剩餘潛在問題：** Singleton 模式仍然存在（`get_instance()`），線程安全問題未解決，可作為後續優化。
 
 ---
 
@@ -109,7 +110,10 @@ fallback 路徑捕獲到 step regex 就直接 push，沒有檢查步驟是否非
 **建議:** 加入基本驗證（non-empty、合理長度）。
 
 ---
-
+EditFileTool edit_file 流程改變
+1.顯示diff
+2.如果使用者模式需要(Edit, Always) 顯示User Reply
+3.如果使用者回復yes 或是不需要使用者回復 執行寫入
 
 ## 其他觀察
 

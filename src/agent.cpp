@@ -6,6 +6,7 @@
 #include "self_reflector.h"
 #include "multi_agent.h"
 #include "logger.h"
+#include "file_utils.h"
 
 namespace agent {
 
@@ -178,13 +179,34 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             }
 
             // ── User Reply: pre-execution check (Exec/Edit/Always mode) ──
-            if (user_reply_mode_ == UserReplyMode::Exec && tc.name == "execute_command") {
+
+            // Special handling for edit_file: show diff before prompting user
+            if (tc.name == "edit_file") {
+                try {
+                    auto arg = json::parse(tc.arguments);
+                    std::string old_text = arg.value("old_text", "");
+                    std::string new_text = arg.value("new_text", "");
+                    // Show diff of the change before executing
+                    std::string diff = DiffEdit(old_text, new_text);
+                    LOG_INFO(u8"📝Diff", diff);
+                } catch (...) {
+                    // If parsing fails, we'll let the normal validation below handle it
+                }
+
+                if (user_reply_mode_ == UserReplyMode::Edit || user_reply_mode_ == UserReplyMode::Always) {
+                    auto reply = prompt_user_reply(tc.name, tc.arguments);
+                    if (reply.action == ReplyAction::No) {
+                        LOG_WARN("Tool", "Skipped: " + tc.name);
+                        continue;
+                    }
+                }
+            } else if (user_reply_mode_ == UserReplyMode::Exec && tc.name == "execute_command") {
                 auto reply = prompt_user_reply(tc.name, tc.arguments);
                 if (reply.action == ReplyAction::No) {
                     LOG_WARN("Tool", "Skipped: " + tc.name);
                     continue;
                 }
-            } else if (user_reply_mode_ == UserReplyMode::Edit && (tc.name == "edit_file" || tc.name == "write_file")) {
+            } else if (user_reply_mode_ == UserReplyMode::Edit && tc.name == "write_file") {
                 auto reply = prompt_user_reply(tc.name, tc.arguments);
                 if (reply.action == ReplyAction::No) {
                     LOG_WARN("Tool", "Skipped: " + tc.name);

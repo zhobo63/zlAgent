@@ -7,6 +7,11 @@
 
 namespace agent {
 
+SafetyGuard& SafetyGuard::get_instance() {
+    static SafetyGuard instance;
+    return instance;
+}
+
 // Case-insensitive substring search — no copy of the haystack.
 static bool contains_ci(const std::string& haystack, const char* needle) {
     size_t nlen = strlen(needle);
@@ -68,22 +73,24 @@ bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
 // 2. Path whitelist
 // ============================================================================
 
-static std::vector<std::string> g_path_whitelist;
-
 void SafetyGuard::set_path_whitelist(const std::vector<std::string>& dirs) {
-    g_path_whitelist.clear();
+    path_whitelist_.clear();
     for (const auto& d : dirs) {
-        g_path_whitelist.push_back(normalize_path(d));
+        path_whitelist_.push_back(normalize_path(d));
     }
 }
 
-const std::vector<std::string>& SafetyGuard::get_path_whitelist() {
-    return g_path_whitelist;
+const std::vector<std::string>& SafetyGuard::get_path_whitelist() const {
+    return path_whitelist_;
 }
 
-bool SafetyGuard::is_path_allowed(const std::string& path) {
+void SafetyGuard::reset_path_whitelist() {
+    path_whitelist_.clear();
+}
+
+bool SafetyGuard::is_path_allowed(const std::string& path) const {
     // Empty whitelist = no restriction.
-    if (g_path_whitelist.empty()) return true;
+    if (path_whitelist_.empty()) return true;
 
     std::string norm = normalize_path(path);
     return is_under_allowed_dir(norm);
@@ -102,8 +109,8 @@ std::string SafetyGuard::normalize_path(const std::string& path) {
     return result;
 }
 
-bool SafetyGuard::is_under_allowed_dir(const std::string& normalized_path) {
-    for (const auto& allowed : g_path_whitelist) {
+bool SafetyGuard::is_under_allowed_dir(const std::string& normalized_path) const {
+    for (const auto& allowed : path_whitelist_) {
         // Check if the path starts with the allowed directory.
         if (normalized_path.compare(0, allowed.size(), allowed) == 0) {
             return true;

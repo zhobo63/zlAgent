@@ -4,18 +4,21 @@
 using namespace agent;
 
 TEST_CASE("SafetyGuard: path whitelist allows matching paths", "[safety]") {
-    SafetyGuard::set_path_whitelist({"C:/allowed"});
-    REQUIRE(SafetyGuard::is_path_allowed("C:/allowed/file.txt") == true);
+    auto& sg = SafetyGuard::get_instance();
+    sg.set_path_whitelist({"C:/allowed"});
+    REQUIRE(sg.is_path_allowed("C:/allowed/file.txt") == true);
 }
 
 TEST_CASE("SafetyGuard: path whitelist blocks non-matching paths", "[safety]") {
-    SafetyGuard::set_path_whitelist({"C:/allowed"});
-    REQUIRE(SafetyGuard::is_path_allowed("D:/forbidden/file.txt") == false);
+    auto& sg = SafetyGuard::get_instance();
+    sg.set_path_whitelist({"C:/allowed"});
+    REQUIRE(sg.is_path_allowed("D:/forbidden/file.txt") == false);
 }
 
 TEST_CASE("SafetyGuard: empty whitelist allows all paths", "[safety]") {
-    SafetyGuard::set_path_whitelist({});
-    REQUIRE(SafetyGuard::is_path_allowed("/any/path/here") == true);
+    auto& sg = SafetyGuard::get_instance();
+    sg.reset_path_whitelist();
+    REQUIRE(sg.is_path_allowed("/any/path/here") == true);
 }
 
 TEST_CASE("SafetyGuard: prompt injection detection", "[safety]") {

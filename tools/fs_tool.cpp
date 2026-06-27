@@ -112,7 +112,7 @@ public:
             if (path.empty()) return "Error: No path provided.";
 
             // Safety: path whitelist check.
-            if (!SafetyGuard::is_path_allowed(path)) {
+            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 

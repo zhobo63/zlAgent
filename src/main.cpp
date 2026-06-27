@@ -114,7 +114,7 @@ int main() {
 
     // === Safety setup ===
     if (!cfg.safety.path_whitelist.empty()) {
-        agent::SafetyGuard::set_path_whitelist(cfg.safety.path_whitelist);
+        agent::SafetyGuard::get_instance().set_path_whitelist(cfg.safety.path_whitelist);
         {
             std::string paths;
             for (size_t i = 0; i < cfg.safety.path_whitelist.size(); ++i) {

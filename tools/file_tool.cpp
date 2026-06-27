@@ -72,7 +72,7 @@ public:
             if (content.empty()) return "Error: No content provided. For large files, consider using edit_file to make targeted changes instead of write_file.";
 
             // Safety: path whitelist check.
-            if (!SafetyGuard::is_path_allowed(path)) {
+            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 
@@ -130,7 +130,7 @@ public:
             if (old_text.empty()) return "Error: No old_text provided.";
 
             // Safety: path whitelist check.
-            if (!SafetyGuard::is_path_allowed(path)) {
+            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 
