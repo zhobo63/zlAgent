@@ -117,4 +117,8 @@ private:
     std::string run_planned(const std::string& user_input, ChatResponse& resp, TokenCallback on_token);
 };
 
+// Global Agent accessor (set by main.cpp, used by completion system).
+Agent* get_global_agent();
+void set_global_agent(Agent* ag);
+
 } // namespace agent

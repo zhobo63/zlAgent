@@ -17,6 +17,7 @@
 │   ├── safety_guard.h    # 安全防護（危險操作確認/路徑白名單/輸入過濾）
 │   ├── system_prompt.h   # 多語言系統提示詞提供者
 │   ├── language_detector.h # 自動語言偵測（副檔名掃描）
+│   ├── completion.h      # Isocline Tab 自動補全回呼 |
 │   ├── task_planner.h    # 🆕 任務規劃（拆解複雜任務為子步驟）
 │   ├── self_reflector.h  # 🆕 自我反思/糾錯（品質審查 + 自動重試）
 │   └── multi_agent.h     # 🆕 多 Agent 協作（Coder / Reviewer / Tester）
@@ -35,6 +36,7 @@
 │   ├── task_planner.cpp  # 🆕 LLM-driven 計劃生成 + replan
 │   ├── self_reflector.cpp# 🆕 品質審查 + 反饋重試
 │   └── multi_agent.cpp   # 🆕 SubAgent 路由 + Coder→Reviewer pipeline
+├── completion/           # Isocline Tab 自動補全
 ├── tools/                # 工具實現
 │   ├── file_tool.cpp         # read_file / write_file / edit_file
 │   ├── terminal_tool.cpp     # execute_command（跨平台）
@@ -93,13 +95,13 @@ Agent: [Planner] Generating task plan...
        **Steps executed:** (all completed successfully)
 ```
 
-## 工具列表（17 個內建）
+## 工具列表（21 個內建）
 
 | 工具 | 功能 |
 |------|------|
 | `read_file` | 讀取文件內容 |
-| `write_file` | 寫入/創建文件（全量覆蓋） |
-| `edit_file` | 精準編輯（查找 old_text → 替換 new_text） |
+| `write_file` | 寫入/創建文件（全量覆蓋，若檔案已存在則顯示 diff） |
+| `edit_file` | 精準編輯（查找 old_text → 替換 new_text，執行前顯示 diff） |
 | `list_directory` | 列出目錄中的文件和資料夾 |
 | `execute_command` | 執行 shell 命令（編譯、運行等，跨平台） |
 | `search_code` | 遞迴 regex 搜尋代碼 |
@@ -114,6 +116,7 @@ Agent: [Planner] Generating task plan...
 | `git_status` | 結構化 git status 輸出 |
 | `git_diff` | unified diff 輸出 |
 | `fetch_url` | 抓取網頁內容轉 Markdown |
+| `read_file_lines` | 高效能檔案行範圍讀取（指定 start/end line） |
 
 ## 全域設定（INI）
 
@@ -412,6 +415,7 @@ auto_extract_facts = true
 | `/save-session` | 立即將當前會話保存到長期記憶 |
 | `/search-kb query` | CLI 直接搜尋 RAG 知識庫 |
 | `/add-doc path` | 將檔案/目錄加入 RAG 知識庫 |
+| `/reply-mode [off/on_error/always]` | 設定使用者介入模式（顯示當前模式） |
 | `/quit`, `/exit` | 退出程式 |
 | **Terminal shortcut** | Shell 命令自動偵測並直接執行，不經 LLM（見下方 Terminal Command Direct Execution） |
 
@@ -439,6 +443,71 @@ user_reply_mode = off    # off, on_error, always
 | **Abort** | 終止整個推理循環 |
 | **Edit** | 修改工具參數後再執行 |
 | **Custom** | 注入自訂訊息到對話中 |
+
+### Edit / Always 模式 — Diff 顯示與確認
+
+當 `user_reply_mode` 為 `edit` 或 `always` 時，Agent 在執行檔案寫入/編輯操作前會：
+
+1. **讀取現有檔案**（若存在）
+2. **顯示 diff**（新增/刪除行），讓使用者確認修改內容
+3. **等待使用者確認**（y/n）
+4. 使用者按 `y` → 繼續執行；按 `n` → 中止操作
+
+---
+
+## Isocline Tab 自動補全
+
+Agent 使用 isocline 作為 CLI 輸入引擎，支援按下 Tab 鍵時的命令和參數自動補全。
+
+### 基礎命令補全
+
+輸入以 `/` 開頭的文字時，Tab 會觸發命令補全：
+- **無參數** → 顯示所有可用命令（若 text 不完整則過濾）
+- **唯一匹配** → 單次 Tab 自動插入
+- **多個匹配** → 多次 Tab 列出所有選項
+
+### 命令參數補全
+
+不同命令有不同的參數類型，根據上下文提供不同的補全選項：
+
+| 命令 | 補全內容 |
+|------|----------|
+| `/model` | 模型編號（透過 `get_global_agent()` 取得可用模型） |
+| `/reply` | 模式（off, exec, edit, always） |
+| `/facts` | prefix 過濾補全（列出已知 fact key） |
+| `/sessions` | n（數量）補全（建議 5/10/20） |
+| `/search-kb` | 查詢詞補全（目前無 API，保留擴充空間） |
+| `/add-doc` | 檔案路徑補全（使用 `ic_complete_filename()`） |
+
+### /reply 命令 — 使用者介入模式設定
+
+```bash
+/reply-mode off       # 關閉介入（完全自動）
+/reply-mode on_error  # 工具失敗時暫停
+/reply-mode always    # 每次工具調用前暫停
+```
+
+| 選項 | 說明 |
+|------|------|
+| `off` | 完全自動，不暫停（預設） |
+| `on_error` | 僅在工具執行失敗時暫停 |
+| `always` | 每次工具呼叫前都暫停，等待使用者確認或修改參數 |
+
+### Tab 補全示例
+
+```bash
+# 輸入 /m → Tab → 自動補全為 /model
+$ /m[TAB]
+/model 
+
+# 輸入 /reply → Tab → 顯示所有模式選項
+$ /reply[TAB]
+off    exec    edit    always
+
+# 輸入 /add-doc src/ → Tab → 目錄跳躍
+$ /add-doc src/[TAB]
+/add-doc src/main.cpp
+```
 
 ## 日誌等級設定
 

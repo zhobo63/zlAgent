@@ -38,10 +38,11 @@ void register_command_handlers(
             "  /search-kb query   Search knowledge base directly from CLI\n"
             "  /add-doc path      Add a file or directory to the knowledge base\n"
             "\nUser Reply (intervention):\n"
-            "  /reply-mode        Show current user reply mode\n"
-            "  /reply-mode off    Disable intervention (fully automatic)\n"
-            "  /reply-mode on_error  Pause when a tool call fails\n"
-            "  /reply-mode always   Pause before every tool call\n"
+            "  /reply             Show current user reply mode\n"
+            "  /reply off         Disable intervention (fully automatic)\n"
+            "  /reply exec        Pause before terminal command calls\n"
+            "  /reply edit        Pause before file edit/write calls\n"
+            "  /reply always      Pause before every tool call\n"
             "\nTerminal command shortcut:\n"
             "  Shell commands are auto-detected and executed directly, bypassing the LLM.\n"
             "  Safe commands (ls, git status, etc.) run immediately; risky ones ask first.\n"
@@ -446,6 +447,21 @@ void register_command_handlers(
         }
 
         LOG_INFO("Command", "  Total chunks now: " + std::to_string(rag->total_chunks()));
+    });
+
+    // ── /reply [mode] ──────────────────────────────────────
+    dispatcher.register_command("reply", [ag](const std::vector<std::string>& args) {
+        if (!ag) return;
+
+        if (args.empty()) {
+            // Show current mode.
+            LOG_INFO("Command", "  Current user reply mode: " + std::string(reply_mode_to_string(ag->get_user_reply_mode())));
+            return;
+        }
+
+        auto mode = parse_reply_mode(args[0]);
+        ag->set_user_reply_mode(mode);
+        LOG_INFO("Command", "  User reply mode set to: " + std::string(reply_mode_to_string(mode)));
     });
 
 } // register_command_handlers

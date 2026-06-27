@@ -8,6 +8,8 @@ namespace agent {
 ToolPtr create_read_file_tool();
 ToolPtr create_read_file_lines_tool();
 ToolPtr create_write_file_tool();
+ToolPtr create_append_file_tool();
+ToolPtr create_insert_file_content_tool();
 ToolPtr create_edit_file_tool();
 ToolPtr create_list_directory_tool();
 ToolPtr create_terminal_tool();

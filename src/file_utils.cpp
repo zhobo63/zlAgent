@@ -124,4 +124,293 @@ std::string DiffEdit(const std::string& old_text, const std::string& new_text) {
     return oss.str();
 }
 
+// ── Helpers for GenerateFileOutline ───────────────────────
+
+static std::string trim_outline(const std::string& s) {
+    size_t start = 0, end = s.size();
+    while (start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r')) start++;
+    while (end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r')) end--;
+    return s.substr(start, end - start);
+}
+
+static std::string get_extension_outline(const std::string& path) {
+    auto pos = path.rfind('.');
+    if (pos == std::string::npos) return "";
+    std::string ext = path.substr(pos);
+    for (auto& c : ext) c = static_cast<char>(std::tolower(c));
+    return ext;
+}
+
+static bool is_in_comment_outline(const std::string& line) {
+    auto trimmed = trim_outline(line);
+    if (trimmed.empty()) return false;
+    if (trimmed[0] == '/' && trimmed.size() >= 2 && (trimmed[1] == '/' || trimmed[1] == '*'))
+        return true;
+    if (trimmed[0] == '#')
+        return true;
+    return false;
+}
+
+static bool is_keyword_outline(const std::string& s) {
+    static const char* keywords[] = {
+        "if", "else", "for", "while", "do", "switch", "case",
+        "return", "break", "continue", "goto", "try", "catch",
+        "throw", "new", "delete", "sizeof", "typeof",
+        "int", "float", "double", "char", "bool", "void",
+        "long", "short", "unsigned", "signed", "const", "static",
+        "virtual", "override", "final", "inline", "explicit",
+        "public", "private", "protected", "friend", "typedef",
+        "using", "template", "typename", "auto", "constexpr",
+        "nullptr", "true", "false", "namespace", "class", "struct"
+    };
+    for (const auto* kw : keywords) {
+        if (s == kw) return true;
+    }
+    return false;
+}
+
+static std::string extract_identifier_outline(const std::string& s, size_t pos) {
+    if (pos >= s.size()) return "";
+    while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t')) pos++;
+    if (pos >= s.size()) return "";
+    size_t start = pos;
+    while (pos < s.size() && (std::isalnum(static_cast<unsigned char>(s[pos])) || s[pos] == '_'))
+        pos++;
+    return trim_outline(s.substr(start, pos - start));
+}
+
+struct RawSymbol {
+    int start_line;  // 1-based
+    std::string kind;
+    std::string name;
+    int depth;       // nesting level at time of discovery
+};
+
+static void parse_cpp_outline(const std::vector<std::string>& lines,
+                              const std::string& ext,
+                              std::vector<RawSymbol>& out) {
+    (void)ext;
+    int brace_depth = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        // namespace Name {
+        auto ns_pos = trimmed.find("namespace ");
+        if (ns_pos != std::string::npos) {
+            std::string name = extract_identifier_outline(trimmed, ns_pos + 10);
+            if (!name.empty()) {
+                out.push_back({i + 1, "namespace", name, brace_depth});
+            }
+            for (char c : trimmed) {
+                if (c == '{') brace_depth++;
+                else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+            }
+            continue;
+        }
+
+        // class Name { or struct Name {
+        for (const auto& kw : {std::string("class "), std::string("struct ")}) {
+            size_t pos = trimmed.find(kw);
+            if (pos != std::string::npos) {
+                std::string name = extract_identifier_outline(trimmed, pos + kw.size());
+                if (!name.empty()) {
+                    out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                }
+                for (char c : trimmed) {
+                    if (c == '{') brace_depth++;
+                    else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+                }
+                goto next_line_cpp;
+            }
+        }
+
+        // Function: type name(...)
+        size_t paren = trimmed.find('(');
+        if (paren != std::string::npos && paren > 0) {
+            std::string before_paren = trim_outline(trimmed.substr(0, paren));
+            if (!before_paren.empty() && !is_keyword_outline(before_paren)) {
+                size_t last_space = before_paren.find_last_of(' ');
+                std::string fname;
+                if (last_space != std::string::npos && last_space > 0) {
+                    fname = trim_outline(before_paren.substr(last_space + 1));
+                } else {
+                    fname = before_paren;
+                }
+                if (!fname.empty() && !is_keyword_outline(fname)) {
+                    out.push_back({i + 1, "function", fname, brace_depth});
+                }
+            }
+        }
+
+        // Count braces on this line (for non-symbol lines too)
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
+            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        }
+
+    next_line_cpp:;
+    }
+}
+
+static void parse_python_outline(const std::vector<std::string>& lines,
+                                  const std::string& ext,
+                                  std::vector<RawSymbol>& out) {
+    (void)ext;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        int indent = 0;
+        for (char c : lines[i]) {
+            if (c == ' ') indent++;
+            else if (c == '\t') indent += 4;
+            else break;
+        }
+        int depth = indent / 4;
+
+        if (trimmed.substr(0, 4) == "def ") {
+            size_t paren = trimmed.find('(');
+            if (paren != std::string::npos) {
+                std::string name = trim_outline(trimmed.substr(4, paren - 4));
+                if (!name.empty()) {
+                    out.push_back({i + 1, "function", name, depth});
+                }
+            }
+        } else if (trimmed.substr(0, 6) == "class ") {
+            size_t colon = trimmed.find(':');
+            size_t paren = trimmed.find('(');
+            size_t end = std::min((colon != std::string::npos ? colon : trimmed.size()),
+                                  (paren != std::string::npos ? paren : trimmed.size()));
+            if (end > 6) {
+                std::string name = trim_outline(trimmed.substr(6, end - 6));
+                if (!name.empty()) {
+                    out.push_back({i + 1, "class", name, depth});
+                }
+            }
+        }
+    }
+}
+
+static void parse_js_outline(const std::vector<std::string>& lines,
+                              const std::string& ext,
+                              std::vector<RawSymbol>& out) {
+    (void)ext;
+    int brace_depth = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        auto func_pos = trimmed.find("function ");
+        if (func_pos != std::string::npos) {
+            size_t paren = trimmed.find('(', func_pos);
+            if (paren != std::string::npos && paren > func_pos + 9) {
+                std::string name = trim_outline(trimmed.substr(func_pos + 9, paren - func_pos - 9));
+                if (!name.empty()) {
+                    out.push_back({i + 1, "function", name, brace_depth});
+                }
+            }
+        } else if (trimmed.find("class ") != std::string::npos) {
+            size_t pos = trimmed.find("class ");
+            size_t brace = trimmed.find('{');
+            size_t paren = trimmed.find('(');
+            size_t end = trimmed.size();
+            if (brace != std::string::npos) end = std::min(end, brace);
+            if (paren != std::string::npos) end = std::min(end, paren);
+            if (end > pos + 6) {
+                std::string name = trim_outline(trimmed.substr(pos + 6, end - pos - 6));
+                if (!name.empty()) {
+                    out.push_back({i + 1, "class", name, brace_depth});
+                }
+            }
+        }
+
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
+            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        }
+    }
+}
+
+std::string GenerateFileOutline(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) return "";
+
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        lines.push_back(line);
+    }
+    file.close();
+
+    if (lines.empty()) return "File is empty.";
+
+    std::string ext = get_extension_outline(path);
+
+    // Parse symbols with depth tracking
+    std::vector<RawSymbol> raw_symbols;
+
+    if (ext == ".cpp" || ext == ".h" || ext == ".hpp" || ext == ".cc" || ext == ".cxx") {
+        parse_cpp_outline(lines, ext, raw_symbols);
+    } else if (ext == ".py") {
+        parse_python_outline(lines, ext, raw_symbols);
+    } else if (ext == ".js" || ext == ".ts" || ext == ".jsx" || ext == ".tsx") {
+        parse_js_outline(lines, ext, raw_symbols);
+    }
+
+    if (raw_symbols.empty()) return "No symbols found in '" + path + "'.";
+
+    // Compute end_line for each symbol:
+    // A symbol's range ends just before the next symbol at same or shallower depth.
+    std::vector<OutlineSymbol> symbols;
+    int total_lines = static_cast<int>(lines.size());
+
+    for (int i = 0; i < static_cast<int>(raw_symbols.size()); i++) {
+        OutlineSymbol sym;
+        sym.start_line = raw_symbols[i].start_line;
+        sym.kind = raw_symbols[i].kind;
+        sym.name = raw_symbols[i].name;
+        sym.depth = raw_symbols[i].depth;
+
+        int end = total_lines; // default to last line
+        for (int j = i + 1; j < static_cast<int>(raw_symbols.size()); j++) {
+            if (raw_symbols[j].depth <= raw_symbols[i].depth) {
+                end = raw_symbols[j].start_line - 1;
+                break;
+            }
+        }
+
+        sym.end_line = end;
+        symbols.push_back(sym);
+    }
+
+    // Format output
+    std::ostringstream oss;
+    oss << "# File outline for " << path << "\n\n";
+
+    for (const auto& sym : symbols) {
+        // Indentation: one space per depth level
+        for (int d = 0; d < sym.depth; d++) {
+            oss << " ";
+        }
+
+        if (sym.kind == "function") {
+            oss << sym.name << "()";
+        } else {
+            oss << sym.kind << " " << sym.name;
+        }
+
+        // Range: show [Lstart-end] for multi-line, [Lline] for single-line
+        if (sym.end_line > sym.start_line) {
+            oss << " [L" << sym.start_line << "-" << sym.end_line << "]";
+        } else {
+            oss << " [L" << sym.start_line << "]";
+        }
+
+        oss << "\n";
+    }
+
+    return oss.str();
+}
+
 } // namespace agent

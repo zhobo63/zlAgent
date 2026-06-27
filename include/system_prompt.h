@@ -10,9 +10,9 @@ namespace agent {
  */
 class SystemPromptProvider {
 public:
-    // Get the built-in system prompt for the given language identifier.
-    // "multi" (default) → universal C++/JS/TS/Python/Rust/Go/Java prompt.
-    // "cpp", "js", "ts", "python", "rust", "go", "java" → language-specific.
+    // Get the built-in system prompt. Always returns the multi-language prompt
+    // covering C++/JS/TS/Python/Rust/Go/Java. The `language` parameter is kept
+    // for API compatibility but ignored.
     static std::string get(const std::string& language = "multi");
 
 private:

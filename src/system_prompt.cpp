@@ -50,8 +50,7 @@ static std::string build_prompt(const json& lang) {
 }
 
 // ── Try to load prompts from system_prompt.json ──────────────────────────────
-static bool try_load_json(const std::string& language, json* root_out) {
-    // Search locations: current working directory first, then next to the source file.
+static bool try_load_json(json* root_out) {
     static const char* candidates[] = {
         "system_prompt.json",
         "./system_prompt.json",
@@ -63,10 +62,8 @@ static bool try_load_json(const std::string& language, json* root_out) {
 
         try {
             json root = json::parse(f);
-            if (root.contains("languages") && root["languages"].contains(language)) {
-                *root_out = root["languages"][language];
-                return true;
-            }
+            *root_out = root["languages"]["multi"];
+            return true;
         } catch (const std::exception& e) {
             LOG_ERROR("SystemPrompt", "JSON parse error: " + std::string(e.what()));
         }
@@ -75,24 +72,24 @@ static bool try_load_json(const std::string& language, json* root_out) {
     return false;
 }
 
-// ── Hardcoded fallback prompts (identical to the original implementation) ────
-static std::string hardcoded_prompt(const std::string& language);
+// ── Hardcoded fallback prompt ───────────────────────────────────────────────
+static std::string hardcoded_fallback();
 
-std::string SystemPromptProvider::get(const std::string& language) {
+std::string SystemPromptProvider::get(const std::string& /*language*/) {
     // Try loading from system_prompt.json first.
     json lang_entry;
 
-    if (try_load_json(language, &lang_entry)) {
+    if (try_load_json(&lang_entry)) {
         return build_prompt(lang_entry);
     }
 
-    // Fall back to hardcoded prompts.
-    return hardcoded_prompt(language);
+    // Fall back to hardcoded prompt.
+    return hardcoded_fallback();
 }
 
-// ── Hardcoded fallbacks ─────────────────────────────────────────────────────
+// ── Hardcoded fallback ──────────────────────────────────────────────────────
 
-static std::string hardcoded_prompt(const std::string& language) {
+static std::string hardcoded_fallback() {
     // NOTE: Tool names/descriptions are NOT listed here — they are already sent
     // via the OpenAI-compatible 'tools' field with full JSON Schema. Listing them
     // in the system prompt wastes tokens.
@@ -100,16 +97,36 @@ static std::string hardcoded_prompt(const std::string& language) {
 
 **IMPORTANT: You have access to tools (functions) that you MUST use to interact with the filesystem, run commands, search code, etc. Always call the appropriate tool instead of making assumptions or pretending you can do things directly.**
 
+Core capabilities:
+- Browse directories using list_directory
+- Read files using read_file
+- Read a specific line range from a file using read_file_lines (more efficient for large files)
+- Write new files or overwrite existing ones using write_file
+- Apply precise edits to existing files using edit_file (find old_text, replace with new_text)
+- Execute commands (compile, run tests, lint) using execute_command
+- Search code patterns in source files using search_code
+- Create directories using create_directory
+- Delete files or directories recursively using delete_path
+- Copy files or directories using copy_path
+- Move or rename files/directories using move_path
+- Find files by glob pattern using find_files
+- Get file symbol outline using get_file_outline
+- Search with context lines using grep_with_context
+- Run build commands and parse errors using run_build
+- Check git status using git_status
+- View git diff using git_diff
+- Fetch web pages and convert to Markdown using fetch_url
+
 Guidelines:
-1. Always list the directory and read existing files before modifying them — USE THE TOOLS PROVIDED for this
-2. Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation
-3. Write clean, idiomatic code following each language's best practices
-4. Compile/build and test your code after writing it — USE THE TOOLS PROVIDED for this
-5. Explain your changes concisely
-6. If compilation fails, analyze errors and fix them iteratively
-7. Check current directory and use relative paths for all file operations
-8. **NEVER** answer from memory about file contents or filesystem state — always call the relevant tool to get real data
-9. **NEVER** skip tool calls even if you think you know the answer — always verify with tools first
+1. Always list the directory and read existing files before modifying them — use the tools for this, do not guess
+2. When reading large files, avoid reading the entire content at once — check file size first or read in chunks (e.g. 100 lines at a time) using read_file with line ranges
+3. Prefer edit_file for targeted modifications; use write_file only for small new files. For large files, break into multiple edit_file calls to avoid token truncation
+4. Write clean, idiomatic code following each language's best practices
+5. Compile/build and test your code after writing it — use the tools for this
+6. Explain your changes concisely
+7. If compilation fails, analyze errors and fix them iteratively
+8. Check current directory and use relative paths for all file operations
+9. **NEVER skip tool calls even if you think you know the answer — always verify with tools first**
 
 Language-specific notes:
 - C++: Use modern C++ (C++17/20), prefer smart pointers over raw ownership

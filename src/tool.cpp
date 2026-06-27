@@ -26,11 +26,19 @@ std::vector<ToolDefinition> ToolRegistry::get_definitions() const {
     return defs;
 }
 
-std::string ToolRegistry::execute(const std::string& tool_name, const std::string& json_args) {
+ToolPtr ToolRegistry::find_tool(const std::string& tool_name) {
     auto it = tools_.find(tool_name);
     if (it != tools_.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+std::string ToolRegistry::execute(const std::string& tool_name, const std::string& json_args) {
+    auto ptr = find_tool(tool_name);
+    if (ptr) {
         try {
-            return it->second->execute(json_args);
+            return ptr->execute(json_args);
         } catch (const std::exception& e) {
             return "Error executing tool '" + tool_name + "': " + e.what();
         }

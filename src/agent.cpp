@@ -12,6 +12,11 @@ namespace agent {
 
 using json = nlohmann::json;
 
+static Agent* g_agent = nullptr;
+
+Agent* get_global_agent() { return g_agent; }
+void set_global_agent(Agent* ag) { g_agent = ag; }
+
 Agent::Agent(const std::string& llm_url, const std::string& model)
     : llm_(llm_url, model) {}
 
@@ -180,43 +185,22 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
             // ── User Reply: pre-execution check (Exec/Edit/Always mode) ──
 
-            // Special handling for edit_file: show diff before prompting user
-            if (tc.name == "edit_file") {
+            auto tool_ptr = registry_.find_tool(tc.name);
+            if (tool_ptr) {
+                // Show preview before execution
                 try {
-                    auto arg = json::parse(tc.arguments);
-                    std::string old_text = arg.value("old_text", "");
-                    std::string new_text = arg.value("new_text", "");
-                    // Show diff of the change before executing
-                    std::string diff = DiffEdit(old_text, new_text);
-                    LOG_INFO(u8"📝Diff", diff);
+                    tool_ptr->show_preview(tc.arguments);
                 } catch (...) {
-                    // If parsing fails, we'll let the normal validation below handle it
+                    // If preview fails, continue without it
                 }
 
-                if (user_reply_mode_ == UserReplyMode::Edit || user_reply_mode_ == UserReplyMode::Always) {
+                // Ask user for confirmation if needed
+                if (tool_ptr->needs_user_reply(user_reply_mode_)) {
                     auto reply = prompt_user_reply(tc.name, tc.arguments);
                     if (reply.action == ReplyAction::No) {
                         LOG_WARN("Tool", "Skipped: " + tc.name);
                         continue;
                     }
-                }
-            } else if (user_reply_mode_ == UserReplyMode::Exec && tc.name == "execute_command") {
-                auto reply = prompt_user_reply(tc.name, tc.arguments);
-                if (reply.action == ReplyAction::No) {
-                    LOG_WARN("Tool", "Skipped: " + tc.name);
-                    continue;
-                }
-            } else if (user_reply_mode_ == UserReplyMode::Edit && tc.name == "write_file") {
-                auto reply = prompt_user_reply(tc.name, tc.arguments);
-                if (reply.action == ReplyAction::No) {
-                    LOG_WARN("Tool", "Skipped: " + tc.name);
-                    continue;
-                }
-            } else if (user_reply_mode_ == UserReplyMode::Always) {
-                auto reply = prompt_user_reply(tc.name, tc.arguments);
-                if (reply.action == ReplyAction::No) {
-                    LOG_WARN("Tool", "Skipped: " + tc.name);
-                    continue;
                 }
             }
 

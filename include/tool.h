@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <functional>
 #include "llm_client.h"
+#include "user_reply.h"
 
 namespace agent {
 
@@ -22,6 +23,16 @@ public:
 
     // Execute the tool with JSON arguments string, return result as string
     virtual std::string execute(const std::string& json_args) = 0;
+
+    // Show a preview (e.g. diff) before execution. Override to provide custom preview.
+    // Default does nothing.
+    virtual void show_preview(const std::string& /*json_args*/) {}
+
+    // Whether this tool requires user confirmation in the given mode.
+    // Default: only when Always mode is active.
+    virtual bool needs_user_reply(UserReplyMode mode) const {
+        return mode == UserReplyMode::Always;
+    }
 
     // Convert to LLM-compatible ToolDefinition
     ToolDefinition to_definition() const {
@@ -42,6 +53,9 @@ public:
 
     // Find and execute a tool by name
     std::string execute(const std::string& tool_name, const std::string& json_args);
+
+    // Find a tool by name (returns nullptr if not found)
+    ToolPtr find_tool(const std::string& tool_name);
 
  private:
     std::unordered_map<std::string, ToolPtr> tools_;

@@ -21,4 +21,20 @@ std::string ReadFileLinesAsString(const std::string& path, int startLine, int en
 /// Context lines (unchanged) are shown without color.
 std::string DiffEdit(const std::string& old_text, const std::string& new_text);
 
+// -----------------------------------------------------------------------
+// File outline helpers
+// -----------------------------------------------------------------------
+
+struct OutlineSymbol {
+    int start_line;      // 1-based
+    int end_line;        // 0 if single-line item, otherwise 1-based inclusive
+    std::string kind;    // "namespace", "class", "struct", "function"
+    std::string name;
+    int depth;           // nesting level (0 = top-level)
+};
+
+/// Generate a file outline with symbol names and line ranges.
+/// Returns empty string on failure or if the file has no recognizable symbols.
+std::string GenerateFileOutline(const std::string& path);
+
 } // namespace agent

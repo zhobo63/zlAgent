@@ -45,6 +45,8 @@ set(CORE_SOURCES
     # User reply (intervention during reasoning loop)
     src/user_reply.cpp
     src/reply_mode_command.cpp
+    # Isocline auto-completion
+    src/completion.cpp
 )
 
 # Tool source files

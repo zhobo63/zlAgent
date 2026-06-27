@@ -34,6 +34,10 @@ public:
         return schema.dump();
     }
 
+    bool needs_user_reply(UserReplyMode mode) const override {
+        return mode == UserReplyMode::Exec || mode == UserReplyMode::Always;
+    }
+
     std::string execute(const std::string& json_args) override {
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";

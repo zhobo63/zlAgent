@@ -19,6 +19,7 @@
 #include "tools.h"
 #include "plugin_loader.h"
 #include "local_tools.h"
+#include "completion.h"
 #include <isocline.h>
 #include "tui.h"
 
@@ -97,6 +98,10 @@ int main() {
     // Initialize isocline for rich console input (handles terminal setup on all platforms)
     ic_init(false);
     ic_set_history(nullptr, MAX_HISTORY);
+
+    // Register auto-completion callback for slash commands
+    agent::register_completion();
+
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
 
@@ -111,6 +116,7 @@ int main() {
     LOG_INFO("LLM", cfg.llm.url);
     LOG_DEBUG("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
     agent::Agent ag(cfg.llm.url, cfg.llm.model);
+    set_global_agent(&ag);
 
     // === Safety setup ===
     if (!cfg.safety.path_whitelist.empty()) {
@@ -179,6 +185,8 @@ int main() {
     ag.add_tool(agent::create_read_file_tool());
     ag.add_tool(agent::create_read_file_lines_tool());
     ag.add_tool(agent::create_write_file_tool());
+    ag.add_tool(agent::create_append_file_tool());
+    ag.add_tool(agent::create_insert_file_content_tool());
     ag.add_tool(agent::create_edit_file_tool());
     ag.add_tool(agent::create_list_directory_tool());
     ag.add_tool(agent::create_terminal_tool());

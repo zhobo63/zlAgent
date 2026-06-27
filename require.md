@@ -270,6 +270,15 @@ struct TokenUsage {
 | 參數 | `path` (string, required) |
 | 功能 | 讀取檔案完整內容並回傳文字 |
 | 錯誤處理 | 檔案不存在時回傳錯誤訊息 |
+| **SafetyGuard** | 路徑白名單檢查，超出允許目錄時拒絕操作 |
+
+#### read_file_lines
+| 項目 | 要求 |
+|------|------|
+| 參數 | `path` (string, required), `start_line` (int, required), `end_line` (int, required) |
+| 功能 | 讀取檔案的指定行範圍，適合大檔案只需部分內容時使用 |
+| 錯誤處理 | 檔案不存在或行號超出範圍時回傳錯誤訊息 |
+| **SafetyGuard** | 路徑白名單檢查，超出允許目錄時拒絕操作 |
 
 #### write_file
 | 項目 | 要求 |
@@ -277,6 +286,8 @@ struct TokenUsage {
 | 參數 | `path` (string), `content` (string)，均為 required |
 | 功能 | 建立或覆蓋寫入檔案內容 |
 | 回傳值 | 成功時報告寫入位元組數 |
+| **Diff 顯示** | 若檔案已存在，執行前讀取現有檔案並顯示 diff（新增/刪除行），讓使用者確認修改內容 |
+| **User Reply 整合** | 若 `user_reply_mode` 為 Edit / Always，在顯示 diff 後等待使用者確認（y/n） |
 
 #### edit_file
 | 項目 | 要求 |
@@ -284,13 +295,36 @@ struct TokenUsage {
 | 參數 | `path` (string, required), `old_text` (string, required), `new_text` (string, required) |
 | 功能 | 在檔案中精確查找 old_text 並替換為 new_text，支援多行比對 |
 | 唯一性檢查 | old_text 必須在檔案中只出現一次，否則報錯要求提供更多上下文 |
+| **Diff 顯示** | 執行前顯示 diff（新增/刪除行），讓使用者確認修改內容 |
+| **User Reply 整合** | 若 `user_reply_mode` 為 Edit / Always，在顯示 diff 後等待使用者確認（y/n） |
 
 #### list_directory
 | 項目 | 要求 |
 |------|------|
 | 參數 | `path` (string, required) |
 | 功能 | 列出目錄中的檔案和資料夾，回傳結構化檢視（資料夾帶 `/` 後綴） |
-| Windows 實現 | FindFirstFileA / FindNextFileA |
+| 實現 | std::filesystem::directory_iterator (C++17) |
+
+#### append_file
+| 項目 | 要求 |
+|------|------|
+| 參數 | `path` (string, required), `content` (string, required) |
+| 功能 | 在檔案末尾追加內容，不覆蓋現有內容。檔案不存在時建立新檔案 |
+| 回傳值 | 成功時報告寫入位元組數 |
+| **Diff 顯示** | 若檔案已存在，執行前讀取現有檔案並顯示 diff（新增行），讓使用者確認修改內容 |
+| **User Reply 整合** | 若 `user_reply_mode` 為 Edit / Always，在顯示 diff 後等待使用者確認（y/n） |
+| **SafetyGuard** | 路徑白名單檢查，超出允許目錄時拒絕操作 |
+
+#### insert_file_content
+| 項目 | 要求 |
+|------|------|
+| 參數 | `path` (string, required), `line_number` (int, required), `content` (string, required) |
+| 功能 | 在檔案的指定行號之前插入內容，原有行向下推移。支援多行插入 |
+| 回傳值 | 成功時報告 "Successfully inserted content before line N in 'path'" |
+| 錯誤處理 | 行號超出範圍時報錯；檔案不存在時報錯 |
+| **Diff 顯示** | 執行前模擬插入結果並顯示 diff，讓使用者確認修改內容 |
+| **User Reply 整合** | 若 `user_reply_mode` 為 Edit / Always，在顯示 diff 後等待使用者確認（y/n） |
+| **SafetyGuard** | 路徑白名單檢查，超出允許目錄時拒絕操作 |
 
 #### execute_command
 | 項目 | 要求 |
@@ -895,6 +929,107 @@ The skill is now available for use.
 | ESC 中斷串流 | 按 ESC 鍵可中斷正在串流的 LLM 輸出 |
 | Token 使用量顯示 | 每次回應後顯示 prompt/completion/total token 數 |
 | Terminal Command 直執行 | `/command` 之後、LLM 之前，自動判斷輸入是否為 shell 命令並直接執行（繞過 LLM） |
+
+---
+
+## 4.1 Isocline Tab 自動補全 (`completion.h/cpp`)
+
+**核心概念：** 使用 isocline 的 `ic_set_default_completer()` 註冊補全回呼函數，讓使用者在 CLI 中按下 Tab 鍵時獲得命令和參數的自動補全提示。
+
+### 4.1.1 基礎命令補全
+
+| 項目 | 要求 |
+|------|------|
+| **觸發條件** | 輸入以 `/` 開頭的文字（命令模式） |
+| **無參數時** | 顯示所有可用命令（若 text 不完整則過濾） |
+| **唯一匹配** | 單次 Tab → 自動插入補全結果 |
+| **多個匹配** | 多次 Tab → 列出所有選項 |
+
+### 4.1.2 命令參數補全
+
+不同命令有不同的參數類型，需要根據上下文提供不同的補全選項：
+
+| 命令 | 補全內容 |
+|------|----------|
+| `/model` | 模型編號（透過 `get_global_agent()` 取得可用模型） |
+| `/reply` | 模式（off, exec, edit, always） |
+| `/facts` | prefix 過濾補全（列出已知 fact key） |
+| `/sessions` | n（數量）補全（建議 5/10/20） |
+| `/search-kb` | 查詢詞補全（目前無 API，保留擴充空間） |
+| `/add-doc` | 檔案路徑補全（使用 `ic_complete_filename()`） |
+
+### 4.1.3 上下文感知切換
+
+isocline 的 `icl_set_completion()` 只接受單一回呼函數。為了支援不同命令的不同參數補全，需要一個統一的入口點：
+
+```cpp
+void context_aware_completions(const char *text, int start, int end) {
+    // 判斷目前是否正在輸入命令（以 / 開頭）
+    if (strlen(text) == 0 || text[0] != '/') return;
+    
+    auto tokens = tokenize_command(text);
+    
+    if (tokens.size() <= 1) {
+        command_completions(text, start, end);
+    } else {
+        const std::string& cmd = tokens[0];
+        // 根據命令類型切換補全策略
+        if (cmd == "/model") model_arg_completions(...);
+        else if (cmd == "/reply") reply_arg_completions(...);
+        // ... etc.
+    }
+}
+
+// 在 main.cpp 中註冊：
+icl_set_default_completer(context_aware_completions, nullptr);
+```
+
+### 4.1.4 自動補全（單次 Tab）
+
+當只有一個匹配結果時，isocline 可以自動將該選項插入到命令列中：
+
+```cpp
+// 在 register_completion() 中啟用：
+ic_enable_auto_tab(true);
+```
+
+### 4.1.5 檔案路徑補全 — /add-doc
+
+對於 `/add-doc`，需要支援：
+- **目錄跳躍**：輸入 `/add-doc src/` → Tab → `/add-doc src/<dir>/`
+- **檔案跳躍**：輸入 `/add-doc src/m` → Tab → `/add-doc src/main.cpp`
+- **相對路徑補全**：自動處理 `./`, `../` 等前綴
+
+```cpp
+void add_doc_arg_completions(const char *text, int start, int end) {
+    if (strlen(text) == 0) return;
+    
+    // 分離目錄和檔名部分
+    std::string dir_part = text;
+    auto last_slash = text.find_last_of("/\\");
+    if (last_slash != std::string::npos) {
+        dir_part = text.substr(0, last_slash + 1);
+    } else {
+        dir_part = "";
+    }
+    
+    std::string prefix = last_slash == std::string::npos ? text : text.substr(last_slash + 1);
+    
+    // 開啟目錄並列出匹配項目（使用 isocline 內建的 ic_complete_filename）
+    ic_complete_filename(cenv, prefix.c_str(), '/', nullptr, nullptr);
+}
+```
+
+### 4.1.6 Isocline API 對照表
+
+| API | 說明 |
+|-----|------|
+| `ic_set_default_completer(callback, arg)` | 註冊補全回呼函數 |
+| `ic_add_completion(cenv, text)` | 添加一個補全選項 |
+| `ic_add_completions(cenv, prefix, completions[])` | 批量添加補全選項（null-terminated） |
+| `ic_complete_word(cenv, prefix, fun, is_word_char)` | 對當前單詞進行補全 |
+| `ic_complete_filename(cenv, prefix, sep, roots, exts)` | 檔案路徑補全 |
+| `ic_enable_auto_tab(true)` | 啟用自動 Tab（唯一匹配時自動插入） |
 
 ---
 
