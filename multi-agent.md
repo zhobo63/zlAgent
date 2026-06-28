@@ -29,7 +29,7 @@
 ```ini
 [multi_agent_ws]
 enabled = false                    # 是否啟用 WebSocket 協作模式
-ws_url = ws://127.0.0.1:8765/ws   # Orchestrator URL（有=Client，無=Server）
+ws_url = ws://127.0.0.1:8765/ws   # Server URL（有=Client，無=Server）
 listen_port = 8766                 # Agent Server 監聽 port（預設 8766）
 heartbeat_interval_sec = 30        # 心跳間隔（秒）
 heartbeat_timeout_sec = 90         # 心跳逾時（秒），超過視為離線
@@ -58,7 +58,7 @@ allowed_origins = http://localhost:8765   # CORS 白名單
 | 參數 | 說明 |
 |------|------|
 | **無** `--ws-url` | Server — 監聽 port，等待其他代理連線 |
-| **有** `--ws-url=ws://...` | Client — 主動連線到指定 Orchestrator |
+| **有** `--ws-url=ws://...` | Client — 主動連線到指定 Server |
 
 Agent **沒有角色定義**（coder / reviewer / tester），每個 Agent 只是單純接收任務並執行。
 
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
     Config config;
     
     if (config.ws_url() != "") {
-        // Client：主動連線 Orchestrator（註冊、回報任務）
+        // Client：主動連線 Server（註冊、回報任務）
         auto& client = WebSocketClient::instance();
         client.connect(config.ws_url());
         
@@ -86,34 +86,34 @@ int main(int argc, char* argv[]) {
 
 ### 2.4 Agent 獨立進程（Client only）
 
-Agent **只作為 Client**，連線 Orchestrator：
+Agent **只作為 Client**，連線 Server：
 
 | 參數 | 說明 |
 |------|------|
-| `--ws-url=ws://127.0.0.1:8765` | Client — 連線 Orchestrator |
+| `--ws-url=ws://127.0.0.1:8765` | Client — 連線 Server |
 
 ```cpp
-// Agent：只作為 Client（所有通訊經過 Orchestrator）
+// Agent：只作為 Client（所有通訊經過 Server）
 int main(int argc, char* argv[]) {
     Config config;
-    
-    // Client：連線 Orchestrator
+    ...
+    // Client：連線 Server
     if (config.ws_url() != "") {
         WebSocketClient client(config.ws_url());
         client.connect();
         client.send(register_msg);
     }
+    ...
 }
 ```
 
-**注意**：Agent **不再需要 Server 端監聽 port**，所有 Agent 間通訊都透過 Orchestrator 路由。
+**注意**：Agent **不再需要 Server 端監聽 port**，所有 Agent 間通訊都透過 Server 路由。
 
 ### 2.5 設定優先級
 
 | 來源 | 優先級 | 說明 |
 |------|--------|------|
-| Command-line flags | 1（最高） | `--ws-port=8765` / `--broker-url=ws://...` |
-| Environment variables | 2 | `ZLAGENT_WS_LISTEN_PORT` / `ZLAGENT_BROKER_URL` |
+| Command-line flags | 1（最高） | `--ws-port=8765` |
 | zlagent.ini | 3（預設） | 常規設定檔 |
 
 ---
@@ -121,20 +121,12 @@ int main(int argc, char* argv[]) {
 ## 3. 系統架構
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Orchestrator                      │
-│              (Coordinator Agent)                     │
-│                                                      │
-│  ┌──────────┐  WS   ┌──────────┐  WS   ┌──────────┐ │
-│  │ Agent    │◄──────►│ Agent    │◄──────►│ Agent    │ │
-│  │ #1       │        │ #2       │        │ #3       │ │
-│  └──────────┘        └──────────┘        └──────────┘ │
-│                                                      │
-│  ┌──────────┐  WS   ┌──────────┐                     │
-│  │ Agent    │◄──────►│ Agent    │                     │
-│  │ #4       │        │ #5       │                     │
-│  └──────────┘        └──────────┘                     │
-└─────────────────────────────────────────────────────┘
+
+Agent #1 (Server)
+  - Agent #2 (Client)
+  - Agent #3 (Client)
+  - Agent #4 (Client)
+  - Agent #5 (Client)
 
 每個 Agent 內部：
 ┌──────────────────────────────────────┐
@@ -163,7 +155,7 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
     "type": "task_request",           // 訊息類型
     "id": "req_001",                  // 唯一 ID，用於追蹤請求-回應配對
     "timestamp": 1719584400,          // Unix timestamp (ms)
-    "from": "orchestrator",            // 來源代理 ID（通用格式：agent_XX / orchestrator）
+    "from": "server",                 // 來源代理 ID（通用格式：agent_XX / server）
     "to": "agent_02",                  // 目標代理 ID（空字串 = broadcast）
     "payload": {
         "task": "Implement binary search in C++",
@@ -176,20 +168,20 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
 }
 ```
 
-**注意**：Agent ID **不使用角色命名**（如 coder_01、reviewer_01），統一使用通用格式 `agent_XX`。
+**注意**：Agent ID **不使用角色命名**（如 coder_01、reviewer_01），統一使用通用格式 `agent_XX`。Server = Agent #1，Clients = Agents #2-5。
 
 ### 3.2 訊息類型定義
 
 | type | 用途 | direction |
 |------|------|-----------|
-| `task_request` | 委派任務給其他代理 | Orchestrator → Agent |
-| `task_response` | 回報任務結果 | Agent → Orchestrator |
-| `agent_register` | 代理註冊到 Orchestrator | Agent → Orchestrator |
-| `agent_unregister` | 代理取消註冊 | Agent → Orchestrator |
-| `heartbeat` | 心跳偵測存活 | Agent ↔ Orchestrator |
-| `error_response` | 回報錯誤 | Agent → Orchestrator |
+| `task_request` | 委派任務給其他代理 | Server → Agent |
+| `task_response` | 回報任務結果 | Agent → Server |
+| `agent_register` | 代理註冊到 Server | Agent → Server |
+| `agent_unregister` | 代理取消註冊 | Agent → Server |
+| `heartbeat` | 心跳偵測存活 | Agent ↔ Server |
+| `error_response` | 回報錯誤 | Agent → Server |
 
-**注意**：訊息類型名稱不使用角色命名（如 review、build），改用通用描述。Agent **沒有角色定義**。所有 Agent 間通訊都必須經過 Orchestrator，因此不存在 Agent → Agent 的訊息類型。
+**注意**：訊息類型名稱不使用角色命名（如 review、build），改用通用描述。Agent **沒有角色定義**。所有 Agent 間通訊都必須經過 Server，因此不存在 Agent → Agent 的訊息類型。
 
 ### 3.3 任務回應格式
 
@@ -199,7 +191,7 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
     "id": "req_001",
     "timestamp": 1719584460,
     "from": "agent_01",
-    "to": "orchestrator",
+    "to": "server",
     "status": "success",              // success | failed | needs_review
     "payload": {
         "result": "Created file: src/binary_search.cpp\nAdded unit tests...",
@@ -229,7 +221,7 @@ Agent **沒有角色定義**，只宣告自身能力。每個 Agent 等同於一
     "id": "agent_01",
     "tool_name": "agent",              // Agent = Tool（固定值）
     "project_name": "Lobby",           // 專案名稱（如 Lobby、Report）
-    "summary": "Main orchestrator agent for project coordination",  // 專案簡介
+    "summary": "Main server agent for project coordination",  // 專案簡介
     "capabilities": [
         "write_file",
         "edit_file",
@@ -251,9 +243,9 @@ Agent **沒有角色定義**，只宣告自身能力。每個 Agent 等同於一
 }
 ```
 
-**注意**：`tool_name` 固定為 `"agent"`，Agent = Tool。`project_name` + `summary` 讓 Orchestrator 知道這個 Agent 隸屬哪個專案、能提供什麼服務（對應目標中的 Lobby/Report 應用情境）。
+**注意**：`tool_name` 固定為 `"agent"`，Agent = Tool。`project_name` + `summary` 讓 Server 知道這個 Agent 隸屬哪個專案、能提供什麼服務（對應目標中的 Lobby/Report 應用情境）。
 
-### 5.2 Orchestrator 維護的代理目錄
+### 5.2 Server 維護的代理目錄
 
 ```cpp
 struct WorkspaceInfo {
@@ -267,7 +259,7 @@ struct AgentInfo {
     std::string id;
     std::string tool_name;          // Agent = Tool（固定為 "agent"）
     std::string project_name;       // 隸屬專案名稱（如 Lobby、Report）
-    std::string summary;            // 專案簡介（業務層級，讓 Orchestrator 知道這個 Agent 能提供什麼服務）
+    std::string summary;            // 專案簡介（業務層級，讓 Server 知道這個 Agent 能提供什麼服務）
     std::vector<std::string> capabilities;   // 代理具備的能力清單
     int max_concurrent_tasks = 1;
     int active_tasks = 0;
@@ -298,7 +290,7 @@ private:
 };
 
 // WorkspaceInfo 用途說明：
-// - project_root: Orchestrator 需要知道檔案操作的路徑範圍，防止代理越權讀寫
+// - project_root: Server 需要知道檔案操作的路徑範圍，防止代理越權讀寫
 // - branch: 任務完成後自動 commit/PR 時使用
 // - git_remote: 用於推送程式碼或建立 Pull Request
 // - summary: 讓其他代理了解專案結構與技術棧，避免重複造輪子
@@ -307,17 +299,17 @@ private:
 // - project_name: 區分 Agent 隸屬哪個專案（如 Lobby、Report）
 //   - 主代理 → 專案 Lobby → /hg/Lobby
 //   - 子代理 → 專案 Report → /hg/Report
-// - summary: 業務層級簡介，讓 Orchestrator 知道這個 Agent 能提供什麼服務
+// - summary: 業務層級簡介，讓 Server 知道這個 Agent 能提供什麼服務
 ```
 
 ---
 
 ## 5. 任務路由與分發流程
 
-### 5.1 Orchestrator 路由邏輯
+### 5.1 Server 路由邏輯
 
 ```cpp
-class OrchestratorAgent {
+class ServerAgent {
 public:
     // 接收外部任務請求，決定如何拆解並委派
     void on_task_request(const std::string& task_description);
@@ -334,28 +326,30 @@ private:
     
 private:
     AgentRegistry registry_;
-    LLMClient llm_client_;          // Orchestrator 本身也需與 LLM 互動
-    Memory memory_;                 // Orchestrator 的對話記憶
+    LLMClient llm_client_;          // Server 本身也需與 LLM 互動
+    Memory memory_;                 // Server 的對話記憶
 };
 ```
 
 **注意**：`route_step()` 根據步驟所需的「能力」而非「角色」來路由任務。
 
-### 5.2 任務拆解範例（Agent #1 → Agent #2 → Agent #3）
+### 5.2 任務拆解範例（Agent #1 → Agent #2, Agent #1 → Agent #3）
+
+- 每個Agent都有獨立處理能力 交代任務尤其獨自完成 最後回報任務處理狀況
 
 ```
 外部請求: "Implement binary search in C++"
 
-Orchestrator 拆解：
+Server 拆解：
 ├─ Step 1: [具備 write_file + edit_file 能力的 Agent] Write implementation
-│   └─ Orchestrator → agent_01 (task_request)
-│       └─ agent_01 → orchestrator (task_response, needs_review=true)
-│           └─ Orchestrator → agent_02 (code_review_request)
-│               └─ agent_02 → orchestrator (code_review_response)
-│                   └─ 如果有問題: Orchestrator → agent_01 (fix_task)
+│   └─ Server → agent_01 (task_request)
+│       └─ agent_01 → server (task_response, needs_review=true)
+│           └─ Server → agent_02 (code_review_request)
+│               └─ agent_02 → server (code_review_response)
+│                   └─ 如果有問題: Server → agent_01 (fix_task)
 ├─ Step 2: [具備 run_build + run_test 能力的 Agent] Build & test
-│   └─ Orchestrator → agent_03 (compile_test_request)
-│       └─ agent_03 → orchestrator (compile_test_response)
+│   └─ Server → agent_03 (compile_test_request)
+│       └─ agent_03 → server (compile_test_response)
 ```
 
 **注意**：範例中不再使用角色名稱（如 Coder、Reviewer），改用「具備 XX 能力的 Agent」描述。
@@ -364,23 +358,19 @@ Orchestrator 拆解：
 
 ## 6. 心跳與存活偵測
 
-### 6.1 Heartbeat 機制
+### 6.1 Server 心跳處理
 
 ```json
 {
     "type": "heartbeat",
-    "id": "hb_001",
     "timestamp": 1719584400,
-    "from": "agent_01"
 }
 ```
 
-**注意**：Agent ID 使用通用格式 `agent_XX`，不使用角色命名。
-
-### 6.2 Orchestrator 心跳處理
+### 6.2 Server 心跳處理
 
 ```cpp
-class OrchestratorAgent {
+class ServerAgent {
 private:
     void on_heartbeat(const std::string& agent_id) {
         auto it = registry_.agents_.find(agent_id);
@@ -402,8 +392,8 @@ private:
     }
     
 private:
-    static constexpr int HEARTBEAT_INTERVAL = 30;   // 每 30 秒發心跳
-    static constexpr int HEARTBEAT_TIMEOUT = 90;     // 90 秒無回應視為離線
+    static constexpr int HEARTBEAT_INTERVAL = 1;    // 每 1 秒發心跳
+    static constexpr int HEARTBEAT_TIMEOUT = 10;    // 10 秒無回應視為離線
 };
 ```
 
@@ -419,7 +409,7 @@ private:
     "id": "req_001",
     "timestamp": 1719584460,
     "from": "agent_01",
-    "to": "orchestrator",
+    "to": "server",
     "status": "failed",
     "payload": {
         "error_code": "TOOL_EXECUTION_FAILED",
@@ -436,7 +426,7 @@ private:
 ### 7.2 重試策略
 
 ```cpp
-class OrchestratorAgent {
+class ServerAgent {
 private:
     void on_error_response(const JsonMessage& msg) {
         auto retryable = msg.payload.retryable;
@@ -461,8 +451,10 @@ private:
 
 ### 8.1 代理認證
 
-- WebSocket 連線時要求提供 API Key / Token
-- Orchestrator 驗證代理身份後才接受註冊
+- WebSocket 連線時要求提供 (IP, WorkDir, Summery)
+- Server 驗證代理身份後才接受註冊
+  - 首次連線顯示子代理資訊 (IP, WorkDir, Summery)
+  - 使用者確認後 儲存子代理資訊 之後連線不需要再次驗證 (判斷IP, WorkDir相符)
 
 ```cpp
 class AgentAuthenticator {
@@ -479,8 +471,8 @@ public:
 
 ### 8.3 LLM API Key 保護
 
-- Orchestrator 不將 LLM API Key 轉發給子代理
-- 子代理使用自己的 API Key（如果有的話）或透過 Orchestrator 代理請求
+- Server 不將 LLM API Key 轉發給子代理
+- 子代理使用自己的 API Key（如果有的話）
 
 ---
 
@@ -494,10 +486,10 @@ public:
 ├── include/ws_agent.h             // WebSocket Agent 抽象類別
 ├── src/ws_protocol.cpp            // JSON 序列化/反序列化
 ├── src/ws_agent.cpp               // WebSocket 連線管理
-└── src/orchestrator.cpp           // Orchestrator Agent（新）
+└── src/ws_server.cpp                 // Server Agent（新）
 ```
 
-**現有 `MultiAgent` 不變**，新增 `OrchestratorAgent`：
+**現有 `MultiAgent` 不變**，新增 `NetAgent`：
 
 ```cpp
 // 現有介面維持不變
@@ -507,7 +499,7 @@ public:
 };
 
 // 新的 WebSocket 協作版本
-class OrchestratorAgent {
+class NetAgent {
 public:
     // 與 LLM 互動（取代現有 LLMClient）
     ChatResponse chat(...);
@@ -517,7 +509,7 @@ public:
     void unregister_agent(const std::string& agent_id);
     
     // 路由任務到 WebSocket 代理
-    OrchestratorTaskResult execute_task_ws(const std::string& task_description);
+    TaskResult execute_task_ws(const std::string& task_description);
 };
 ```
 
@@ -528,7 +520,7 @@ public:
 | 1.1 | 建立 `ws_protocol.h` — WebSocket 通訊協議定義（訊息格式、類型） | ⬜ 未完成 |
 | 1.2 | 建立 `ws_agent.h/cpp` — WebSocket Agent 抽象類別與連線管理 | ⬜ 未完成 |
 | 1.3 | 實作 `ws_protocol.cpp` — JSON 序列化/反序列化 | ⬜ 未完成 |
-| 1.4 | 建立 `orchestrator.cpp` — Orchestrator Agent（Broker Server） | ⬜ 未完成 |
+| 1.4 | 建立 `ws_server.cpp` — Server Agent（websocket Server） | ⬜ 未完成 |
 | 1.5 | 整合現有 `MultiAgent`，確保無破壞性變更 | ⬜ 未完成 |
 
 ### Phase 2: SubAgent 改為 WebSocket Client
@@ -565,7 +557,7 @@ private:
 每個代理可以作為獨立進程執行：
 
 ```bash
-# Orchestrator — Server（無 --ws-url）
+# Server（無 --ws-url）
 ./agent --listen-port=8765
 
 # Agent #1 — Client + Server（同時指定兩者）
@@ -574,7 +566,7 @@ private:
 # Agent #2 — Client + Server
 ./agent --ws-url=ws://127.0.0.1:8765 --listen-port=8767
 
-# 純 Client（不監聽 port，只連線 Orchestrator）
+# 純 Client（不監聽 port，只連線 Server)
 ./agent --ws-url=ws://127.0.0.1:8765
 ```
 
@@ -583,7 +575,7 @@ private:
 | # | 步驟 | 狀態 |
 |---|------|------|
 | 3.1 | Agent 獨立進程啟動器（CLI 參數解析） | ⬜ 未完成 |
-| 3.2 | Orchestrator 自動發現機制（Agent Registry 查詢） | ⬜ 未完成 |
+| 3.2 | Server 自動發現機制（Agent Registry 查詢） | ⬜ 未完成 |
 
 ### Phase 4: 心跳與存活偵測
 
@@ -591,10 +583,10 @@ private:
 
 | # | 步驟 | 狀態 |
 |---|------|------|
-| 4.1 | Agent → Orchestrator Heartbeat 發送（每 N 秒） | ⬜ 未完成 |
-| 4.2 | Orchestrator 心跳處理與超時偵測 | ⬜ 未完成 |
+| 4.1 | Agent → Server Heartbeat 發送（每 N 秒） | ⬜ 未完成 |
+| 4.2 | Server 心跳處理與超時偵測 | ⬜ 未完成 |
 
-**注意**：Agent 間通訊必須經過 Orchestrator，不存在 Server 端連線資訊註冊。
+**注意**：Agent 間通訊必須經過 Server，不存在 Server 端連線資訊註冊。
 
 ### Phase 5: 錯誤處理與重試機制
 
@@ -603,7 +595,7 @@ private:
 | # | 步驟 | 狀態 |
 |---|------|------|
 | 5.1 | 錯誤訊息格式定義（error_response） | ⬜ 未完成 |
-| 5.2 | Orchestrator 重試策略實現（含延遲、最大次數） | ⬜ 未完成 |
+| 5.2 | Server 重試策略實現（含延遲、最大次數） | ⬜ 未完成 |
 
 **注意**：`retry_limit` / `max_retries` 命名統一為 `retry_limit`。
 
@@ -624,7 +616,7 @@ private:
 | # | 步驟 | 狀態 |
 |---|------|------|
 | 7.1 | Register 訊息格式定義與處理 | ⬜ 未完成 |
-| 7.2 | Orchestrator Agent Registry（能力宣告、Server 端連線資訊） | ⬜ 未完成 |
+| 7.2 | Server Agent Registry（能力宣告、Server 端連線資訊） | ⬜ 未完成 |
 
 **注意**：Agent Registry **不包含角色映射**，只記錄代理具備的能力清單。
 
@@ -634,9 +626,9 @@ private:
 
 | # | 步驟 | 狀態 |
 |---|------|------|
-| 8.1 | Orchestrator 路由邏輯（基於 Agent Registry） | ⬜ 未完成 |
+| 8.1 | Server 路由邏輯（基於 Agent Registry） | ⬜ 未完成 |
 | 8.2 | 任務拆解範例（具備 write_file 能力的 Agent → 具備 code_review 能力的 Agent → 具備 run_build 能力的 Agent） | ⬜ 未完成 |
-| 8.3 | Agent 間間接通訊（透過 Orchestrator） | ⬜ 未完成 |
+| 8.3 | Agent 間間接通訊（透過 Server） | ⬜ 未完成 |
 
 **注意**：任務拆解範例不再使用角色名稱，改用能力描述。
 
@@ -646,7 +638,7 @@ private:
 
 | # | 步驟 | 狀態 |
 |---|------|------|
-| 9.1 | WebSocket 連線測試（Agent ↔ Orchestrator） | ⬜ 未完成 |
+| 9.1 | WebSocket 連線測試（Agent ↔ Server） | ⬜ 未完成 |
 | 9.2 | 任務路由端到端測試 | ⬜ 未完成 |
 | 9.3 | 心跳/重試/錯誤處理整合測試 | ⬜ 未完成 |
 
@@ -654,10 +646,10 @@ private:
 
 ## 10. 通訊流程圖
 
-### Agent 間間接通訊（透過 Orchestrator）
+### Agent 間間接通訊（透過 Server）
 
 ```
-Agent A                    WebSocket               Orchestrator              Agent B
+Agent A                    WebSocket               Server              Agent B
      │                        │                          │                       │
      │── task_response ──────►│                          │                       │
      │   (type: task_resp)    │                          │                       │
@@ -672,12 +664,12 @@ Agent A                    WebSocket               Orchestrator              Age
      │   (review_status=approved)  │                      │                       │
 ```
 
-**注意**：Agent ID 使用通用格式（如 agent_01、agent_02），不使用角色名稱。所有 Agent 間通訊都必須經過 Orchestrator，因此不存在 Agent → Agent 的訊息類型。
+**注意**：Agent ID 使用通用格式（如 agent_01、agent_02），不使用角色名稱。所有 Agent 間通訊都必須經過 Server，因此不存在 Agent → Agent 的訊息類型。
 
-### Orchestrator 協調完整流程
+### Server 協調完整流程
 
 ```
-User              Orchestrator         Agent A             Agent B               Agent C
+User              Server         Agent A             Agent B               Agent C
   │                     │                   │                  │                 │
   │── task ────────────►│                   │                  │                 │
   │                     ├── route_step ────►│                  │                 │
@@ -715,7 +707,7 @@ User              Orchestrator         Agent A             Agent B              
 ## 11. 未來擴展方向
 
 ### 11.1 負載均衡
-- Orchestrator 根據代理的 `active_tasks` 數量選擇最閒置的代理
+- Server 根據代理的 `active_tasks` 數量選擇最閒置的代理
 - 支援同一角色的多個實例（如多個 Coder Agent）
 
 ### 11.2 任務分片
@@ -727,7 +719,7 @@ User              Orchestrator         Agent A             Agent B              
 - 根據負載自動啟動/停止 Agent Pod
 
 ### 11.4 跨 LLM 路由
-- Orchestrator 可將任務派發給使用不同 LLM 的代理
+- Server 可將任務派發給使用不同 LLM 的代理
 - 例如：簡單任務用 GPT-4o-mini，複雜任務用 Claude Opus
 
 ---
@@ -738,7 +730,7 @@ User              Orchestrator         Agent A             Agent B              
 |---|------|------|-----------|------|
 | **P0** | Phase 1 | WebSocket 基礎設施 + Agent Registry | 2-3 天 | ⬜ 未完成 |
 | **P1** | Phase 7 | Agent 註冊與發現機制（Agent Registry） | 1-2 天 | ⬜ 未完成 |
-| **P2** | Phase 8 | Orchestrator 路由邏輯（現有管線） | 2-3 天 | ⬜ 未完成 |
+| **P2** | Phase 8 | Server 路由邏輯（現有管線） | 2-3 天 | ⬜ 未完成 |
 | **P3** | Phase 2 | SubAgent → WsSubAgent 改造 | 2-3 天 | ⬜ 未完成 |
 | **P4** | Phase 4+5 | 心跳 + 錯誤處理 + 重試 | 1-2 天 | ⬜ 未完成 |
 | **P5** | Phase 6 | 安全性（認證、授權） | 2-3 天 | ⬜ 未完成 |
@@ -751,27 +743,27 @@ User              Orchestrator         Agent A             Agent B              
 
 ### 情境一：單一 Agent 完成任務（Client + Server）
 
-**場景描述**：Agent #1 同時是 Client（連線 Orchestrator）和 Server（監聽 port），接收並執行一個簡單的檔案寫入任務。
+**場景描述**：Agent #1 同時是 Client（連線 Server）和 Server（監聽 port），接收並執行一個簡單的檔案寫入任務。
 
 ```
 ┌─────────────┐         ┌──────────────┐
-│ Agent #1    │         │ Orchestrator │
+│ Agent #1    │         │ Server │
 │ (Client+Server)        │              │
 └─────────────┘         └──────────────┘
 
 Step 1: Agent #1 啟動（同時指定 --ws-url + listen_port）
-  → WebSocketClient::instance().connect("ws://orchestrator:8765")
+  → WebSocketClient::instance().connect("ws://server:8765")
   → Server::instance().listen("0.0.0.0", 8766)
 
 Step 2: Agent #1 註冊能力
-  Orchestrator ← [agent_register] id=agent_01, capabilities=[write_file, edit_file, read_file]
+  Server ← [agent_register] id=agent_01, capabilities=[write_file, edit_file, read_file]
 
-Step 3: Orchestrator 收到外部任務："Create a README.md for my project"
-  → Orchestrator 路由：需要 write_file + edit_file 能力
-  → Orchestrator 找到 agent_01（具備寫入檔案能力）
+Step 3: Server 收到外部任務："Create a README.md for my project"
+  → Server 路由：需要 write_file + edit_file 能力
+  → Server 找到 agent_01（具備寫入檔案能力）
 
-Step 4: Orchestrator 發送任務給 Agent #1
-  Orchestrator → [task_request] id=agent_01, task="Create README.md", project=Lobby
+Step 4: Server 發送任務給 Agent #1
+  Server → [task_request] id=agent_01, task="Create README.md", project=Lobby
 
 Step 5: Agent #1 執行任務
   → read_file (檢查專案結構)
@@ -779,14 +771,14 @@ Step 5: Agent #1 執行任務
   → edit_file (修正格式)
 
 Step 6: Agent #1 回報結果
-  Orchestrator ← [task_response] id=agent_01, status=success, result="README.md created"
+  Server ← [task_response] id=agent_01, status=success, result="README.md created"
 ```
 
 ---
 
 ### 情境二：多 Agent 協作完成複雜任務（完整流程）
 
-**場景描述**：Orchestrator 將一個複雜的開發任務拆解，分派給三個 Agent 依序執行。
+**場景描述**：Server 將一個複雜的開發任務拆解，分派給三個 Agent 依序執行。
 
 ```
 ┌───────────┐   ┌───────────┐   ┌───────────┐
@@ -796,69 +788,69 @@ Step 6: Agent #1 回報結果
 └───────────┘   └───────────┘   └───────────┘
 
 Step 1: 三個 Agent 都註冊能力
-  Orchestrator ← [agent_register] id=agent_01, capabilities=[write_file, edit_file]
-  Orchestrator ← [agent_register] id=agent_02, capabilities=[code_review]
-  Orchestrator ← [agent_register] id=agent_03, capabilities=[run_build, run_test]
+  Server ← [agent_register] id=agent_01, capabilities=[write_file, edit_file]
+  Server ← [agent_register] id=agent_02, capabilities=[code_review]
+  Server ← [agent_register] id=agent_03, capabilities=[run_build, run_test]
 
-Step 2: Orchestrator 收到任務："Implement binary search in C++"
+Step 2: Server 收到任務："Implement binary search in C++"
   
-  Orchestrator 拆解：
+  Server 拆解：
   ├─ Step A: Write implementation (需要 write_file + edit_file)
-  │   → Orchestrator → agent_01 [task_request, task="Write binary_search.cpp"]
+  │   → Server → agent_01 [task_request, task="Write binary_search.cpp"]
   │       → Agent #1 執行寫入檔案操作
-  │       → Orchestrator ← agent_01 [task_response, status=success, needs_review=true]
-  │           → Orchestrator 檢查：需要 code review
-  │           → Orchestrator → agent_02 [code_review_request, file="binary_search.cpp"]
+  │       → Server ← agent_01 [task_response, status=success, needs_review=true]
+  │           → Server 檢查：需要 code review
+  │           → Server → agent_02 [code_review_request, file="binary_search.cpp"]
   │               → Agent #2 執行 code review
-  │               → Orchestrator ← agent_02 [code_review_response, status=success]
-  │                   → Orchestrator: Review OK，進入 Step B
+  │               → Server ← agent_02 [code_review_response, status=success]
+  │                   → Server: Review OK，進入 Step B
   
   ├─ Step B: Build & test (需要 run_build + run_test)
-  │   → Orchestrator → agent_03 [compile_test_request, file="binary_search.cpp"]
+  │   → Server → agent_03 [compile_test_request, file="binary_search.cpp"]
   │       → Agent #3 執行編譯與測試
-  │       → Orchestrator ← agent_03 [compile_test_response, status=success]
+  │       → Server ← agent_03 [compile_test_response, status=success]
   
   └─ Step C: Commit & PR (需要 git push)
-      → Orchestrator → agent_01 [commit_task, branch="feature/binary-search"]
+      → Server → agent_01 [commit_task, branch="feature/binary-search"]
           → Agent #1 執行 git commit + push
 
-Step 3: 任務完成，Orchestrator 回報外部請求者
+Step 3: 任務完成，Server 回報外部請求者
 ```
 
 ---
 
 ---
 
-### 情境三：Agent 間間接通訊（透過 Orchestrator）
+### 情境三：Agent 間間接通訊（透過 Server）
 
-**場景描述**：Agent #1 完成寫入後，請求 Orchestrator 將 code review 任務派發給 Agent #2。
+**場景描述**：Agent #1 完成寫入後，請求 Server 將 code review 任務派發給 Agent #2。
 
 ```
 ┌───────────┐         ┌──────────────┐         ┌───────────┐
-│ Agent #1  │────────▶│ Orchestrator │────────▶│ Agent #2  │
+│ Agent #1  │────────▶│ Server │────────▶│ Agent #2  │
 │ (Client)  │ ◀────── │              │ ◀────── │ (Client)  │
 └───────────┘         └──────────────┘         └───────────┘
 
 Step 1: Agent #1 完成寫入檔案操作
   → on_task_complete(response) { needs_review = true }
 
-Step 2: Agent #1 回報 Orchestrator，請求 code review
-  Orchestrator ← [task_response] from=agent_01, status=success, needs_review=true
+Step 2: Agent #1 回報 Server，請求 code review
+  Server ← [task_response] from=agent_01, status=success, needs_review=true
 
-Step 3: Orchestrator 查詢 Registry，找到具備 code_review 能力的 Agent
-  → Orchestrator.find_agents_by_capability("code_review") = agent_02
+Step 3: Server 查詢 Registry，找到具備 code_review 能力的 Agent
+  → Server.find_agents_by_capability("code_review") = agent_02
 
-Step 4: Orchestrator 派發 review 任務給 Agent #2
-  Orchestrator → [task_request] to=agent_02, task="Review binary_search.cpp"
+Step 4: Server 派發 review 任務給 Agent #2
+  Server → [task_request] to=agent_02, task="Review binary_search.cpp"
 
 Step 5: Agent #2 執行 code review
-  agent_02 ← [task_request] from=Orchestrator
+  agent_02 ← [task_request] from=Server
 
-Step 6: Agent #2 回報結果給 Orchestrator（間接通訊）
-  Orchestrator ← [task_response] to=agent_02, status=success
+Step 6: Agent #2 回報結果給 Server（間接通訊）
+  Server ← [task_response] to=agent_02, status=success
 
-Step 7: Orchestrator 將結果轉發給 Agent #1
-  Orchestrator → [task_response] to=agent_01, review_status=approved
+Step 7: Server 將結果轉發給 Agent #1
+  Server → [task_response] to=agent_01, review_status=approved
 
 Step 8: Agent #1 收到 review 通過，繼續下一步
 ```
@@ -867,115 +859,115 @@ Step 8: Agent #1 收到 review 通過，繼續下一步
 
 ### 情境四：跨專案請求被拒絕（安全機制）
 
-**場景描述**：Lobby 專案的 Agent 嘗試透過 Orchestrator 請求 Report 專案的 Agent，但未被授權。
+**場景描述**：Lobby 專案的 Agent 嘗試透過 Server 請求 Report 專案的 Agent，但未被授權。
 
 ```
 ┌───────────┐         ┌──────────────┐         ┌───────────┐
-│ Lobby     │────────▶│ Orchestrator │         │ Report    │
+│ Lobby     │────────▶│ Server │         │ Report    │
 │ Agent #1  │ ◀────── │              │         │ Agent #3  │
 └───────────┘         └──────────────┘         └───────────┘
 
 Step 1: Agent #1（Lobby）完成任務，需要 Report 專案的 Agent #3 協助
-  → Orchestrator ← [task_response] from=agent_01, needs_cross_project=true
+  → Server ← [task_response] from=agent_01, needs_cross_project=true
 
-Step 2: Orchestrator 檢查跨專案授權
+Step 2: Server 檢查跨專案授權
   → can_cross_project_request("Report") = false
 
-Step 3: Orchestrator 拒絕跨專案請求，回報 Agent #1
-  Orchestrator → [error_response] to=agent_01, reason="Unauthorized cross-project request"
+Step 3: Server 拒絕跨專案請求，回報 Agent #1
+  Server → [error_response] to=agent_01, reason="Unauthorized cross-project request"
 
-Step 4: Agent #1 回報 Orchestrator，請求授權（如果需要）
-  Orchestrator ← [cross_project_request] from=Lobby/agent_01, to=Report/agent_03
+Step 4: Agent #1 回報 Server，請求授權（如果需要）
+  Server ← [cross_project_request] from=Lobby/agent_01, to=Report/agent_03
   
-Step 5: Orchestrator 檢查授權策略
-  → Orchestrator 決定：允許 Lobby → Report（如果配置了跨專案信任）
-  → Orchestrator → agent_01 [cross_project_granted] from=Lobby/agent_01, to=Report/agent_03
+Step 5: Server 檢查授權策略
+  → Server 決定：允許 Lobby → Report（如果配置了跨專案信任）
+  → Server → agent_01 [cross_project_granted] from=Lobby/agent_01, to=Report/agent_03
 
-Step 6: Orchestrator 重新派發任務給 Agent #3
-  Orchestrator → [task_request] to=agent_03 (now authorized)
+Step 6: Server 重新派發任務給 Agent #3
+  Server → [task_request] to=agent_03 (now authorized)
 ```
 
 ---
 
 ### 情境五：Agent 心跳與存活偵測
 
-**場景描述**：Orchestrator 定期檢查 Agent 是否存活，並處理離線情況。
+**場景描述**：Server 定期檢查 Agent 是否存活，並處理離線情況。
 
 ```
 ┌───────────┐         ┌──────────────┐
-│ Agent #1  │         │ Orchestrator │
+│ Agent #1  │         │ Server │
 │ (Client)  │ ◀────── │              │
 └───────────┘ heartbeat│              │
                         └──────────────┘
 
 Step 1: Agent #1 每 30 秒發送心跳
-  Orchestrator ← [heartbeat] id=agent_01, timestamp=2024-01-15T10:30:00Z
+  Server ← [heartbeat] id=agent_01, timestamp=2024-01-15T10:30:00Z
 
-Step 2: Orchestrator 更新最後心跳時間
+Step 2: Server 更新最後心跳時間
   agent_01.last_heartbeat = now()
 
 Step 3: Agent #2 突然斷線（未發送心跳）
-  → Orchestrator 每 60 秒檢查一次存活狀態
+  → Server 每 60 秒檢查一次存活狀態
   
-Step 4: Orchestrator 檢測到 Agent #2 超時（超過 90 秒無心跳）
-  → Orchestrator 將 agent_02 標記為 offline
-  → Orchestrator 從 Registry 中移除 agent_02
+Step 4: Server 檢測到 Agent #2 超時（超過 90 秒無心跳）
+  → Server 將 agent_02 標記為 offline
+  → Server 從 Registry 中移除 agent_02
 
-Step 5: Orchestrator 重新路由原本分配給 agent_02 的任務
-  → Orchestrator 尋找其他具備 code_review 能力的 Agent（如 agent_04）
+Step 5: Server 重新路由原本分配給 agent_02 的任務
+  → Server 尋找其他具備 code_review 能力的 Agent（如 agent_04）
   
 Step 6: Agent #2 重連後重新註冊
-  Orchestrator ← [agent_register] id=agent_02, capabilities=[code_review]
+  Server ← [agent_register] id=agent_02, capabilities=[code_review]
 ```
 
 ---
 
 ### 情境六：任務失敗與重試機制
 
-**場景描述**：Agent #3 執行編譯時遇到錯誤，Orchestrator 觸發重試。
+**場景描述**：Agent #3 執行編譯時遇到錯誤，Server 觸發重試。
 
 ```
 ┌───────────┐         ┌──────────────┐
-│ Agent #3  │         │ Orchestrator │
+│ Agent #3  │         │ Server │
 │ (Client)  │ ◀────── │              │
 └───────────┘ error   │              │
                         └──────────────┘
 
-Step 1: Orchestrator 發送編譯任務給 Agent #3
-  Orchestrator → agent_03 [compile_test_request, file="binary_search.cpp"]
+Step 1: Server 發送編譯任務給 Agent #3
+  Server → agent_03 [compile_test_request, file="binary_search.cpp"]
 
 Step 2: Agent #3 執行編譯，遇到錯誤
   → compile error: undefined reference to 'BinarySearch::search()'
 
-Step 3: Agent #3 回報錯誤給 Orchestrator
-  Orchestrator ← agent_03 [task_error] id=agent_03, status=failure, 
+Step 3: Agent #3 回報錯誤給 Server
+  Server ← agent_03 [task_error] id=agent_03, status=failure, 
     error="Compilation failed", retry=true
   
-Step 4: Orchestrator 檢查重試策略（max_retries=3, current_attempt=1）
-  → Orchestrator 決定：重新路由給 Agent #1 修復
+Step 4: Server 檢查重試策略（max_retries=3, current_attempt=1）
+  → Server 決定：重新路由給 Agent #1 修復
 
-Step 5: Orchestrator 發送修復任務給 Agent #1
-  Orchestrator → agent_01 [fix_task] id=agent_01, error="undefined reference to 'BinarySearch::search()'"
+Step 5: Server 發送修復任務給 Agent #1
+  Server → agent_01 [fix_task] id=agent_01, error="undefined reference to 'BinarySearch::search()'"
 
 Step 6: Agent #1 修復錯誤後重新編譯
-  Orchestrator ← agent_01 [task_response] status=success
+  Server ← agent_01 [task_response] status=success
   
-Step 7: Orchestrator 再次發送編譯任務給 Agent #3（重試）
-  Orchestrator → agent_03 [compile_test_request, file="binary_search.cpp"] (retry)
+Step 7: Server 再次發送編譯任務給 Agent #3（重試）
+  Server → agent_03 [compile_test_request, file="binary_search.cpp"] (retry)
 
 Step 8: Agent #3 成功編譯與測試
-  Orchestrator ← agent_03 [task_response] status=success
+  Server ← agent_03 [task_response] status=success
 ```
 
 ---
 
 ### 情境七：Agent Server + Client 同時運作（完整註冊流程）
 
-**場景描述**：一個 Agent 同時作為 Client（連線 Orchestrator）和 Server（監聽 port），完成完整的註冊與能力宣告。
+**場景描述**：一個 Agent 同時作為 Client（連線 Server）和 Server（監聽 port），完成完整的註冊與能力宣告。
 
 ```
 ┌───────────┐         ┌──────────────┐
-│ Agent #1  │         │ Orchestrator │
+│ Agent #1  │         │ Server │
 │ (Client+Server)       │              │
 │ port:8765 │ ◀────── │              │
 │ port:8766 │ ◀────── │              │
@@ -983,14 +975,14 @@ Step 8: Agent #3 成功編譯與測試
 
 Step 1: Agent #1 啟動，同時建立 Client + Server
   auto& client = WebSocketClient::instance();
-  client.connect("ws://orchestrator:8765");
+  client.connect("ws://server:8765");
   
   auto& server = Server::instance();
   server.WebSocket("/ws", handler);
   server.listen("0.0.0.0", 8766);
 
 Step 2: Client 連線成功，發送註冊訊息
-  Orchestrator ← [agent_register] 
+  Server ← [agent_register] 
     id=agent_01,
     tool_name="agent",
     project_name="Lobby",
@@ -1002,11 +994,11 @@ Step 2: Client 連線成功，發送註冊訊息
       branch="main"
     }
 
-Step 3: Orchestrator 接收註冊，更新 Registry
+Step 3: Server 接收註冊，更新 Registry
   → registry_.register_agent(agent_01)
   
-Step 4: Orchestrator 回覆確認
-  Orchestrator → agent_01 [registration_ack] status=success, 
+Step 4: Server 回覆確認
+  Server → agent_01 [registration_ack] status=success, 
     message="Agent registered successfully"
 
 Step 5: Agent #1 的 Server 端開始接收來自其他 Agent 的直接請求
@@ -1019,27 +1011,28 @@ Step 5: Agent #1 的 Server 端開始接收來自其他 Agent 的直接請求
 
 ---
 
-### 情境八：多個 Orchestrator 協調（未來擴展）
+### 情境八：多個 Server 協調（未來擴展）
 
-**場景描述**：當 Agent 數量增加，單一 Orchestrator 負載過重時，引入多個 Orchestrator。
+**場景描述**：當 Agent 數量增加，單一 Server 負載過重時，引入多個 Server。
 
 ```
 ┌───────────┐   ┌──────────────┐   ┌──────────────┐
-│ Agent #1  │   │ Orchestrator │   │ Orchestrator │
+│ Agent #1  │   │ Server │   │ Server │
 │ (Client)  │──▶│ #A           │   │ #B           │
 └───────────┘   └──────────────┘   └──────────────┘
 
-Step 1: Agent #1 連線到 Orchestrator A（根據負載均衡策略）
+Step 1: Agent #1 連線到 Server A（根據負載均衡策略）
   auto& client = WebSocketClient::instance();
-  client.connect("ws://orchestrator-a:8765");
+  client.connect("ws://server-a:8765");
 
-Step 2: Orchestrator B 也接收自己的 Agent 群組
-  Orchestrator ← [agent_register] id=agent_04, project_name="Report"
+Step 2: Server B 也接收自己的 Agent 群組
+  Server ← [agent_register] id=agent_04, project_name="Report"
 
-Step 3: Orchestrator A 與 B 之間同步 Registry（未來擴展）
-  → Orchestrator A ↔ Orchestrator B [registry_sync]
+Step 3: Server A 與 B 之間同步 Registry（未來擴展）
+  → Server A ↔ Server B [registry_sync]
 
 Step 4: Agent #1 需要 Report 專案的 Agent #4 協助
-  → Orchestrator A 查詢本地 Registry，發現 agent_04 屬於 Orchestrator B
-  → Orchestrator A → Orchestrator B [cross_orchestrator_request, target=agent_04]
+  → Server A 查詢本地 Registry，發現 agent_04 屬於 Server B
+  → Server A → Server B [cross_server_request, target=agent_04]
 ```
+

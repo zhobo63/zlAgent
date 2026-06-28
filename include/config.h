@@ -88,6 +88,7 @@ struct Config {
         bool dangerous_tool_confirmation = true;  // prompt before destructive ops
         std::vector<std::string> path_whitelist;   // empty = no restriction
         std::string working_directory;              // current working directory (always allowed)
+        bool strict_mode = false;                   // true = reject out-of-scope paths outright, false = ask user
         bool skill_content_check = true;           // scan SKILL.md for suspicious patterns
         bool input_filter = true;                  // detect prompt injection in user input
     } safety;

@@ -163,6 +163,9 @@ int main(int argc, char* argv[]) {
         LOG_INFO("Config", "Working directory defaulted to: " + cwd);
     }
 
+    agent::SafetyGuard::get_instance().set_strict_mode(cfg.safety.strict_mode);
+    LOG_INFO("Config", "Strict mode: " + std::string(cfg.safety.strict_mode ? "enabled (reject out-of-scope paths)" : "disabled (confirm out-of-scope paths)"));
+
     // Determine the effective language: auto-detect > config value.
     std::string effective_language = cfg.agent_.language;
     if (cfg.agent_.auto_detect_language) {

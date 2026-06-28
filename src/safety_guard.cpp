@@ -111,6 +111,18 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
 
     std::string norm = normalize_path(path);
 
+    // Resolve relative paths against the working directory so that
+    // "multi-agent.md" becomes "F:/hg/zlagent/multi-agent.md" before comparison.
+    if (!working_directory_.empty() && !norm.empty() && norm[0] != '/'
+#ifdef _WIN32
+        && !(norm.size() >= 2 && norm[1] == ':')
+#endif
+    ) {
+        // Relative path — prepend working directory.
+        std::string resolved = working_directory_ + "/" + norm;
+        norm = normalize_path(resolved);
+    }
+
     // Inside working directory → auto-allow.
     if (!working_directory_.empty()
         && norm.compare(0, working_directory_.size(), working_directory_) == 0)
