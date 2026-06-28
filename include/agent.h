@@ -56,6 +56,9 @@ public:
     void set_multi_agent(bool enabled) { multi_agent_ = enabled; }
     bool multi_agent_enabled() const { return multi_agent_; }
 
+    // Maximum iterations for the reasoning loop (default: 10)
+    void set_max_iterations(int n) { max_iterations_ = n; }
+
     // Maximum reflection retries per step (default: 2)
     void set_max_reflection_retries(int n) { max_reflection_retries_ = n; }
 
@@ -79,12 +82,20 @@ public:
     void set_user_reply_mode(UserReplyMode mode) { user_reply_mode_ = mode; }
     UserReplyMode get_user_reply_mode() const { return user_reply_mode_; }
 
+	void reset_iteration_count() { current_iteration_ = 0; }
+	int get_current_iteration() const { return current_iteration_; }
+	int get_max_iterations() const { return max_iterations_; }
+	int get_tokens_used() const { return tokens_used_; }
+    int get_max_token() const {return max_tokens_; }
 private:
     LLMClient llm_;
     ToolRegistry registry_;
     Memory memory_;
 
-    int max_iterations_ = 10;  // safety limit for tool-call loops
+	int current_iteration_ = 0;     // tracks reasoning loop iterations
+    int max_iterations_ = 10;       // safety limit for tool-call loops
+	int tokens_used_ = 0;          // tracks tokens used in reasoning loop
+	int max_tokens_ = 8192;         // default max tokens for LLM calls
 
     // Advanced feature flags
     bool task_planning_   = true;

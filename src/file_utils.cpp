@@ -332,6 +332,217 @@ static void parse_js_outline(const std::vector<std::string>& lines,
     }
 }
 
+// ── Go outline parser ───────────────────────────────
+
+static void parse_go_outline(const std::vector<std::string>& lines,
+                              std::vector<RawSymbol>& out) {
+    int brace_depth = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        // package name
+        if (trimmed.substr(0, 7) == "package ") {
+            std::string name = trim_outline(trimmed.substr(8));
+            if (!name.empty()) {
+                out.push_back({i + 1, "package", name, 0});
+            }
+        }
+
+        // func Name(...)
+        if (trimmed.substr(0, 4) == "func ") {
+            size_t paren = trimmed.find('(');
+            std::string name;
+            if (paren != std::string::npos && paren > 5) {
+                name = trim_outline(trimmed.substr(5, paren - 5));
+            } else {
+                name = trim_outline(trimmed.substr(5));
+            }
+            if (!name.empty()) {
+                out.push_back({i + 1, "function", name, brace_depth});
+            }
+        }
+
+        // type Name struct / interface
+        if (trimmed.substr(0, 4) == "type ") {
+            size_t pos = trimmed.find(' ', 5);
+            std::string name;
+            if (pos != std::string::npos && pos > 5) {
+                name = trim_outline(trimmed.substr(5, pos - 5));
+            } else {
+                name = trim_outline(trimmed.substr(5));
+            }
+            if (!name.empty()) {
+                out.push_back({i + 1, "type", name, brace_depth});
+            }
+        }
+
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
+            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        }
+    }
+}
+
+// ── Rust outline parser ───────────────────────────────
+
+static void parse_rust_outline(const std::vector<std::string>& lines,
+                                std::vector<RawSymbol>& out) {
+    int brace_depth = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        // mod name { or mod name;
+        if (trimmed.substr(0, 3) == "mod ") {
+            size_t end = trimmed.find_first_of("{;", 4);
+            if (end != std::string::npos && end > 4) {
+                std::string name = trim_outline(trimmed.substr(4, end - 4));
+                if (!name.empty()) {
+                    out.push_back({i + 1, "mod", name, brace_depth});
+                }
+            }
+        }
+
+        // fn name(...)
+        if (trimmed.substr(0, 2) == "fn ") {
+            size_t paren = trimmed.find('(');
+            std::string name;
+            if (paren != std::string::npos && paren > 3) {
+                name = trim_outline(trimmed.substr(3, paren - 3));
+            } else {
+                name = trim_outline(trimmed.substr(3));
+            }
+            if (!name.empty()) {
+                out.push_back({i + 1, "function", name, brace_depth});
+            }
+        }
+
+        // struct Name, enum Name, trait Name, impl Name
+        for (const auto& kw : {std::string("struct "), std::string("enum "),
+                               std::string("trait "), std::string("impl ")}) {
+            if (trimmed.substr(0, kw.size()) == kw) {
+                size_t end = trimmed.find_first_of("{<;", kw.size());
+                if (end != std::string::npos && end > kw.size()) {
+                    std::string name = trim_outline(trimmed.substr(kw.size(), end - kw.size()));
+                    if (!name.empty()) {
+                        out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                    }
+                } else {
+                    std::string name = trim_outline(trimmed.substr(kw.size()));
+                    if (!name.empty()) {
+                        out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                    }
+                }
+            }
+        }
+
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
+            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        }
+    }
+}
+
+// ── Java outline parser ───────────────────────────────
+
+static void parse_java_outline(const std::vector<std::string>& lines,
+                                std::vector<RawSymbol>& out) {
+    int brace_depth = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        std::string trimmed = trim_outline(lines[i]);
+        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
+
+        // package name;
+        if (trimmed.substr(0, 8) == "package ") {
+            size_t semi = trimmed.find(';');
+            std::string end_pos = (semi != std::string::npos && semi > 8)
+                ? trimmed.substr(8, semi - 8)
+                : trimmed.substr(8);
+            if (!end_pos.empty()) {
+                out.push_back({i + 1, "package", trim_outline(end_pos), 0});
+            }
+        }
+
+        // class Name, interface Name, enum Name
+        for (const auto& kw : {std::string("class "), std::string("interface "),
+                               std::string("enum ")}) {
+            if (trimmed.substr(0, kw.size()) == kw) {
+                size_t end = trimmed.find_first_of("{<;", kw.size());
+                if (end != std::string::npos && end > kw.size()) {
+                    std::string name = trim_outline(trimmed.substr(kw.size(), end - kw.size()));
+                    if (!name.empty()) {
+                        out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                    }
+                } else {
+                    std::string name = trim_outline(trimmed.substr(kw.size()));
+                    if (!name.empty()) {
+                        out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                    }
+                }
+            }
+        }
+
+        // Method: return_type method_name(...)
+        size_t paren = trimmed.find('(');
+        if (paren != std::string::npos && paren > 0) {
+            std::string before_paren = trim_outline(trimmed.substr(0, paren));
+            if (!before_paren.empty()) {
+                // Skip common keywords that aren't methods.
+                static const std::vector<std::string> skip_kw = {
+                    "if", "else", "for", "while", "switch", "catch",
+                    "new", "return", "throw", "try"
+                };
+                bool is_method = true;
+                for (const auto& k : skip_kw) {
+                    if (before_paren == k) { is_method = false; break; }
+                }
+                // Also skip lines that start with access modifiers + type but have no name
+                // (e.g. "public static void main" — we want "main", not "void").
+                if (is_method) {
+                    size_t last_space = before_paren.find_last_of(' ');
+                    std::string mname;
+                    if (last_space != std::string::npos && last_space > 0) {
+                        mname = trim_outline(before_paren.substr(last_space + 1));
+                    } else {
+                        mname = before_paren;
+                    }
+                    if (!mname.empty() && !is_keyword_outline(mname)) {
+                        out.push_back({i + 1, "method", mname, brace_depth});
+                    }
+                }
+            }
+        }
+
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
+            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        }
+    }
+}
+
+static void parse_markdown_outline(const std::vector<std::string>& lines,
+                                    std::vector<RawSymbol>& out) {
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        const auto& raw = lines[i];
+        // Match ATX headings: one or more '#' followed by a space, then the title.
+        if (raw.empty() || raw[0] != '#') continue;
+
+        int depth = 0;
+        while (depth < static_cast<int>(raw.size()) && raw[depth] == '#') {
+            depth++;
+        }
+
+        // Must have a space after the '#' characters.
+        if (depth >= static_cast<int>(raw.size()) || raw[depth] != ' ') continue;
+
+        std::string title = trim_outline(raw.substr(depth + 1));
+        if (title.empty()) continue;
+
+        out.push_back({i + 1, "heading", title, depth - 1});
+    }
+}
+
 std::string GenerateFileOutline(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) return "";
@@ -356,6 +567,14 @@ std::string GenerateFileOutline(const std::string& path) {
         parse_python_outline(lines, ext, raw_symbols);
     } else if (ext == ".js" || ext == ".ts" || ext == ".jsx" || ext == ".tsx") {
         parse_js_outline(lines, ext, raw_symbols);
+    } else if (ext == ".go") {
+        parse_go_outline(lines, raw_symbols);
+    } else if (ext == ".rs") {
+        parse_rust_outline(lines, raw_symbols);
+    } else if (ext == ".java") {
+        parse_java_outline(lines, raw_symbols);
+    } else if (ext == ".md") {
+        parse_markdown_outline(lines, raw_symbols);
     }
 
     if (raw_symbols.empty()) return "No symbols found in '" + path + "'.";

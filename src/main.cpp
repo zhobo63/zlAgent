@@ -27,82 +27,59 @@
 // ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
 
-// ── Agent runtime state (mirrors ftxui.md spec) ───
-struct AgentState {
-    std::string model_name;
-    int tokens_used = 0;
-    int max_tokens = 8192;
-    int current_iteration = 0;
-    int max_iterations = 10;
-    bool task_planning = false;
-    bool self_reflection = false;
-    bool multi_agent = false;
-    int memory_count = 0;
-    int facts_count = 0;
-    agent::UserReplyMode user_reply_mode = agent::UserReplyMode::Off;
-};
-static AgentState g_state;
-
-// ── Helper to update TUI state from agent ────────────────────────
-static void update_tui_state(AgentState& s, const agent::Agent& ag,
-                             const std::unique_ptr<agent::LongTermMemory>& ltm) {
-    // Update memory stats before first prompt
-    s.memory_count = static_cast<int>(ag.get_memory().get_messages().size());
-    if (ltm) {
-        auto facts = ltm->get_facts();
-        s.facts_count = static_cast<int>(facts.size());
-    }
-
-    // Update user reply mode
-    s.user_reply_mode = ag.get_user_reply_mode();
-}
-
 // ── Status bar renderer (pure std::cout + ANSI via TUI) ───
-static void print_status_bar(const AgentState& s, bool newline_after = true) {
+static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent::LongTermMemory>& ltm) {
+
+    auto memory_count = static_cast<int>(ag.get_memory().get_messages().size());
+	size_t facts_count = 0;
+    if (ltm) {
+        facts_count = ltm->get_facts().size();
+    }
+	auto current_iteration = ag.get_current_iteration();
+	auto max_iterations = ag.get_max_iterations();
+    auto task_planning = ag.task_planning_enabled();
+    auto self_reflection = ag.self_reflection_enabled();
+    auto multi_agent = ag.multi_agent_enabled();
+    auto user_reply_mode = ag.get_user_reply_mode();
+	auto tokens_used = ag.get_tokens_used();
+	auto max_tokens = ag.get_max_token();
+
     // Token ratio color: <50% green → <80% yellow → ≥80% red
-    double token_ratio = (s.max_tokens > 0) ? (double)s.tokens_used / s.max_tokens : 0;
+    double token_ratio = (max_tokens > 0) ? (double)tokens_used / max_tokens : 0;
     AnsiColor token_fg = token_ratio < 0.5 ? AnsiColor::Green : token_ratio < 0.8 ? AnsiColor::Yellow : AnsiColor::Red;
 
     // Iteration ratio color: ≥80% red, else cyan
-    double iter_ratio = (s.max_iterations > 0) ? (double)s.current_iteration / s.max_iterations : 0;
+    double iter_ratio = (max_iterations > 0) ? (double)current_iteration / max_iterations : 0;
     AnsiColor iter_fg = iter_ratio >= 0.8 ? AnsiColor::Red : AnsiColor::Cyan;
 
     // Build the bar content (single line)
     std::ostringstream bar;
-    bar << u8"\n├─";
-    bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
-    bar << TUI::color(u8"🧠 " + std::to_string(s.tokens_used) + "/" + std::to_string(s.max_tokens), token_fg) << u8" │ ";
-    bar << TUI::color(u8"⚡ " + std::to_string(s.current_iteration) + "/" + std::to_string(s.max_iterations), iter_fg) << u8" │ ";
-    bar << TUI::check(u8"Plan", s.task_planning) << " ";
-    bar << TUI::check(u8"Reflect", s.self_reflection) << " ";
-    bar << TUI::check(u8"MultiAgent", s.multi_agent) << u8" │ ";
+    bar << u8"\n";
+    //bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
+    bar << TUI::color(u8"💸 " + std::to_string(tokens_used) + "/" + std::to_string(max_tokens), token_fg) << u8" │ ";
+    bar << TUI::color(u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations), iter_fg) << u8" │ ";
+    bar << TUI::check(u8"Plan", task_planning) << " ";
+    bar << TUI::check(u8"Reflect", self_reflection) << " ";
+    bar << TUI::check(u8"MultiAgent", multi_agent) << u8" │ ";
 
     // User reply mode display
     const char* reply_mode_icon = "";
     AnsiColor reply_fg = AnsiColor::BrightBlack;
-    switch (s.user_reply_mode) {
+    switch (user_reply_mode) {
         case agent::UserReplyMode::Off:     reply_mode_icon = u8"❌ off"; break;
         case agent::UserReplyMode::Exec:    reply_mode_icon = u8"🔧 exec"; reply_fg = AnsiColor::Yellow; break;
         case agent::UserReplyMode::Edit:    reply_mode_icon = u8"✏️ edit"; reply_fg = AnsiColor::Cyan; break;
         case agent::UserReplyMode::Always:  reply_mode_icon = u8"🔄 always"; reply_fg = AnsiColor::Magenta; break;
     }
-    bar << "Confirm: " << TUI::color(reply_mode_icon, reply_fg) << u8" │ ";
+    bar << u8"⛔: " << TUI::color(reply_mode_icon, reply_fg) << u8" │ ";
 
-    bar << TUI::color(u8"💾 Msg:" + std::to_string(s.memory_count) + " Fact:" + std::to_string(s.facts_count), AnsiColor::Magenta);
-    bar << u8" ─┤";
-
+    bar << TUI::color(u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count), AnsiColor::Magenta);
+    bar << u8"\n";
+    
     std::cout << bar.str();
-    if (newline_after) std::cout << std::endl;
 }
 
-// ── Print status bar inline (no newline, for dynamic updates) ────────────
-static void print_status_bar_inline(const AgentState& s) {
-    TUI::cls();
-    print_status_bar(s, false);
-    TUI::flush();
-}
-
-int main() {
+int main(int argc, char* argv[]) {
 #ifdef _WIN32
     // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
     setlocale(LC_ALL, "zh_TW.UTF-8");
@@ -110,6 +87,23 @@ int main() {
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
 #endif
+	bool cli_mode = false;
+    std::string cli_model;
+    std::string cli_prompt;
+
+    // Parse CLI arguments: -m <model>  -p <prompt>
+    {
+        for (int i = 1; i < argc; ++i) {
+            std::string arg(argv[i]);
+            if (arg == "-m" && i + 1 < argc) {
+                cli_model = argv[++i];
+                cli_mode = true;
+            } else if (arg == "-p" && i + 1 < argc) {
+                cli_prompt = argv[++i];
+                cli_mode = true;
+            }
+        }
+    }
 
     // Initialize isocline for rich console input (handles terminal setup on all platforms)
     ic_init(false);
@@ -129,9 +123,12 @@ int main() {
     std::cout << u8"╰─────────────────────────────╯" << std::endl;
     std::cout << std::endl;
 
+    // Use CLI model override if provided; otherwise fall back to config.
+    std::string effective_model = cli_model.empty() ? cfg.llm.model : cli_model;
+
     LOG_INFO("LLM", cfg.llm.url);
     LOG_DEBUG("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
-    agent::Agent ag(cfg.llm.url, cfg.llm.model);
+    agent::Agent ag(cfg.llm.url, effective_model);
     set_global_agent(&ag);
 
     // === Safety setup ===
@@ -181,15 +178,8 @@ int main() {
     ag.set_task_planning(cfg.features.task_planning);
     ag.set_self_reflection(cfg.features.self_reflection);
     ag.set_multi_agent(cfg.features.multi_agent);
+    ag.set_max_iterations(cfg.agent_.max_iterations);
     ag.set_max_reflection_retries(cfg.features.max_reflection_retries);
-
-    // ── Initialize TUI state (mirrors ftxui.md spec) ─────────
-    g_state.model_name       = cfg.llm.model;
-    g_state.max_tokens       = cfg.llm.max_tokens > 0 ? cfg.llm.max_tokens : 8192;
-    g_state.max_iterations   = cfg.agent_.max_iterations;
-    g_state.task_planning    = ag.task_planning_enabled();
-    g_state.self_reflection  = ag.self_reflection_enabled();
-    g_state.multi_agent      = ag.multi_agent_enabled();
     ag.set_local_tools_enabled(cfg.local_tools.enabled);
 
     // User Reply mode: allow user intervention during reasoning loop.
@@ -397,15 +387,24 @@ int main() {
         std::cout << u8"  💡 Shell commands are auto-detected and executed directly." << std::endl;
     }
 
+    // If -p was provided, use it as the single prompt instead of reading interactively.
+    std::string cli_input = cli_prompt;
+
     // Interactive loop with streaming output.
     while (true) {
-		update_tui_state(g_state, ag, long_term_memory);
-        print_status_bar(g_state);
+        print_status_bar(ag, long_term_memory);
         std::cout << std::endl;
-        char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
-        if (!raw) break;  // Ctrl-C / Ctrl-D
-        std::string input(raw);
-        ic_free(raw);
+
+        std::string input;
+        if (!cli_input.empty()) {
+            input = cli_input;
+            cli_input.clear();  // consume once
+        } else {
+            char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
+            if (!raw) break;  // Ctrl-C / Ctrl-D
+            input.assign(raw);
+            ic_free(raw);
+        }
         if (input.empty()) continue;
 
         if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
@@ -486,9 +485,6 @@ int main() {
 
         bool in_reasoning = false;
         ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
-            // Update TUI state: phase + tokens
-            g_state.tokens_used += static_cast<int>(token.length());
-
             // First reasoning token: show thinking indicator (dim)
             if (is_reasoning_flag && !in_reasoning) {
                 in_reasoning = true;
@@ -520,7 +516,10 @@ int main() {
                 std::cout << "/" << usage_info.max_tokens;
             std::cout << ", total=" << usage_info.total_tokens() << std::endl;
         }
-        g_state.current_iteration ++;  // increment iteration only for content tokens
+
+        if (cli_mode) {
+			break;  // Exit after one interaction in CLI mode
+        }
     }
 
     return 0;

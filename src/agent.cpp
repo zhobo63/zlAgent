@@ -128,6 +128,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
     while (iteration < max_iterations_) {
         iteration++;
+        current_iteration_++;
 
         // Compress context if history is too large
         if (memory_.summarize(llm_)) {
@@ -141,6 +142,8 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         ChatResponse resp = llm_.chat_stream(messages, on_token, tool_defs);
 
         // Accumulate token usage across iterations
+		tokens_used_ += resp.total_tokens();
+		max_tokens_ = resp.max_tokens;
         total_prompt += resp.prompt_tokens;
         total_completion += resp.completion_tokens;
 
