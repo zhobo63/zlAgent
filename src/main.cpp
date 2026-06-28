@@ -95,7 +95,14 @@ int main(int argc, char* argv[]) {
     {
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
-            if (arg == "-m" && i + 1 < argc) {
+            if (arg == "-h" || arg == "--help") {
+                std::cout << "Usage: zlagent [options]\n"
+                         << "\nOptions:\n"
+                         << "  -m <model>    Override LLM model name (does not write to config)\n"
+                         << "  -p <prompt>   Run a single prompt and exit\n"
+                         << "  -h, --help    Show this help message\n";
+                return 0;
+            } else if (arg == "-m" && i + 1 < argc) {
                 cli_model = argv[++i];
                 cli_mode = true;
             } else if (arg == "-p" && i + 1 < argc) {
@@ -144,6 +151,16 @@ int main(int argc, char* argv[]) {
         }
     } else {
         LOG_INFO("Config", "Path whitelist: disabled (no restriction)");
+    }
+
+    if (!cfg.safety.working_directory.empty()) {
+        agent::SafetyGuard::get_instance().set_working_directory(cfg.safety.working_directory);
+        LOG_INFO("Config", "Working directory set to: " + cfg.safety.working_directory);
+    } else {
+        // Default to current working directory
+        std::string cwd = agent::SafetyGuard::normalize_path(".");
+        agent::SafetyGuard::get_instance().set_working_directory(cwd);
+        LOG_INFO("Config", "Working directory defaulted to: " + cwd);
     }
 
     // Determine the effective language: auto-detect > config value.

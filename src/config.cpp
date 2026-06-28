@@ -257,6 +257,7 @@ Config Config::load(const std::string& ini_path) {
             const auto& s = it->second;
             read_bool(s, "dangerous_tool_confirmation", cfg.safety.dangerous_tool_confirmation, true);
             read_csv_list(s, "path_whitelist",          cfg.safety.path_whitelist);
+            read_if_exists(s, "working_directory",      cfg.safety.working_directory);
             read_bool(s, "skill_content_check",         cfg.safety.skill_content_check, true);
             read_bool(s, "input_filter",                cfg.safety.input_filter, true);
         }

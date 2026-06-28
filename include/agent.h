@@ -83,6 +83,7 @@ public:
     UserReplyMode get_user_reply_mode() const { return user_reply_mode_; }
 
 	void reset_iteration_count() { current_iteration_ = 0; }
+	void reset_tokens_used() { tokens_used_ = 0; }
 	int get_current_iteration() const { return current_iteration_; }
 	int get_max_iterations() const { return max_iterations_; }
 	int get_tokens_used() const { return tokens_used_; }

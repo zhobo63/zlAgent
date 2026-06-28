@@ -111,12 +111,11 @@ public:
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No path provided.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-
-            // Check existence first
             if (!fs::exists(path)) {
                 return "Error: Path '" + path + "' does not exist.";
             }
@@ -168,6 +167,16 @@ public:
 
             if (source.empty()) return "Error: No source path provided.";
             if (dest.empty())   return "Error: No destination path provided.";
+
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto src_result = SafetyGuard::get_instance().is_path_ok(source);
+            if (src_result == PathCheckResult::Denied) {
+                return "Error: Source path '" + source + "' is outside allowed directories. Operation denied.";
+            }
+            auto dst_result = SafetyGuard::get_instance().is_path_ok(dest);
+            if (dst_result == PathCheckResult::Denied) {
+                return "Error: Destination path '" + dest + "' is outside allowed directories. Operation denied.";
+            }
 
             // Check source exists
             if (!fs::exists(source)) {
@@ -226,6 +235,16 @@ public:
 
             if (source.empty()) return "Error: No source path provided.";
             if (dest.empty())   return "Error: No destination path provided.";
+
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto src_result = SafetyGuard::get_instance().is_path_ok(source);
+            if (src_result == PathCheckResult::Denied) {
+                return "Error: Source path '" + source + "' is outside allowed directories. Operation denied.";
+            }
+            auto dst_result = SafetyGuard::get_instance().is_path_ok(dest);
+            if (dst_result == PathCheckResult::Denied) {
+                return "Error: Destination path '" + dest + "' is outside allowed directories. Operation denied.";
+            }
 
             // Check source exists
             if (!fs::exists(source)) {

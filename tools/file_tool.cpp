@@ -38,12 +38,11 @@ public:
 
             if (path.empty()) return "Error: No file path provided.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-
-            // Range read when both start_line and end_line are provided
             if (start_line > 0 && end_line >= start_line) {
                 std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
                 if (result.empty()) {
@@ -141,14 +140,14 @@ public:
             if (path.empty()) return "Error: No file path provided.";
             if (content.empty()) return "Error: No content provided. For large files, consider using edit_file to make targeted changes instead of write_file.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-
             std::ofstream file(path, std::ios::trunc);
             if (!file.is_open()) {
-                return "Error: Cannot create/open file '" + path + "'";
+                return "Error: Cannot create/open file '" + path + "'";            
             }
             file << content;
             file.close();
@@ -250,13 +249,12 @@ public:
                 return "Error: Cannot use both old_text and start_line/end_line at the same time. Choose one mode.";
             }
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-
             if (text_mode) {
-                // --- Text-based mode: find old_text and replace with new_text ---
                 std::ifstream infile(path);
                 if (!infile.is_open()) {
                     return "Error: Cannot open file '" + path + "'";
@@ -474,11 +472,12 @@ public:
             if (path.empty()) return "Error: No file path provided.";
             if (content.empty()) return "Error: No content provided.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-
+            
             std::ofstream file(path, std::ios::app);
             if (!file.is_open()) {
                 return "Error: Cannot open file '" + path + "' for appending";
@@ -583,8 +582,9 @@ public:
             if (line_number < 1) return "Error: line_number must be >= 1.";
             if (content.empty()) return "Error: No content provided.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 
@@ -698,8 +698,9 @@ public:
             if (start_line <= 0) return "Error: start_line must be >= 1.";
             if (end_line < start_line) return "Error: end_line must be >= start_line.";
 
-            // Safety: path whitelist check.
-            if (!SafetyGuard::get_instance().is_path_allowed(path)) {
+            // Safety: integrated path check (working dir + whitelist + strict mode).
+            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+            if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 

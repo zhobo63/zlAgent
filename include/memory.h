@@ -44,6 +44,8 @@ public:
     size_t get_cached_token_count() const { return cached_tokens_; }
 
 private:
+    /// Recalculate cached_tokens_ from scratch by iterating over history_.
+    void recalculate();
     std::vector<ChatMessage> history_;
     int max_messages_ = DEFAULT_MAX_MESSAGES;
     size_t cached_tokens_ = 0;  // running estimate of total tokens in history_

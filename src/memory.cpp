@@ -25,15 +25,12 @@ void Memory::set_system_prompt(const std::string& prompt) {
     auto it = std::find_if(history_.begin(), history_.end(),
         [](const ChatMessage& m) { return m.role == "system"; });
     if (it != history_.end()) {
-        // Subtract old message tokens, then add new ones
-        cached_tokens_ -= TokenCounter::estimate_message(*it);
         *it = ChatMessage{"system", prompt, ""};
-        cached_tokens_ += TokenCounter::estimate_message(*it);
     } else {
         // Insert at the beginning
         history_.insert(history_.begin(), ChatMessage{"system", prompt, ""});
-        cached_tokens_ += TokenCounter::estimate_message(ChatMessage{"system", prompt, ""});
     }
+    recalculate();
 }
 
 // ---------------------------------------------------------------------------
@@ -74,22 +71,17 @@ bool Memory::summarize(LLMClient& llm) {
         return false;  // nothing to summarize
     }
 
-    // Build a list of messages to summarize and subtract their token count
+    // Build a list of messages to summarize.
     std::vector<ChatMessage> msgs_to_summarize;
     for (size_t i = summary_start; i < summary_end; i++) {
-        cached_tokens_ -= TokenCounter::estimate_message(history_[i]);
         msgs_to_summarize.push_back(history_[i]);
     }
 
-    // Ask the LLM to produce a concise summary
+    // Ask the LLM to produce a concise summary.
     ChatMessage sys_msg{"system",
         "You are a summarizer. Summarize the following conversation into 3-5 bullet points. "
         "Preserve key facts, decisions, code changes, and important context. "
         "Be concise but complete."};
-
-    // Per-message token budget for the summary request — enough context without
-    // wasting tokens on very long messages (e.g. large code blocks).
-    constexpr size_t SUMMARY_MSG_TOKEN_BUDGET = 500;
 
     std::vector<ChatMessage> prompt;
     prompt.push_back(sys_msg);
@@ -97,10 +89,17 @@ bool Memory::summarize(LLMClient& llm) {
         prompt.push_back(ChatMessage{m.role, m.content, m.name});
     }
 
-    auto resp = llm.chat(prompt);
+    ChatResponse resp{};
+    try {
+        resp = llm.chat(prompt);
+    } catch (...) {
+        // LLM call failed — leave history untouched.
+        return false;
+    }
 
     if (resp.content.empty()) {
-        return false;  // summarization failed
+        // Summarization failed — leave history untouched.
+        return false;
     }
 
     // Replace the summarized range with a single summary message.
@@ -108,13 +107,22 @@ bool Memory::summarize(LLMClient& llm) {
     // system → user → assistant flow. An "assistant"-role summary after the
     // system prompt would cause "No user query found in messages." errors.
     ChatMessage summary_msg{"user", "[Summary of earlier conversation]\n" + resp.content};
-    cached_tokens_ += TokenCounter::estimate_message(summary_msg);
 
     history_.erase(history_.begin() + static_cast<long>(summary_start),
                    history_.begin() + static_cast<long>(summary_end));
     history_.insert(history_.begin() + static_cast<long>(summary_start), summary_msg);
 
+    // Recalculate cached_tokens_ from scratch to avoid unsigned underflow.
+    recalculate();
+
     return true;
+}
+
+void Memory::recalculate() {
+    cached_tokens_ = 0;
+    for (const auto& msg : history_) {
+        cached_tokens_ += TokenCounter::estimate_message(msg);
+    }
 }
 
 } // namespace agent

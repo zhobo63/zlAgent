@@ -32,8 +32,7 @@ void register_command_handlers(
             "  /sessions [n]      List recent session summaries (default: 5)\n"
             "  /summary           Summarize current history and start a new conversation with the summary\n"
             "  /new               Start a new conversation (clear history)\n"
-            "  /clear-memory      Clear current conversation history\n"
-            "  /save-session      Save current session to long-term memory now\n"
+            "  /save              Save current session to long-term memory now\n"
             "\nRAG commands:\n"
             "  /search-kb query   Search knowledge base directly from CLI\n"
             "  /add-doc path      Add a file or directory to the knowledge base\n"
@@ -293,6 +292,8 @@ void register_command_handlers(
     dispatcher.register_command("new", [ag](const std::vector<std::string>&) {
         if (!ag) return;
         ag->get_memory().clear();
+        ag->reset_iteration_count();
+        ag->reset_tokens_used();
         LOG_INFO("Command", "  New conversation started.");
     });
 
@@ -338,6 +339,8 @@ void register_command_handlers(
         // Use role "user" so that LM Studio's jinja prompt template sees a valid
         // system → user → assistant flow after re-injecting the system prompt.
         memory.clear();
+        ag->reset_iteration_count();
+        ag->reset_tokens_used();
         ChatMessage summary_msg{"user",
             "[Summary of previous conversation]\n" + resp.content};
         memory.add(summary_msg);
@@ -345,15 +348,8 @@ void register_command_handlers(
         LOG_INFO("Command", "  Conversation summarized. New session started with summary:\n\n" + resp.content);
     });
 
-    // ── /clear-memory ────────────────────────────────
-    dispatcher.register_command("clear-memory", [ag](const std::vector<std::string>&) {
-        if (!ag) return;
-        ag->get_memory().clear();
-        LOG_INFO("Command", "  Conversation history cleared.");
-    });
-
-    // ── /save-session ────────────────────────────────
-    dispatcher.register_command("save-session", [ag](const std::vector<std::string>&) {
+    // ── /save ────────────────────────────────────────
+    dispatcher.register_command("save", [ag](const std::vector<std::string>&) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");

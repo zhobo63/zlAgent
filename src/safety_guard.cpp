@@ -88,6 +88,70 @@ void SafetyGuard::reset_path_whitelist() {
     path_whitelist_.clear();
 }
 
+void SafetyGuard::set_working_directory(const std::string& dir) {
+    working_directory_ = normalize_path(dir);
+}
+
+const std::string& SafetyGuard::get_working_directory() const {
+    return working_directory_;
+}
+
+void SafetyGuard::set_strict_mode(bool strict) {
+    strict_mode_ = strict;
+}
+
+bool SafetyGuard::get_strict_mode() const {
+    return strict_mode_;
+}
+
+PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
+    // Empty whitelist AND no working directory → allow everything (legacy behavior).
+    if (path_whitelist_.empty() && working_directory_.empty())
+        return PathCheckResult::Allowed;
+
+    std::string norm = normalize_path(path);
+
+    // Inside working directory → auto-allow.
+    if (!working_directory_.empty()
+        && norm.compare(0, working_directory_.size(), working_directory_) == 0)
+    {
+        return PathCheckResult::Allowed;
+    }
+
+    // Inside whitelist → auto-allow.
+    if (is_under_allowed_dir(norm))
+        return PathCheckResult::Allowed;
+
+    // Outside both — decision depends on strict mode.
+    if (strict_mode_) {
+        LOG_WARN("Safety", "Path outside working directory and whitelist: " + path);
+        return PathCheckResult::Denied;
+    }
+
+    // ConfirmMode: ask the user.
+    std::cout << "   [Safety] Path outside working directory/whitelist: " << path << "\n";
+    std::cout << "   Type 'y' to confirm, anything else to cancel: ";
+
+    std::string response;
+    if (!std::getline(std::cin, response))
+        return PathCheckResult::Denied;
+
+    // Trim whitespace.
+    auto trim = [](std::string& s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
+    };
+    trim(response);
+
+    std::string lower = response;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    if (lower == "y" || lower == "yes")
+        return PathCheckResult::Allowed;
+
+    return PathCheckResult::Denied;
+}
+
 bool SafetyGuard::is_path_allowed(const std::string& path) const {
     // Empty whitelist = no restriction.
     if (path_whitelist_.empty()) return true;

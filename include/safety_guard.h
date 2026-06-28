@@ -6,9 +6,22 @@
 namespace agent {
 
 /**
+ * Result of a path safety check.
+ *
+ * - Allowed:           inside working directory or whitelist — auto-allow.
+ * - NeedsConfirmation: outside both, and strict_mode is OFF — ask the user.
+ * - Denied:            outside both, and strict_mode is ON — reject outright.
+ */
+enum class PathCheckResult {
+    Allowed,
+    NeedsConfirmation,
+    Denied
+};
+
+/**
  * SafetyGuard provides four layers of protection:
  * 1. Dangerous tool confirmation — prompt user before destructive operations.
- * 2. Path whitelist — reject file operations outside allowed directories.
+ * 2. Path whitelist + working directory — reject file operations outside allowed directories.
  * 3. Skill content check — detect suspicious shell commands in SKILL.md.
  * 4. Input filter — basic prompt injection detection on user input.
  */
@@ -22,7 +35,7 @@ public:
     // Check if a command string contains destructive patterns (rm -rf, del /f, etc.).
     static bool is_command_dangerous(const std::string& command);
 
-    // ── 2. Path whitelist ──────────────────────────────────
+    // ── 2. Path whitelist + working directory ──────────────
 
     // Set allowed directories. Empty = no restriction.
     void set_path_whitelist(const std::vector<std::string>& dirs);
@@ -35,6 +48,24 @@ public:
 
     // Reset whitelist to empty — useful for tests.
     void reset_path_whitelist();
+
+    // Set the working directory. Paths under this directory are always allowed.
+    void set_working_directory(const std::string& dir);
+
+    // Get current working directory.
+    const std::string& get_working_directory() const;
+
+    // Set strict mode.
+    //   false (default) = ConfirmMode — ask user when path is outside both wd and whitelist.
+    //   true            = RejectMode  — deny outright when path is outside both wd and whitelist.
+    void set_strict_mode(bool strict);
+
+    // Get current strict mode.
+    bool get_strict_mode() const;
+
+    // Integrated path check that considers working directory, whitelist, and strict mode.
+    // In ConfirmMode (strict=false), this method will prompt the user if needed.
+    PathCheckResult is_path_ok(const std::string& path);
 
     // ── 3. Skill content check ─────────────────────────────
 
@@ -57,6 +88,13 @@ public:
 
     // Path whitelist — instance member to avoid global state.
     std::vector<std::string> path_whitelist_;
+
+private:
+    // Working directory — paths under this are always allowed.
+    std::string working_directory_;
+
+    // Strict mode: true = reject outright, false = ask user for out-of-scope paths.
+    bool strict_mode_ = false;
 };
 
 } // namespace agent
