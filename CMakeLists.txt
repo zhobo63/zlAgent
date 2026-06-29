@@ -51,6 +51,8 @@ set(CORE_SOURCES
     src/completion.cpp
     # Event broker (message broadcast)
     src/event.cpp
+    # Telegram Bot client
+    src/telegram_client.cpp
 )
 
 # Tool source files

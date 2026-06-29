@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "tui.h"
 
 // ── Static member definitions ───────────────────────
@@ -35,6 +36,8 @@ void TUI::out(const char* fmt, ...) {
     va_end(args);
 
     std::cout << buf << std::flush;
+
+    agent::send_event("out", buf);
 }
 
 void TUI::err(const char* fmt, ...) {

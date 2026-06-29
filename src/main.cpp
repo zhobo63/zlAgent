@@ -23,6 +23,8 @@
 #include <isocline.h>
 #include "tui.h"
 #include "user_reply.h"
+#include "event.h"
+#include "telegram_client.h"
 
 // ── Input history (managed by isocline) ─────────
 static const int MAX_HISTORY = 50;
@@ -408,6 +410,53 @@ int main(int argc, char* argv[]) {
         terminal_detector = agent::TerminalCommandDetector::create(
             cfg.terminal_commands.direct_commands,
             cfg.terminal_commands.confirm_commands);
+    }
+
+    // ── Telegram Bot ───────────────────────────────────────
+    std::unique_ptr<agent::TelegramClient> telegram_client;
+    if (cfg.telegram.enabled && !cfg.telegram.bot_token.empty()) {
+        agent::TelegramClient::Config tg_cfg;
+        tg_cfg.enabled            = true;
+        tg_cfg.bot_token          = cfg.telegram.bot_token;
+        tg_cfg.poll_timeout_sec   = cfg.telegram.poll_timeout_sec;
+        tg_cfg.max_updates_per_poll = cfg.telegram.max_updates_per_poll;
+        tg_cfg.allowed_chat_ids   = cfg.telegram.allowed_chat_ids;
+
+        telegram_client = std::make_unique<agent::TelegramClient>(tg_cfg);
+
+        // Register incoming message handler via event broker.
+        agent::on_event("telegram.incoming", [&](const std::string& payload_json) {
+            try {
+                auto j = nlohmann::json::parse(payload_json);
+                int64_t chat_id   = j.value("chat_id", 0LL);
+                std::string text  = j.value("text", "");
+
+                if (text.empty()) return;
+
+                LOG_INFO("Telegram", "Processing message from chat " + std::to_string(chat_id));
+
+                // Run the Agent with the user's input.
+                agent::ChatResponse usage_info{};
+                std::string response = ag.run_stream(text, [&](const std::string& token, bool) {
+                    TUI::out("%s", token.c_str());
+                    TUI::flush();
+                    return true;
+                }, &usage_info);
+
+                // Send the Agent's reply back to Telegram.
+                if (!response.empty()) {
+                    telegram_client->send_message(chat_id, response);
+                    LOG_INFO("Telegram", "Reply sent to chat " + std::to_string(chat_id));
+                }
+            } catch (const std::exception& e) {
+                LOG_ERROR("Telegram", "Error processing incoming message: " + std::string(e.what()));
+            }
+        });
+
+        telegram_client->start();
+        TUI::out(u8"\n🤖 Telegram bot connected. Listening for messages...\n");
+    } else if (cfg.telegram.enabled) {
+        LOG_WARN("Telegram", "Telegram is enabled but bot_token is empty — skipping.");
     }
 
 

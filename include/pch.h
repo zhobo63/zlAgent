@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // ============================================================================
 // Precompiled Header - zlagent
@@ -47,3 +47,4 @@
 #include <json.hpp>
 #include <logger.h>
 #include <tui.h>
+#include <event.h>

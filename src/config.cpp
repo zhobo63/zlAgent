@@ -150,6 +150,32 @@ static void read_csv_list(const std::map<std::string, std::string>& s,
     if (!str.empty()) target.push_back(std::move(str));
 }
 
+// Read a comma-separated list of trimmed int64 values.
+static void read_csv_int_list(const std::map<std::string, std::string>& s,
+                              const char* key, std::vector<int64_t>& target) {
+    auto it = s.find(key);
+    if (it == s.end()) return;
+
+    std::string str = it->second;
+    size_t pos = 0;
+    while ((pos = str.find(',', pos)) != std::string::npos) {
+        std::string item = str.substr(0, pos);
+        ltrim(item);
+        rtrim(item);
+        if (!item.empty()) {
+            try { target.push_back(std::stoll(item)); }
+            catch (...) {}
+        }
+        str = str.substr(pos + 1);
+    }
+    ltrim(str);
+    rtrim(str);
+    if (!str.empty()) {
+        try { target.push_back(std::stoll(str)); }
+        catch (...) {}
+    }
+}
+
 // --- Config helpers ---
 
 bool Config::parse_bool(const std::string& s, bool default_val) {
@@ -288,6 +314,19 @@ Config Config::load(const std::string& ini_path) {
             read_csv_list(s, "direct",           cfg.terminal_commands.direct_commands);
             read_csv_list(s, "confirm",          cfg.terminal_commands.confirm_commands);
             read_bool(s, "ask_unknown",          cfg.terminal_commands.ask_unknown, false);
+        }
+    }
+
+    // --- [telegram] section ---
+    {
+        auto it = data.find("telegram");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled",              cfg.telegram.enabled, false);
+            read_if_exists(s, "bot_token",       cfg.telegram.bot_token);
+            read_if_exists(s, "poll_timeout_sec",  cfg.telegram.poll_timeout_sec);
+            read_if_exists(s, "max_updates_per_poll", cfg.telegram.max_updates_per_poll);
+            read_csv_int_list(s, "allowed_chat_ids", cfg.telegram.allowed_chat_ids);
         }
     }
 
@@ -444,6 +483,24 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
         }
         kvs["ask_unknown"] = cfg.terminal_commands.ask_unknown ? "true" : "false";
         write_section("terminal_commands", kvs);
+    }
+
+    // [telegram]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"]            = cfg.telegram.enabled ? "true" : "false";
+        kvs["bot_token"]          = cfg.telegram.bot_token;
+        kvs["poll_timeout_sec"]   = std::to_string(cfg.telegram.poll_timeout_sec);
+        kvs["max_updates_per_poll"] = std::to_string(cfg.telegram.max_updates_per_poll);
+        if (!cfg.telegram.allowed_chat_ids.empty()) {
+            std::string ids;
+            for (const auto& id : cfg.telegram.allowed_chat_ids) {
+                if (!ids.empty()) ids += ", ";
+                ids += std::to_string(id);
+            }
+            kvs["allowed_chat_ids"] = ids;
+        }
+        write_section("telegram", kvs);
     }
 
     out.close();

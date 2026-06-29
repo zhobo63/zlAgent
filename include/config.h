@@ -112,6 +112,15 @@ struct Config {
         bool ask_unknown = false;                   // prompt for commands not in either list
     } terminal_commands;
 
+    // ── Telegram Bot ───────────────────────────────
+    struct Telegram {
+        bool enabled = false;
+        std::string bot_token;                      // e.g. "123456:ABCdef..."
+        int poll_timeout_sec = 30;                  // long-poll timeout per request
+        int max_updates_per_poll = 100;             // limit per getUpdates call
+        std::vector<int64_t> allowed_chat_ids;      // empty = allow all
+    } telegram;
+
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);
 

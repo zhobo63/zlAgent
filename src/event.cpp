@@ -1,3 +1,5 @@
+﻿#include "pch.h"
+
 #include "event.h"
 #include "logger.h"
 

@@ -5,7 +5,7 @@
 - 不使用webhook模式
 - 訊息傳輸流程:
   Telegram -> Agent -> LLM -> Agent -> Telegram
-- 回傳訊息由 TUI::out()
+- 回傳訊息由 event.h on_event 接收
 
 
 ---
