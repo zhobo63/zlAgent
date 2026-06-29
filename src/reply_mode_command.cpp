@@ -10,7 +10,7 @@ namespace agent {
  * Registers the /reply-mode CLI command with a CommandDispatcher.
  */
 void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag) {
-    dispatcher.register_command("reply-mode", [ag](const std::vector<std::string>& args) {
+    dispatcher.register_command("reply-mode", [ag](const std::vector<std::string>& args, std::string&) {
         if (!ag) return;
 
         // No arguments — show current mode and usage.

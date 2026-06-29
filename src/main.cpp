@@ -88,8 +88,129 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
     bar << u8" │ " << TUI::color(mode_icon, mode_fg) << u8" 📄:" << std::to_string(whitelist_count);
 
     bar << u8"\n";
-    
+
     std::cout << bar.str();
+}
+
+bool run_interactive(
+    const std::string &input,
+	agent::Config& cfg,
+    agent::CommandDispatcher &dispatcher,
+    agent::TerminalCommandDetector* terminal_detector,
+    agent::Agent& ag, 
+    std::unique_ptr<agent::LongTermMemory>& long_term_memory,
+    std::string &response)
+{
+
+    if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
+        // Save session to long-term memory before exiting.
+        if (long_term_memory) {
+            TUI::out("\nSaving session to long-term memory...\n");
+            long_term_memory->save_session(ag.get_memory(), ag.get_llm());
+        }
+        TUI::out(u8"\nGoodbye!\n");
+        return false;
+    }
+
+    // Dispatch slash-commands before sending to LLM.
+    if (dispatcher.dispatch(input, response)) 
+        return true;
+
+    // Detect and execute terminal commands directly, bypassing the LLM.
+    if (terminal_detector) {
+        switch (terminal_detector->detect(input)) {
+        case agent::CommandConfidence::High:
+            // High confidence — execute immediately.
+            agent::TerminalCommandDetector::execute_directly(input, response);
+            return true;
+
+        case agent::CommandConfidence::Low:
+            // Low confidence — ask user to confirm.
+            std::cout << u8"\u26A0 Detected possible terminal command: "
+                << input << "\n"
+                << u8"   Execute directly? [y/N]: ";
+            {
+                std::string resp;
+                if (std::getline(std::cin, resp)) {
+                    auto trim = [](std::string& s) {
+                        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c) { return !std::isspace(c); }));
+                        s.erase(std::find_if(s.rbegin(), s.rend(), [](char c) { return !std::isspace(c); }).base(), s.end());
+                        };
+                    trim(resp);
+                    std::string lower = resp;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    if (lower == "y" || lower == "yes") {
+                        agent::TerminalCommandDetector::execute_directly(input, response);
+                        return true;
+                    }
+                }
+            }
+            // User declined — fall through to LLM.
+            break;
+
+        case agent::CommandConfidence::NotACommand:
+            break;  // Not a command, send to LLM as usual.
+        }
+    }
+
+    // Safety: input filter - detect prompt injection attempts.
+    if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
+        LOG_WARN("Safety", "Possible prompt injection detected. Input rejected.");
+        return true;
+    }
+
+    // --- Waiting spinner animation (rotating circle, single-threaded) ---
+    const char* spinners = u8"\u2809\u281B\u281E\u2817\u2814\u281A\u281C\u2808";  // ⠋⠙⠹⠸⠼⠴⠦⠧
+    //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
+    const int spinner_len = 8;
+
+    TUI::out("\nAgent: ");
+    //for (int i = 0; i < 3; ++i) {  // spin a few times while waiting for first token
+    //    if (i > 0)
+    //        std::cout << "\b";    // each Braille char is 1 display cell, so just \b once
+    //    std::cout << spinners[i % spinner_len] << std::flush;
+    //    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    //}
+    //// Erase the last spinner character (1 display cell)
+    //std::cout << " \b";
+
+    // Capture token usage from the LLM response
+    agent::ChatResponse usage_info{};
+
+    bool in_reasoning = false;
+    response = ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
+        // First reasoning token: show thinking indicator (dim)
+        if (is_reasoning_flag && !in_reasoning) {
+            in_reasoning = true;
+            TUI::printDim(u8"[🤔 thinking]");
+        }
+        // Transition from reasoning to content: restore normal brightness
+        else if (!is_reasoning_flag && in_reasoning) {
+            in_reasoning = false;
+            TUI::reset();
+        }
+
+        TUI::out("%s", token.c_str());
+        TUI::flush();
+        return true;  // keep streaming
+        }, &usage_info);
+
+    // Ensure terminal is back to normal even if reasoning was the last output.
+    if (in_reasoning) {
+        in_reasoning = false;
+        TUI::reset();
+    }
+
+    // Display token usage if available
+    if (usage_info.total_tokens() > 0) {
+        TUI::out(u8"\n\n⏱  Tokens: ");
+        TUI::out("prompt=%d", usage_info.prompt_tokens);
+        TUI::out(", completion=%d", usage_info.completion_tokens);
+        if (usage_info.max_tokens > 0)
+            TUI::out("/%d", usage_info.max_tokens);
+        TUI::out(", total=%d\n", usage_info.total_tokens());
+    }
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -435,13 +556,8 @@ int main(int argc, char* argv[]) {
 
                 LOG_INFO("Telegram", "Processing message from chat " + std::to_string(chat_id));
 
-                // Run the Agent with the user's input.
-                agent::ChatResponse usage_info{};
-                std::string response = ag.run_stream(text, [&](const std::string& token, bool) {
-                    TUI::out("%s", token.c_str());
-                    TUI::flush();
-                    return true;
-                }, &usage_info);
+				std::string response;
+				run_interactive(text, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
 
                 // Send the Agent's reply back to Telegram.
                 if (!response.empty()) {
@@ -470,7 +586,8 @@ int main(int argc, char* argv[]) {
     std::string cli_input = cli_prompt;
 
     // Interactive loop with streaming output.
-    while (true) {
+	bool running = true;
+    while (running) {
         print_status_bar(ag, long_term_memory);
         TUI::out("\n");
 
@@ -478,7 +595,8 @@ int main(int argc, char* argv[]) {
         if (!cli_input.empty()) {
             input = cli_input;
             cli_input.clear();  // consume once
-        } else {
+        }
+        else {
             char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
             if (!raw) break;  // Ctrl-C / Ctrl-D
             input.assign(raw);
@@ -486,115 +604,8 @@ int main(int argc, char* argv[]) {
         }
         if (input.empty()) continue;
 
-        if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
-            // Save session to long-term memory before exiting.
-            if (long_term_memory) {
-                TUI::out("\nSaving session to long-term memory...\n");
-                long_term_memory->save_session(ag.get_memory(), ag.get_llm());
-            }
-            TUI::out(u8"\nGoodbye!\n");
-            break;
-        }
-
-        if (input.empty()) continue;
-
-        // Dispatch slash-commands before sending to LLM.
-        if (dispatcher.dispatch(input)) continue;
-
-        // Detect and execute terminal commands directly, bypassing the LLM.
-        if (terminal_detector) {
-            switch (terminal_detector->detect(input)) {
-                case agent::CommandConfidence::High:
-                    // High confidence — execute immediately.
-                    agent::TerminalCommandDetector::execute_directly(input);
-                    continue;
-
-                case agent::CommandConfidence::Low:
-                    // Low confidence — ask user to confirm.
-                    std::cout << u8"\u26A0 Detected possible terminal command: "
-                              << input << "\n"
-                              << u8"   Execute directly? [y/N]: ";
-                    {
-                        std::string resp;
-                        if (std::getline(std::cin, resp)) {
-                            auto trim = [](std::string& s) {
-                                s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
-                                s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
-                            };
-                            trim(resp);
-                            std::string lower = resp;
-                            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                            if (lower == "y" || lower == "yes") {
-                                agent::TerminalCommandDetector::execute_directly(input);
-                                continue;
-                            }
-                        }
-                    }
-                    // User declined — fall through to LLM.
-                    break;
-
-                case agent::CommandConfidence::NotACommand:
-                    break;  // Not a command, send to LLM as usual.
-            }
-        }
-
-        // Safety: input filter - detect prompt injection attempts.
-        if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
-            LOG_WARN("Safety", "Possible prompt injection detected. Input rejected.");
-            continue;
-        }
-
-        // --- Waiting spinner animation (rotating circle, single-threaded) ---
-        const char* spinners = u8"\u2809\u281B\u281E\u2817\u2814\u281A\u281C\u2808";  // ⠋⠙⠹⠸⠼⠴⠦⠧
-        //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
-        const int spinner_len = 8;
-
-        TUI::out("\nAgent: ");
-        //for (int i = 0; i < 3; ++i) {  // spin a few times while waiting for first token
-        //    if (i > 0)
-        //        std::cout << "\b";    // each Braille char is 1 display cell, so just \b once
-        //    std::cout << spinners[i % spinner_len] << std::flush;
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        //}
-        //// Erase the last spinner character (1 display cell)
-        //std::cout << " \b";
-
-        // Capture token usage from the LLM response
-        agent::ChatResponse usage_info{};
-
-        bool in_reasoning = false;
-        ag.run_stream(input, [&](const std::string& token, bool is_reasoning_flag) {
-            // First reasoning token: show thinking indicator (dim)
-            if (is_reasoning_flag && !in_reasoning) {
-                in_reasoning = true;
-                TUI::printDim(u8"[🤔 thinking]");
-            }
-            // Transition from reasoning to content: restore normal brightness
-            else if (!is_reasoning_flag && in_reasoning) {
-                in_reasoning = false;
-                TUI::reset();
-            }
-
-            TUI::out("%s", token.c_str());
-            TUI::flush();
-            return true;  // keep streaming
-        }, &usage_info);
-
-        // Ensure terminal is back to normal even if reasoning was the last output.
-        if (in_reasoning) {
-            in_reasoning = false;
-            TUI::reset();
-        }
-
-        // Display token usage if available
-        if (usage_info.total_tokens() > 0) {
-            TUI::out(u8"\n\n⏱  Tokens: ");
-            TUI::out("prompt=%d", usage_info.prompt_tokens);
-            TUI::out(", completion=%d", usage_info.completion_tokens);
-            if (usage_info.max_tokens > 0)
-                TUI::out("/%d", usage_info.max_tokens);
-            TUI::out(", total=%d\n", usage_info.total_tokens());
-        }
+		std::string response;
+        running = run_interactive(input, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
 
         if (cli_mode) {
 			break;  // Exit after one interaction in CLI mode

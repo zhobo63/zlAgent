@@ -9,7 +9,7 @@ void CommandDispatcher::register_command(const std::string& name, Handler handle
     commands_[name] = std::move(handler);
 }
 
-bool CommandDispatcher::dispatch(const std::string& raw_input) {
+bool CommandDispatcher::dispatch(const std::string& raw_input, std::string& response) {
     if (raw_input.empty() || raw_input[0] != '/') return false;
 
     auto tokens = tokenize(raw_input.substr(1)); // strip leading '/'
@@ -20,11 +20,12 @@ bool CommandDispatcher::dispatch(const std::string& raw_input) {
 
     auto it = commands_.find(cmd_name);
     if (it == commands_.end()) {
-        LOG_ERROR("CommandDispatcher", "Unknown command: /" + cmd_name + ". Type /help for available commands.");
+        response = "Unknown command: /" + cmd_name + ". Type /help for available commands.";
+        LOG_ERROR("CommandDispatcher", response);
         return true; // handled - don't send to LLM
     }
     TUI::out("\n");
-    it->second(args);
+    it->second(args, response);
     return true;
 }
 

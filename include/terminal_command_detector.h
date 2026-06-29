@@ -46,8 +46,9 @@ public:
     /**
      * Execute a shell command directly and print the output to stdout.
      * Returns true if the command succeeded (exit code 0).
+     * If response is non-null, the command output is also written there.
      */
-    static bool execute_directly(const std::string& command);
+    static bool execute_directly(const std::string& command, std::string& response);
 
 private:
     TerminalCommandDetector() = default;

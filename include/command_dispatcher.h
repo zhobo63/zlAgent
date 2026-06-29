@@ -13,14 +13,15 @@ namespace agent {
  */
 class CommandDispatcher {
 public:
-    using Handler = std::function<void(const std::vector<std::string>& args)>;
+    using Handler = std::function<void(const std::vector<std::string>& args, std::string& response)>;
 
     // Register a command handler. The name should NOT include the leading '/'.
     void register_command(const std::string& name, Handler handler);
 
     // Try to dispatch an input string that starts with '/'.
     // Returns true if a command was handled (caller should skip LLM processing).
-    bool dispatch(const std::string& raw_input);
+    // If response is non-null, the handler can write its output there.
+    bool dispatch(const std::string& raw_input, std::string& response);
 
 private:
     std::map<std::string, Handler> commands_;

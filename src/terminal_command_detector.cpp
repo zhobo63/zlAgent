@@ -220,23 +220,28 @@ std::string TerminalCommandDetector::to_lower(const std::string& s) {
     return result;
 }
 
-bool TerminalCommandDetector::execute_directly(const std::string& command) {
+bool TerminalCommandDetector::execute_directly(const std::string& command, std::string& response) {
     LOG_INFO("Terminal", "Executing directly: " + command);
 
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe) {
-        LOG_ERROR("Terminal", "Failed to execute command:" + command);
+        auto err_msg = "Failed to execute command:" + command;
+        LOG_ERROR("Terminal", err_msg);
+        response = err_msg;
         return false;
     }
 
     char buffer[4096] = { 0 };
     while (fgets(buffer, sizeof(buffer), pipe)) {
         std::cout << buffer;
+        response += buffer;
     }
 
     int status = pclose(pipe);
     if (status != 0) {
-        LOG_WARN("Terminal", "Command failed with exit code " + std::to_string(status));
+        auto warn_msg = "Command failed with exit code " + std::to_string(status);
+        LOG_WARN("Terminal", warn_msg);
+        response += "\n" + warn_msg;
         return false;
     }
 

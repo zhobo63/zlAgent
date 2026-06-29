@@ -18,7 +18,7 @@ void register_command_handlers(
     LongTermMemory* long_term_memory) {
 
     // ── /help ────────────────────────────────────────
-    dispatcher.register_command("help", [](const std::vector<std::string>&) {
+    dispatcher.register_command("help", [](const std::vector<std::string>&, std::string&) {
         LOG_INFO("Command", std::string{"\nAvailable commands:\n"
             "  /help              Show this help message\n"
             "  /status            Show agent status (tools, skills, memory)\n"
@@ -51,7 +51,7 @@ void register_command_handlers(
     });
 
     // ── /status ────────────────────────────────────────
-    dispatcher.register_command("status", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("status", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
         int tool_count = static_cast<int>(ag->get_tool_names().size());
         LOG_INFO("Command", "\n--- Agent Status ---\n  Tools registered: " + std::to_string(tool_count) + "\n");
@@ -84,14 +84,14 @@ void register_command_handlers(
     });
 
     // ── /config ────────────────────────────────────────
-    dispatcher.register_command("config", [](const std::vector<std::string>&) {
+    dispatcher.register_command("config", [](const std::vector<std::string>&, std::string&) {
         LOG_INFO("Command", std::string{"\n--- Configuration ---\n"
             "  (Use 'zlagent.ini' to modify settings)\n"
             "  See zlagent.ini for all available options.\n"});
     });
 
     // ── /skills ────────────────────────────────────────
-    dispatcher.register_command("skills", [](const std::vector<std::string>&) {
+    dispatcher.register_command("skills", [](const std::vector<std::string>&, std::string&) {
         auto sr = get_global_skill_registry();
         if (!sr) {
             LOG_INFO("Command", "  No skill registry available.");
@@ -114,7 +114,7 @@ void register_command_handlers(
     });
 
     // ── /model - interactive model switcher ────────────────
-    dispatcher.register_command("model", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("model", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
 
         auto models = ag->get_llm().list_models();
@@ -189,7 +189,7 @@ void register_command_handlers(
     });
 
     // ── /model-info ────────────────────────────────
-    dispatcher.register_command("model-info", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("model-info", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
 
         // Helper: format context length for display.
@@ -222,7 +222,7 @@ void register_command_handlers(
     });
 
     // ── /facts [prefix] ────────────────────────────────
-    dispatcher.register_command("facts", [](const std::vector<std::string>& args) {
+    dispatcher.register_command("facts", [](const std::vector<std::string>& args, std::string&) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
@@ -253,7 +253,7 @@ void register_command_handlers(
     });
 
     // ── /sessions [n] ────────────────────────────────
-    dispatcher.register_command("sessions", [](const std::vector<std::string>& args) {
+    dispatcher.register_command("sessions", [](const std::vector<std::string>& args, std::string&) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
@@ -289,7 +289,7 @@ void register_command_handlers(
     });
 
     // ── /new ───────────────────────────────────────────
-    dispatcher.register_command("new", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("new", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
         ag->get_memory().clear();
         ag->reset_iteration_count();
@@ -298,7 +298,7 @@ void register_command_handlers(
     });
 
     // ── /summary ───────────────────────────────────────
-    dispatcher.register_command("summary", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("summary", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
 
         auto& memory = ag->get_memory();
@@ -349,7 +349,7 @@ void register_command_handlers(
     });
 
     // ── /save ────────────────────────────────────────
-    dispatcher.register_command("save", [ag](const std::vector<std::string>&) {
+    dispatcher.register_command("save", [ag](const std::vector<std::string>&, std::string&) {
         auto ltm = get_global_long_term_memory();
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
@@ -366,7 +366,7 @@ void register_command_handlers(
     });
 
     // ── /search-kb query ────────────────────────────────
-    dispatcher.register_command("search-kb", [](const std::vector<std::string>& args) {
+    dispatcher.register_command("search-kb", [](const std::vector<std::string>& args, std::string&) {
         if (args.empty()) {
             LOG_INFO("Command", "  Usage: /search-kb <query>");
             return;
@@ -405,17 +405,17 @@ void register_command_handlers(
     });
 
     // ── /quit, /exit ────────────────────────────────
-    dispatcher.register_command("quit", [](const std::vector<std::string>&) {
+    dispatcher.register_command("quit", [](const std::vector<std::string>&, std::string&) {
         LOG_INFO("Command", "  Goodbye!");
         exit(0);
     });
-    dispatcher.register_command("exit", [](const std::vector<std::string>&) {
+    dispatcher.register_command("exit", [](const std::vector<std::string>&, std::string&) {
         LOG_INFO("Command", "  Goodbye!");
         exit(0);
     });
 
     // ── /add-doc path ────────────────────────────────
-    dispatcher.register_command("add-doc", [](const std::vector<std::string>& args) {
+    dispatcher.register_command("add-doc", [](const std::vector<std::string>& args, std::string&) {
         if (args.empty()) {
             LOG_INFO("Command", "  Usage: /add-doc <file_or_directory_path>");
             return;
@@ -448,7 +448,7 @@ void register_command_handlers(
     });
 
     // ── /reply [mode] ──────────────────────────────────────
-    dispatcher.register_command("reply", [ag](const std::vector<std::string>& args) {
+    dispatcher.register_command("reply", [ag](const std::vector<std::string>& args, std::string&) {
         if (!ag) return;
 
         if (args.empty()) {

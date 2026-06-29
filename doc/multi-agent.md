@@ -12,14 +12,13 @@
 - 將代理解耦為獨立進程/服務
 - 使用 **httplib.h** 內建的 WebSocket（無需額外依賴）作為代理間通訊協議
 - 支援動態代理註冊與發現
-- 子代理像是工具一樣 由代理發布任務 處理完後回報結果
+- 子代理像是工具一樣：由主代理發布任務，處理完後回報結果
   - 子代理有獨自處理任務的能力
-  - 子代理連線後像是註冊工具 提供專案名稱 專案簡介
+  - 子代理連線後像是註冊工具，提供專案名稱、專案簡介
 
-  - 應用情境:
-    - 主代理 專案 Lobby (大廳) 目錄 /hg/Lobby
-    - 子代理 專案 Report (報表) 目錄 /hg/Report
-
+**應用情境：**
+- 主代理 → 專案 Lobby（大廳）→ `/hg/Lobby`
+- 子代理 → 專案 Report（報表）→ `/hg/Report`
 
 ---
 
@@ -51,30 +50,34 @@ allowed_origins = http://localhost:8765   # CORS 白名單
 
 ### 2.2 Agent 程式角色（Server + Client）
 
-- WebSocketClient client: singleton
-- Server: singleton
+- `WebSocketClient` — singleton，負責連線到 Server
+- `Server` — singleton，負責監聽並接受子代理連線
 
 同一個 `agent` 程式，根據是否有 `--ws-url` 決定連線方向：
 
 | 參數 | 說明 |
 |------|------|
 | `--ws-url=ws://...` | Client — 主動連線到指定 Server |
-| `--port=88766` | Server — 接受子代理連線 |
+| `--port=8766` | Server — 接受子代理連線 |
 
-Agent **沒有角色定義**（coder / reviewer / tester），每個 Agent 只是單純接收任務並執行。
+> **Agent 沒有角色定義**（coder / reviewer / tester），每個 Agent 只是單純接收任務並執行。
 
 ```cpp
 // Agent 程式：根據 --ws-url 決定連線方向
 int main(int argc, char* argv[]) {
     string ws_url;
-    int listen_port=0;
+    int listen_port = 0;
 
     Config config;
-    ws_url=config.ws_url();
-    listen_port=config.listen_port();
-    {
-      get ws_url from argv if `--ws-url=`
-      get listen_port from argv if `--port=`
+    ws_url = config.ws_url();
+    listen_port = config.listen_port();
+    
+    // CLI flags 優先覆蓋 INI 設定
+    if (has_arg("--ws-url")) {
+        get ws_url from argv if `--ws-url=`
+    }
+    if (has_arg("--port")) {
+        get listen_port from argv if `--port=`
     }
     
     if (ws_url != "") {
@@ -85,6 +88,7 @@ int main(int argc, char* argv[]) {
         AgentInfo info = generate_info();
         client.send(register_msg);
     } 
+    
     if (listen_port != 0) {
         // Server：監聽 port，等待其他代理連線
         auto& server = Server::instance();
@@ -94,7 +98,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-### 2.5 設定優先級
+### 2.3 設定優先級
 
 | 來源 | 優先級 | 說明 |
 |------|--------|------|
@@ -106,22 +110,20 @@ int main(int argc, char* argv[]) {
 ## 3. 系統架構
 
 ```
-
 Agent #1 (Server)
-  - Agent #2 (Client)
-  - Agent #3 (Client)
-  - Agent #4 (Client)
-  - Agent #5 (Client)
-
-
-Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
+  ├── Agent #2 (Client)
+  ├── Agent #3 (Client)
+  ├── Agent #4 (Client)
+  └── Agent #5 (Client)
 ```
+
+> **Agent 沒有角色定義**，每個 Agent 只是單純接收任務並執行。
 
 ---
 
 ## 4. WebSocket 通訊協議設計
 
-### 3.1 訊息格式（JSON）
+### 4.1 訊息格式（JSON）
 
 ```json
 {
@@ -141,9 +143,9 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
 }
 ```
 
-**注意**：Agent ID **不使用角色命名**（如 coder_01、reviewer_01），統一使用通用格式 `agent_XX`。Server = Agent #1，Clients = Agents #2-5。
+> **注意**：Agent ID **不使用角色命名**（如 coder_01、reviewer_01），統一使用通用格式 `agent_XX`。Server = Agent #1，Clients = Agents #2-5。
 
-### 3.2 訊息類型定義
+### 4.2 訊息類型定義
 
 | type | 用途 | direction |
 |------|------|-----------|
@@ -154,7 +156,7 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
 | `heartbeat` | 心跳偵測存活 | Agent ↔ Server |
 | `error_response` | 回報錯誤 | Agent → Server |
 
-### 3.3 任務回應格式
+### 4.3 任務回應格式
 
 ```json
 {
@@ -165,13 +167,12 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
     "to": "192.168.1.38:5678",
     "status": "success",              // success | failed | needs_review
     "payload": {
-        "result": "Created file: src/binary_search.cpp\nAdded unit tests..."
-        ,
+        "result": "Created file: src/binary_search.cpp\nAdded unit tests...",
         "files_modified": [
             {"path": "src/binary_search.cpp", "action": "created"},
             {"path": "tests/test_binary_search.cpp", "action": "created"}
         ],
-        "needs_review": true,          // 是否需要審查
+        "needs_review": true          // 是否需要審查
     }
 }
 ```
@@ -180,7 +181,7 @@ Agent **沒有角色定義**，每個 Agent 只是單純接收任務並執行。
 
 ## 5. 代理註冊與發現機制
 
-### 4.1 代理能力宣告（Register）
+### 5.1 代理能力宣告（Register）
 
 Agent **沒有角色定義**，只宣告自身能力。每個 SubAgent 等同於一個「工具」：
 
@@ -208,7 +209,7 @@ Agent **沒有角色定義**，只宣告自身能力。每個 SubAgent 等同於
 }
 ```
 
-**注意**：`project_name` + `summary` 讓 Server 知道這個 Agent 隸屬哪個專案、能提供什麼服務（對應目標中的 Lobby/Report 應用情境）。
+> **注意**：`project_name` + `summary` 讓 Server 知道這個 Agent 隸屬哪個專案、能提供什麼服務（對應目標中的 Lobby/Report 應用情境）。
 
 ### 5.2 Server 維護的代理目錄
 
@@ -253,25 +254,25 @@ public:
 private:
     std::unordered_map<std::string, AgentInfo> agents_;
 };
-
-// WorkspaceInfo 用途說明：
-// - project_root: Server 需要知道檔案操作的路徑範圍，防止代理越權讀寫
-// - branch: 任務完成後自動 commit/PR 時使用
-// - git_remote: 用於推送程式碼或建立 Pull Request
-// - summary: 讓其他代理了解專案結構與技術棧，避免重複造輪子
-
-// AgentInfo.project_name / summary 用途說明：
-// - project_name: 區分 Agent 隸屬哪個專案（如 Lobby、Report）
-//   - 主代理 → 專案 Lobby → /hg/Lobby
-//   - 子代理 → 專案 Report → /hg/Report
-// - summary: 業務層級簡介，讓 Server 知道這個 Agent 能提供什麼服務
 ```
+
+**WorkspaceInfo 用途說明：**
+- `project_root`: Server 需要知道檔案操作的路徑範圍，防止代理越權讀寫
+- `branch`: 任務完成後自動 commit/PR 時使用
+- `git_remote`: 用於推送程式碼或建立 Pull Request
+- `summary`: 讓其他代理了解專案結構與技術棧，避免重複造輪子
+
+**AgentInfo.project_name / summary 用途說明：**
+- `project_name`: 區分 Agent 隸屬哪個專案（如 Lobby、Report）
+  - 主代理 → 專案 Lobby → `/hg/Lobby`
+  - 子代理 → 專案 Report → `/hg/Report`
+- `summary`: 業務層級簡介，讓 Server 知道這個 Agent 能提供什麼服務
 
 ---
 
-## 5. 任務路由與分發流程
+## 6. 任務路由與分發流程
 
-### 5.1 Server 路由邏輯
+### 6.1 Server 路由邏輯
 
 ```cpp
 class ServerAgent {
@@ -280,7 +281,6 @@ public:
     void on_task_request(const std::string& task);
     
 private:
-       
     // WebSocket 發送輔助函式
     void send_ws_message(const std::string& agent_id, const JsonMessage& msg);
     
@@ -291,15 +291,15 @@ private:
 };
 ```
 
-### 5.2 任務拆解範例（Agent #1 → Agent #2, Agent #1 → Agent #3）
+### 6.2 任務拆解範例（Agent #1 → Agent #2, Agent #1 → Agent #3）
 
-- 每個Agent都有獨立處理能力 交代任務尤其獨自完成 最後回報任務處理狀況
+- 每個 Agent 都有獨立處理能力，交代任務由其獨自完成，最後回報任務處理狀況
 
 ---
 
-## 6. 心跳與存活偵測
+## 7. 心跳與存活偵測
 
-### 6.1 Server 心跳處理
+### 7.1 Heartbeat 訊息格式
 
 ```json
 {
@@ -308,22 +308,21 @@ private:
 }
 ```
 
-### 6.2 Server 心跳處理
+### 7.2 Server 心跳處理規則
 
-- 每 1 秒發心跳
-- 5 秒無回應視為離線
+- Agent **每 30 秒**（`heartbeat_interval_sec`）發送心跳到 Server
+- Server **每 1 秒**檢查所有代理的心跳狀態
+- **5 秒**無回應視為離線，從 Registry 中移除
 
 ---
-
 
 ## 8. 安全性考量
 
 ### 8.1 代理認證
 
-- WebSocket 連線時要求提供 (IP, WorkDir, Summery)
+- WebSocket 連線時要求提供 (IP, WorkDir, Summary)
 - Server 驗證代理身份後才接受註冊
-  - 首次連線顯示子代理資訊 (IP, WorkDir, Summery)
-  - 使用者確認後 (輸入 Y/n) 儲存子代理資訊 之後連線不需要再次驗證 (判斷IP, WorkDir相符)
+  - **首次連線**：顯示子代理資訊 (IP, WorkDir, Summary)，使用者確認後（輸入 Y/n）儲存子代理資訊，之後連線不需要再次驗證（判斷 IP、WorkDir 相符）
 
 ```cpp
 class AgentAuthenticator {
@@ -339,16 +338,19 @@ public:
 
 ### Phase 1: WebSocket 基礎設施（無破壞性變更）
 
+**新增檔案：**
 ```
-新增檔案：
-├── include/ws_protocol.h          // WebSocket 通訊協議定義
-├── include/ws_agent.h             // WebSocket Agent 抽象類別
-├── src/ws_protocol.cpp            // JSON 序列化/反序列化
-├── src/ws_agent.cpp               // WebSocket 連線管理
-└── src/ws_server.cpp              // Server Agent（新）
+include/
+├── ws_protocol.h          // WebSocket 通訊協議定義
+└── ws_agent.h             // WebSocket Agent 抽象類別
+
+src/
+├── ws_protocol.cpp        // JSON 序列化/反序列化
+├── ws_agent.cpp           // WebSocket 連線管理
+└── ws_server.cpp          // Server Agent（新）
 ```
 
-**現有 `MultiAgent` 不變**，新增 `NetAgent`：
+**現有 `MultiAgent` 不變，新增 `NetAgent`：**
 
 ```cpp
 // 現有介面維持不變
@@ -381,6 +383,13 @@ public:
 | 1.3 | 實作 `ws_protocol.cpp` — JSON 序列化/反序列化 | ⬜ 未完成 |
 | 1.4 | 建立 `ws_server.cpp` — Server Agent（websocket Server） | ⬜ 未完成 |
 | 1.5 | 整合現有 `MultiAgent`，確保無破壞性變更 | ⬜ 未完成 |
+
+### Phase 2: NetAgent Client
+
+**實作步驟：**
+
+| # | 步驟 | 狀態 |
+|---|------|------|
 | 2.1 | 建立 `NetAgent` — WebSocket Client 實現 | ⬜ 未完成 |
 | 2.2 | 實作任務發送/接收邏輯（含超時處理） | ⬜ 未完成 |
 
@@ -398,7 +407,7 @@ public:
 # Agent #2 — Client + Server
 ./agent --ws-url=ws://127.0.0.1:8765 --listen-port=8767
 
-# 純 Client（不監聽 port，只連線 Server)
+# 純 Client（不監聽 port，只連線 Server）
 ./agent --ws-url=ws://127.0.0.1:8765
 ```
 
@@ -418,7 +427,7 @@ public:
 | 4.1 | Agent → Server Heartbeat 發送（每 N 秒） | ⬜ 未完成 |
 | 4.2 | Server 心跳處理與超時偵測 | ⬜ 未完成 |
 
-**注意**：Agent 間通訊必須經過 Server，不存在 Server 端連線資訊註冊。
+> **注意**：Agent 間通訊必須經過 Server，不存在 Server 端連線資訊註冊。
 
 ### Phase 5: 錯誤處理與重試機制
 
@@ -429,7 +438,7 @@ public:
 | 5.1 | 錯誤訊息格式定義（error_response） | ⬜ 未完成 |
 | 5.2 | Server 重試策略實現（含延遲、最大次數） | ⬜ 未完成 |
 
-**注意**：`retry_limit` / `max_retries` 命名統一為 `retry_limit`。
+> **注意**：`retry_limit` / `max_retries` 命名統一為 `retry_limit`。
 
 ### Phase 6: 安全性（認證、授權）
 
@@ -450,7 +459,7 @@ public:
 | 7.1 | Register 訊息格式定義與處理 | ⬜ 未完成 |
 | 7.2 | Server Agent Registry（能力宣告、Server 端連線資訊） | ⬜ 未完成 |
 
-**注意**：Agent Registry **不包含角色映射**，只記錄代理具備的能力清單。
+> **注意**：Agent Registry **不包含角色映射**，只記錄代理具備的能力清單。
 
 ### Phase 8: 任務路由與分發流程
 
@@ -462,7 +471,7 @@ public:
 | 8.2 | 任務拆解範例（具備 write_file 能力的 Agent → 具備 code_review 能力的 Agent → 具備 run_build 能力的 Agent） | ⬜ 未完成 |
 | 8.3 | Agent 間間接通訊（透過 Server） | ⬜ 未完成 |
 
-**注意**：任務拆解範例不再使用角色名稱，改用能力描述。
+> **注意**：任務拆解範例不再使用角色名稱，改用能力描述。
 
 ### Phase 9: 測試與整合驗證
 
@@ -476,7 +485,7 @@ public:
 
 ---
 
-## 12. 實作優先級建議
+## 10. 實作優先級建議
 
 | # | 階段 | 內容 | 預估工作量 | 狀態 |
 |---|------|------|-----------|------|
@@ -490,5 +499,6 @@ public:
 
 ---
 
-## 13. 工作情境與流程模擬
+## 11. 工作情境與流程模擬
 
+> （待補充）
