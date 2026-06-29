@@ -33,6 +33,8 @@ set(CORE_SOURCES
     src/rag_manager.cpp
     # Long-term memory
     src/long_term_memory.cpp
+    # TUI (terminal UI)
+    src/tui.cpp
     # CLI command system
     src/command_dispatcher.cpp
     src/command_handlers.cpp
@@ -47,6 +49,8 @@ set(CORE_SOURCES
     src/reply_mode_command.cpp
     # Isocline auto-completion
     src/completion.cpp
+    # Event broker (message broadcast)
+    src/event.cpp
 )
 
 # Tool source files

@@ -466,7 +466,7 @@ ChatResponse chat_stream_impl(
         resp.has_tool_calls = false;
         resp.tool_calls.clear();
     }
-	std::cout << std::endl;  // ensure prompt is on a new line after streaming output
+	TUI::out("\n");  // ensure prompt is on a new line after streaming output
 
     LOG_DEBUG("LLMClient", "Stream complete: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
              ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));

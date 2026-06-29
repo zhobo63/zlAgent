@@ -23,7 +23,7 @@ bool CommandDispatcher::dispatch(const std::string& raw_input) {
         LOG_ERROR("CommandDispatcher", "Unknown command: /" + cmd_name + ". Type /help for available commands.");
         return true; // handled - don't send to LLM
     }
-    std::cout << std::endl;
+    TUI::out("\n");
     it->second(args);
     return true;
 }

@@ -52,7 +52,7 @@ bool SafetyGuard::is_command_dangerous(const std::string& command) {
 
 bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
     LOG_WARN("Safety", "Dangerous operation detected: " + operation);
-    std::cout << "   Type 'y' to confirm, anything else to cancel: ";
+    TUI::out("   Type 'y' to confirm, anything else to cancel: ");
 
     std::string response;
     if (!std::getline(std::cin, response)) return false;
@@ -141,8 +141,8 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
     }
 
     // ConfirmMode: ask the user.
-    std::cout << "   [Safety] Path outside working directory/whitelist: " << path << "\n";
-    std::cout << "   Type 'y' to confirm, anything else to cancel: ";
+    TUI::out("   [Safety] Path outside working directory/whitelist: %s\n", path.c_str());
+    TUI::out("   Type 'y' to confirm, anything else to cancel: ");
 
     std::string response;
     if (!std::getline(std::cin, response))

@@ -149,7 +149,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
         // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
         if (task_planning_ && needs_planning(resp)) {
-            std::cout << run_planned(user_input, resp, on_token);
+            TUI::out("%s", run_planned(user_input, resp, on_token).c_str());
             return resp;
         }
 

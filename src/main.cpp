@@ -107,11 +107,11 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
             if (arg == "-h" || arg == "--help") {
-                std::cout << "Usage: zlagent [options]\n"
-                         << "\nOptions:\n"
-                         << "  -m <model>    Override LLM model name (does not write to config)\n"
-                         << "  -p <prompt>   Run a single prompt and exit\n"
-                         << "  -h, --help    Show this help message\n";
+                TUI::out("Usage: zlagent [options]\n"
+                         "\nOptions:\n"
+                         "  -m <model>    Override LLM model name (does not write to config)\n"
+                         "  -p <prompt>   Run a single prompt and exit\n"
+                         "  -h, --help    Show this help message\n");
                 return 0;
             } else if (arg == "-m" && i + 1 < argc) {
                 cli_model = argv[++i];
@@ -136,10 +136,9 @@ int main(int argc, char* argv[]) {
     // Set log level early so all subsequent LOG_* calls respect it.
     agent::set_log_level(agent::parse_log_level(cfg.logging.level));
 
-    std::cout << u8"╭─────────────────────────────╮" << std::endl;
-    std::cout << u8"│  ZL Agent - Code Assistant  │" << std::endl;
-    std::cout << u8"╰─────────────────────────────╯" << std::endl;
-    std::cout << std::endl;
+    TUI::out(u8"╭─────────────────────────────╮\n");
+    TUI::out(u8"│  ZL Agent - Code Assistant  │\n");
+    TUI::out(u8"╰─────────────────────────────╯\n");
 
     // Use CLI model override if provided; otherwise fall back to config.
     std::string effective_model = cli_model.empty() ? cfg.llm.model : cli_model;
@@ -413,9 +412,9 @@ int main(int argc, char* argv[]) {
 
 
     // Print initial status bar
-    std::cout << u8"\nReady. Type your request (or '/help' for commands):" << std::endl;
+    TUI::out(u8"\nReady. Type your request (or '/help' for commands):\n");
     if (cfg.terminal_commands.enabled) {
-        std::cout << u8"  💡 Shell commands are auto-detected and executed directly." << std::endl;
+        TUI::out(u8"  💡 Shell commands are auto-detected and executed directly.\n");
     }
 
     // If -p was provided, use it as the single prompt instead of reading interactively.
@@ -424,7 +423,7 @@ int main(int argc, char* argv[]) {
     // Interactive loop with streaming output.
     while (true) {
         print_status_bar(ag, long_term_memory);
-        std::cout << std::endl;
+        TUI::out("\n");
 
         std::string input;
         if (!cli_input.empty()) {
@@ -441,10 +440,10 @@ int main(int argc, char* argv[]) {
         if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
             // Save session to long-term memory before exiting.
             if (long_term_memory) {
-                std::cout << "\nSaving session to long-term memory..." << std::endl;
+                TUI::out("\nSaving session to long-term memory...\n");
                 long_term_memory->save_session(ag.get_memory(), ag.get_llm());
             }
-            std::cout << u8"\nGoodbye!" << std::endl;
+            TUI::out(u8"\nGoodbye!\n");
             break;
         }
 
@@ -501,7 +500,7 @@ int main(int argc, char* argv[]) {
         //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
         const int spinner_len = 8;
 
-        std::cout << "\nAgent: ";
+        TUI::out("\nAgent: ");
         //for (int i = 0; i < 3; ++i) {  // spin a few times while waiting for first token
         //    if (i > 0)
         //        std::cout << "\b";    // each Braille char is 1 display cell, so just \b once
@@ -527,7 +526,7 @@ int main(int argc, char* argv[]) {
                 TUI::reset();
             }
 
-            std::cout << token;
+            TUI::out("%s", token.c_str());
             TUI::flush();
             return true;  // keep streaming
         }, &usage_info);
@@ -540,12 +539,12 @@ int main(int argc, char* argv[]) {
 
         // Display token usage if available
         if (usage_info.total_tokens() > 0) {
-            std::cout << u8"\n\n⏱  Tokens: ";
-            std::cout << "prompt=" << usage_info.prompt_tokens;
-            std::cout << ", completion=" << usage_info.completion_tokens;
+            TUI::out(u8"\n\n⏱  Tokens: ");
+            TUI::out("prompt=%d", usage_info.prompt_tokens);
+            TUI::out(", completion=%d", usage_info.completion_tokens);
             if (usage_info.max_tokens > 0)
-                std::cout << "/" << usage_info.max_tokens;
-            std::cout << ", total=" << usage_info.total_tokens() << std::endl;
+                TUI::out("/%d", usage_info.max_tokens);
+            TUI::out(", total=%d\n", usage_info.total_tokens());
         }
 
         if (cli_mode) {

@@ -1,19 +1,12 @@
 # Message App Protocol — Agent ↔ Chat Platform 通訊協議
 
-- ZL Agent 與即時通訊平台（Telegram / LINE / WhatsApp 等）之間的溝通協議，讓 Agent 能作為聊天機器人接收訊息、執行工具、回覆使用者。
+- ZL Agent 與即時通訊平台Telegram之間的溝通協議，讓 Agent 能作為聊天機器人接收訊息、執行工具、回覆使用者。
 - **技術基礎：** 基於 [httplib.h](include/httplib.h) 實作 HTTP Server / WebSocket Server / SSE Client，零額外依賴。
 - 不使用webhook模式
+- 訊息傳輸流程:
+  Telegram -> Agent -> LLM -> Agent -> Telegram
+- 回傳訊息由 TUI::out()
 
-## 實作狀態總覽
-
-| # | 組件 | 狀態 | 說明 |
-|---|------|------|------|
-| 1 | httplib::Client（外部 API 呼叫） | ✅ **已完成** | 用於 Telegram Bot API、LLM API、Embedding API |
-| 2 | Telegram getUpdates（長輪詢拉取訊息） | ❌ **待實作** | Agent 主動拉取 Telegram 使用者訊息 |
-| 3 | Telegram sendMessage（發送回覆） | ❌ **待實作** | Agent 回覆 Telegram 使用者 |
-| 4 | WebSocket Server（即時連線） | ❌ **待實作** | 供前端/第三方即時連線 |
-| 5 | SSE Client（串流回覆） | ✅ **已完成** | Terminal output 逐字輸出 LLM 結果 |
-| 6 | REST API — Agent 管理端點 | ⚠️ **部分完成** | `/status` 命令已實作，REST API 待實作 |
 
 ---
 
@@ -29,32 +22,11 @@
 - **處理可能的錯誤回應**（如超過字元限制、使用者已封鎖等）
 - **將送出訊息的動作記錄到 memory_**
 
-### 3. WebSocket Server（即時連線）
-- **使用 httplib::Server 搭配 `.WebSocket()`** 建立伺服器
-- **設定 `accept_handler`** 接收前端/第三方連線
-- **透過 `send_sse_event`** 發送串流回覆（SSE 格式）
-- **處理 `disconnect_handler`** 與 `ping_pong` 心跳機制
-
-### 4. REST API — Agent 管理端點
-| 端點 | 說明 | 狀態 |
-|------|------|------|
-| `/status` | 返回當前狀態（已實作） | ✅ |
-| `/chat` | 新增聊天室 | ❌ |
-| `/message` | 傳送訊息 | ❌ |
-| `/history` | 查詢對話歷史 | ❌ |
-
-### 5. 整合測試與部署
-- **編譯所有 source 檔案**，確保沒有錯誤
-- **啟動 WebSocket Server** 並驗證連線
-- **呼叫 Telegram Bot API** 進行 `getUpdates` 與 `sendMessage` 測試
-- **使用 REST API 端點** 驗證管理功能
-
 ---
 ## httplib.h 角色映射
 
 | httplib.h 功能 | 用途 |
 |---------------|------|
-| `httplib::Server` + `.WebSocket()` | Agent 內建 WebSocket Server，供前端/第三方即時連線（未來擴展） |
 | `httplib::Client` / `SSLClient` | 呼叫 Telegram Bot API（外部 HTTP Client） |
 | `httplib::ClientImpl::StreamHandle` | SSE 串流回覆（Agent → Terminal 逐字輸出 LLM 結果，目前僅限終端機顯示） |
 | `httplib::Server` + `.Post()` / `.Get()` | REST API 端點 |
@@ -197,17 +169,7 @@ auto res = tg_client.Get(
 
 ---
 
-## WebSocket Server — Agent 內建即時連線
-
-Agent 透過 `httplib::Server` + `.WebSocket()` 提供 WebSocket Server：
-
-- **用途：** 供前端/第三方即時連線（未來擴展）
-- **場景：** 
-  - 即時接收 LLM 串流回覆（SSE → WebSocket）— *尚未實作*
-  - 第三方服務推送事件至 Agent — *尚未實作*
-  - 管理介面即時狀態更新 — *尚未實作*
-
-### SSE Client — 串流回覆
+## SSE Client — 串流回覆
 
 Agent 透過 `httplib::Client` + StreamHandle 接收外部 LLM API 的串流回覆：
 
@@ -221,19 +183,9 @@ Agent 透過 `httplib::Client` + StreamHandle 接收外部 LLM API 的串流回�
   - 每 4096 bytes 讀取一次 buffer，解析 `data:` 開頭的 SSE line
   - 支援 ESC 中斷：按下 ESC 時關閉 StreamHandle 通知 LLM API 停止生成
 
-> **注意：** 目前串流回覆僅在 terminal output 顯示，尚未實作 WebSocket/SSE 轉發至前端的功能。
+> **注意：** 目前串流回覆僅在 terminal output 顯示。
 ---
 
-## REST API — Agent 管理端點
-
-Agent 透過 `httplib::Server` + `.Post()` / `.Get()` 提供 REST API：
-
-| 方法 | 路徑 | 說明 |
-|------|------|------|
-| GET | `/health` | 健康檢查 |
-| POST | `/config/reload` | 重新載入設定檔 |
-| GET | `/status` | 取得 Agent 狀態 |
-| POST | `/tools/execute` | 手動執行工具 |
 
 ---
 
@@ -243,18 +195,9 @@ Agent 透過 `httplib::Server` + `.Post()` / `.Get()` 提供 REST API：
 ┌──────────┐     ┌─────────────┐     ┌──────────┐     ┌──────────┐
 │ Telegram │────▶│ Agent       │────▶│ LLM API  │────▶│ Terminal │
 │ Bot API  │     │ (httplib)   │     │          │     │ Output   │
-└──────────┘     └──────┬──────┘     └──────────┘     └──────────┘
-                         │
-                    ┌────▼─────┐
-                    │ WebSocket│ *未來擴展*
-                    │ Server   │
-                    └──────────┘
+└──────────┘     └─────────────┘     └──────────┘     └──────────┘
 ```
 
 1. **接收訊息：** Agent 透過 Telegram Bot API（長輪詢）接收使用者訊息
 2. **處理請求：** Agent 解析訊息、執行工具、呼叫 LLM API
-3. **串流回覆：** LLM API 以 SSE 格式回傳 token，Agent 即時輸出至 Terminal（未來可轉發至 WebSocket 前端）
-
----
-```
-
+3. **串流回覆：** LLM API 以 SSE 格式回傳 token，Agent 即時輸出至 Terminal

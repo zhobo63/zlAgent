@@ -1,7 +1,10 @@
 ﻿#ifndef TUI_H
 #define TUI_H
 
+#include <cstdarg>
+#include <cstdio>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <sstream>
 
@@ -171,9 +174,24 @@ public:
 
     /// Print a dimmed line (for thinking/secondary output)
     static inline void printDim(const std::string& text) {
+        if (!s_enabled) return;
         std::cout << ANSI_DIM << text << ANSI_RESET << std::endl;
     }
 
+    // ── Unified output entry point ────────────────
+
+    /// printf-style output to stdout, auto-flush, thread-safe.
+    static void out(const char* fmt, ...);
+
+    /// printf-style output to stderr, auto-flush, thread-safe.
+    static void err(const char* fmt, ...);
+
+    /// Enable or disable all TUI::out() / TUI::err() calls. Default: true.
+    static void set_output_enabled(bool enabled);
+
+private:
+    static std::mutex& s_mutex();
+    static bool       s_enabled;
 };
 
 #endif // TUI_H
