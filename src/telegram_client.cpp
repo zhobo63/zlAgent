@@ -201,7 +201,8 @@ void TelegramClient::handle_update(const json& update) {
     auto& msg = update["message"];
     if (!msg.contains("text") || !msg.value("text", "").size()) return;
 
-    int64_t chat_id   = msg.value("chat", json::object()).value("id", 0);
+	auto chat = msg.value("chat", json::object());
+    int64_t chat_id   = chat.value("id", 0LL);
 
     // Filter by allowed_chat_ids if configured.
     if (!cfg_.allowed_chat_ids.empty()) {
