@@ -520,6 +520,7 @@ public:
             std::string path = args.value("path", "");
             int line_number = args.value("line_number", 0);
             std::string content = args.value("content", "");
+            LOG_DEBUG("InsertFileContentTool", "preview path:" + path + " line:" + std::to_string(line_number) + " content:" + std::to_string(content.length()) + "bytes");
             if (!path.empty()) {
                 std::ifstream existing(path);
                 if (existing.is_open()) {
@@ -628,6 +629,7 @@ public:
                 lines.insert(lines.begin() + insert_pos, insert_lines[i]);
             }
 
+            LOG_DEBUG("InsertFileContentTool", "execute path:" + path + " line:" + std::to_string(line_number) + " content:" + std::to_string(content.length()) + "bytes");
             // Write back
             std::ofstream outfile(path, std::ios::trunc);
             if (!outfile.is_open()) {
@@ -667,60 +669,60 @@ ToolPtr create_edit_file_tool() {
 // -----------------------------------------------------------------------
 // ReadFileLinesTool - Read a specific line range from a file
 // -----------------------------------------------------------------------
-class ReadFileLinesTool : public Tool {
-public:
-    std::string name() const override { return "read_file_lines"; }
-    std::string description() const override {
-        return "Read a specific line range from a file. More efficient than read_file for large files when you only need certain lines.";
-    }
-    std::string parameters_schema() const override {
-        json schema;
-        schema["type"] = "object";
-        schema["properties"]["path"]["type"] = "string";
-        schema["properties"]["path"]["description"] = "The file path to read";
-        schema["properties"]["start_line"]["type"] = "integer";
-        schema["properties"]["start_line"]["description"] = "Starting line number (1-based)";
-        schema["properties"]["end_line"]["type"] = "integer";
-        schema["properties"]["end_line"]["description"] = "Ending line number (inclusive, 1-based)";
-        schema["required"] = {"path", "start_line", "end_line"};
-        return schema.dump();
-    }
-
-    std::string execute(const std::string& json_args) override {
-        try {
-            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
-            auto args = json::parse(json_args);
-            std::string path = args.value("path", "");
-            int start_line = args.value("start_line", 0);
-            int end_line   = args.value("end_line", 0);
-
-            if (path.empty()) return "Error: No file path provided.";
-            if (start_line <= 0) return "Error: start_line must be >= 1.";
-            if (end_line < start_line) return "Error: end_line must be >= start_line.";
-
-            // Safety: integrated path check (working dir + whitelist + strict mode).
-            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
-            if (check_result == PathCheckResult::Denied) {
-                return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
-            }
-
-            std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
-            if (result.empty()) {
-                return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
-            }
-            return result;
-        } catch (const json::parse_error& e) {
-            return "Error: Invalid JSON arguments - " + std::string(e.what());
-        }
-    }
-};
+//class ReadFileLinesTool : public Tool {
+//public:
+//    std::string name() const override { return "read_file_lines"; }
+//    std::string description() const override {
+//        return "Read a specific line range from a file. More efficient than read_file for large files when you only need certain lines.";
+//    }
+//    std::string parameters_schema() const override {
+//        json schema;
+//        schema["type"] = "object";
+//        schema["properties"]["path"]["type"] = "string";
+//        schema["properties"]["path"]["description"] = "The file path to read";
+//        schema["properties"]["start_line"]["type"] = "integer";
+//        schema["properties"]["start_line"]["description"] = "Starting line number (1-based)";
+//        schema["properties"]["end_line"]["type"] = "integer";
+//        schema["properties"]["end_line"]["description"] = "Ending line number (inclusive, 1-based)";
+//        schema["required"] = {"path", "start_line", "end_line"};
+//        return schema.dump();
+//    }
+//
+//    std::string execute(const std::string& json_args) override {
+//        try {
+//            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+//            auto args = json::parse(json_args);
+//            std::string path = args.value("path", "");
+//            int start_line = args.value("start_line", 0);
+//            int end_line   = args.value("end_line", 0);
+//
+//            if (path.empty()) return "Error: No file path provided.";
+//            if (start_line <= 0) return "Error: start_line must be >= 1.";
+//            if (end_line < start_line) return "Error: end_line must be >= start_line.";
+//
+//            // Safety: integrated path check (working dir + whitelist + strict mode).
+//            auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+//            if (check_result == PathCheckResult::Denied) {
+//                return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
+//            }
+//
+//            std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
+//            if (result.empty()) {
+//                return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
+//            }
+//            return result;
+//        } catch (const json::parse_error& e) {
+//            return "Error: Invalid JSON arguments - " + std::string(e.what());
+//        }
+//    }
+//};
 
 ToolPtr create_list_directory_tool() {
     return std::make_shared<ListDirectoryTool>();
 }
 
-ToolPtr create_read_file_lines_tool() {
-    return std::make_shared<ReadFileLinesTool>();
-}
+//ToolPtr create_read_file_lines_tool() {
+//    return std::make_shared<ReadFileLinesTool>();
+//}
 
 } // namespace agent

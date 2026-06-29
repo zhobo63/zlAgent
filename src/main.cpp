@@ -44,6 +44,11 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
 	auto tokens_used = ag.get_tokens_used();
 	auto max_tokens = ag.get_max_token();
 
+    // SafetyGuard state
+    auto& sg = agent::SafetyGuard::get_instance();
+    auto strict_mode = sg.get_strict_mode();
+    auto whitelist_count = static_cast<int>(sg.path_whitelist_.size());
+
     // Token ratio color: <50% green → <80% yellow → ≥80% red
     double token_ratio = (max_tokens > 0) ? (double)tokens_used / max_tokens : 0;
     AnsiColor token_fg = token_ratio < 0.5 ? AnsiColor::Green : token_ratio < 0.8 ? AnsiColor::Yellow : AnsiColor::Red;
@@ -74,6 +79,12 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
     bar << u8"⛔: " << TUI::color(reply_mode_icon, reply_fg) << u8" │ ";
 
     bar << TUI::color(u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count), AnsiColor::Magenta);
+
+    // SafetyGuard status
+    const char* mode_icon = strict_mode ? u8"🔒" : u8"🔓";
+    AnsiColor mode_fg = strict_mode ? AnsiColor::Red : AnsiColor::Green;
+    bar << u8" │ " << TUI::color(mode_icon, mode_fg) << u8" 📄:" << std::to_string(whitelist_count);
+
     bar << u8"\n";
     
     std::cout << bar.str();
@@ -158,7 +169,7 @@ int main(int argc, char* argv[]) {
         LOG_INFO("Config", "Working directory set to: " + cfg.safety.working_directory);
     } else {
         // Default to current working directory
-        std::string cwd = agent::SafetyGuard::normalize_path(".");
+        std::string cwd = agent::SafetyGuard::normalize_path(std::filesystem::current_path().string());
         agent::SafetyGuard::get_instance().set_working_directory(cwd);
         LOG_INFO("Config", "Working directory defaulted to: " + cwd);
     }
@@ -209,7 +220,7 @@ int main(int argc, char* argv[]) {
     // Register built-in tools
     LOG_INFO("Main", "Registering built-in tools...");
     ag.add_tool(agent::create_read_file_tool());
-    ag.add_tool(agent::create_read_file_lines_tool());
+    //ag.add_tool(agent::create_read_file_lines_tool());
     ag.add_tool(agent::create_write_file_tool());
     ag.add_tool(agent::create_append_file_tool());
     ag.add_tool(agent::create_insert_file_content_tool());
