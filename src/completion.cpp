@@ -34,6 +34,7 @@ static const char* ALL_COMMANDS[] = {
     "/save",
     "/search-kb",
     "/add-doc",
+    "/scan",
     "/quit",
     "/exit",
     nullptr,  // null-terminated

@@ -63,7 +63,8 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
     std::ostringstream bar;
     bar << u8"\n";
     //bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
-    bar << TUI::color(u8"💸 " + std::to_string(tokens_used) + "/" + std::to_string(max_tokens), token_fg) << u8" │ ";
+    //bar << TUI::color(u8"💸 " + std::to_string(tokens_used) + "/" + std::to_string(max_tokens), token_fg) << u8" │ ";
+    bar << TUI::color(u8"💸 " + std::to_string(tokens_used), token_fg) << u8" │ ";
     bar << TUI::color(u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations), iter_fg) << u8" │ ";
     bar << TUI::check(u8"Plan", task_planning) << " ";
     bar << TUI::check(u8"Reflect", self_reflection) << " ";

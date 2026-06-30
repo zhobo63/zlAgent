@@ -7,6 +7,7 @@
 #include "skill_system.h"
 #include "rag_manager.h"
 #include "long_term_memory.h"
+#include "project_summary/summary_tool.h"
 
 namespace agent {
 
@@ -31,6 +32,7 @@ void register_command_handlers(
             "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
             "  /sessions [n]      List recent session summaries (default: 5)\n"
             "  /summary           Summarize current history and start a new conversation with the summary\n"
+            "  /scan <path>       Scan C++ project directory and generate code summary\n"
             "  /new               Start a new conversation (clear history)\n"
             "  /save              Save current session to long-term memory now\n"
             "\nRAG commands:\n"
@@ -445,6 +447,37 @@ void register_command_handlers(
         }
 
         LOG_INFO("Command", "  Total chunks now: " + std::to_string(rag->total_chunks()));
+    });
+
+    // ── /scan [path] ────────────────────────────────────────
+    dispatcher.register_command("scan", [](const std::vector<std::string>& args, std::string&) {
+        if (args.empty()) {
+            LOG_INFO("Command", "  Usage: /scan <directory_path>");
+            return;
+        }
+
+        std::string path = args[0];
+        try {
+            if (!std::filesystem::is_directory(path)) {
+                LOG_ERROR("Command", "Path is not a directory: '" + path + "'");
+                return;
+            }
+        } catch (...) {
+            LOG_ERROR("Command", "Failed to check path: '" + path + "'");
+            return;
+        }
+
+        ProjectSummaryEngine engine;
+        static const std::vector<std::string> excluded = {
+            ".git", ".hg", ".svn",
+            ".vs", ".vscode", ".idea", "out",
+            "build", "_build", "cmake", ".cmake", "obj", "bin",
+            "Debug", "Release", "dist",
+            "vendor", "third_party", "deps", "node_modules", "packages",
+            "conan", "vcpkg"
+        };
+        engine.scan_directory(path, excluded);
+        engine.print_preview();
     });
 
     // ── /reply [mode] ──────────────────────────────────────

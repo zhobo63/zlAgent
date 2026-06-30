@@ -53,6 +53,8 @@ set(CORE_SOURCES
     src/event.cpp
     # Telegram Bot client
     src/telegram_client.cpp
+    # Project summary tool
+    src/project_summary/summary_tool.cpp
 )
 
 # Tool source files

@@ -33,13 +33,14 @@
 └─────────────────────────────────────────────┘
 ```
 
-### 三種介入模式
+### 四種介入模式
 
 | 模式 | 觸發條件 | 行為 | INI Key |
 |------|---------|------|---------|
 | `off` | — | 不暫停，完全自動（預設） | `user_reply_mode = off` |
-| `on_error` | 工具執行失敗時 | 暫停並詢問使用者如何處理 | `user_reply_mode = on_error` |
-| `always` | 每次工具調用前 | 每次都等待使用者確認 | `user_reply_mode = always` |
+| `exec` | 每次工具調用前 | 詢問使用者是否執行此工具（y/yes=繼續, n/no/skip=跳過） | `user_reply_mode = exec` |
+| `edit` | 工具調用後發生錯誤時 | 詢問使用者是否重試或跳過此工具（y/yes=重試, n/no/skip=跳過） | `user_reply_mode = edit` |
+| `always` | 每次工具調用前 | 與 exec 相同，每次都等待使用者確認 | `user_reply_mode = always` |
 
 ### 使用者回復選項
 
@@ -48,11 +49,7 @@
 | 輸入 | 動作 |
 |------|------|
 | `y` / `yes` | 繼續執行（接受當前參數） |
-| `n` / `no` | 跳過此工具調用 |
-| `skip` | 跳過此步驟，繼續後續 |
-| `abort` | 終止整個推理循環 |
-| `edit:<json>` | 修改工具參數後執行（如 `edit:{"path":"src/other.cpp"}`） |
-| 自由文字 | 作為新的使用者訊息注入對話記憶 |
+| `n` / `no` / `skip` | 跳過此工具調用 |
 
 ## 3. 架構設計
 
@@ -61,7 +58,6 @@
 ```cpp
 #pragma once
 #include <string>
-#include "llm_client.h"
 
 namespace agent {
 
@@ -70,28 +66,24 @@ namespace agent {
  */
 enum class UserReplyMode {
     Off,        // No pause, fully automatic (default)
-    OnError,    // Pause only when a tool execution fails
-    Always      // Pause before every tool call
+    Exec,       // Pause before every tool call to confirm execution
+    Edit,       // Pause after tool error to allow retry or skip
+    Always      // Same as Exec — always wait for user confirmation
 };
 
 /**
  * Action taken by the user during an intervention prompt.
  */
 enum class ReplyAction {
-    Continue,   // Proceed with current parameters
-    Skip,       // Skip this tool call
-    Abort,      // Terminate the reasoning loop
-    Edit,       // Modify arguments and execute
-    Custom      // Inject custom message into conversation
+    Yes,   // Proceed with current parameters (continue / retry)
+    No     // Skip this tool call
 };
 
 /**
  * Result of a user reply prompt.
  */
 struct UserReplyResult {
-    ReplyAction action;
-    std::string modified_args;   // Only valid when action == Edit
-    std::string custom_message;  // Only valid when action == Custom
+    ReplyAction action;  // Yes or No — only two options currently
 };
 
 /**
@@ -123,30 +115,27 @@ UserReplyMode get_user_reply_mode() const { return user_reply_mode_; }
 
 ### 修改推理循環流程
 
-在 `reasoning_loop()` 和 `reasoning_loop_stream()` 中，工具執行前/後加入介入點：
+在 `reasoning_loop()` 和 `reasoning_loop_stream()` 中，工具執行前加入介入點：
 
 ```cpp
 // In reasoning loop, before executing each tool call:
-if (user_reply_mode_ == UserReplyMode::Always) {
+if (user_reply_mode_ == UserReplyMode::Exec || user_reply_mode_ == UserReplyMode::Always) {
     auto reply = prompt_user_reply(tc.name, tc.arguments);
-    switch (reply.action) {
-        case ReplyAction::Abort:   return ChatResponse{"[User aborted]"};
-        case ReplyAction::Skip:   continue;  // skip this tool call
-        case ReplyAction::Edit:   tc.arguments = reply.modified_args; break;
-        case ReplyAction::Custom: 
-            memory_.add(ChatMessage{"user", reply.custom_message});
-            return reasoning_loop();  // restart with new context
-        default: break;  // Continue
+    if (reply.action == ReplyAction::No) {
+        continue;  // skip this tool call
     }
+    // else: proceed with current arguments
 }
 
 // Execute tool...
 std::string result = registry_.execute(tc.name, tc.arguments);
 
-// After execution, check for errors if mode is OnError:
-if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) {
+// After execution, check for errors if mode is Edit:
+if (user_reply_mode_ == UserReplyMode::Edit && starts_with(result, "ERROR")) {
     auto reply = prompt_user_reply(tc.name, tc.arguments, result);
-    // same switch logic...
+    if (reply.action == ReplyAction::No) {
+        continue;  // skip this tool call
+    }
 }
 ```
 
@@ -156,7 +145,7 @@ if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) 
 
 | Key | 類型 | 預設值 | 說明 |
 |-----|------|--------|------|
-| `user_reply_mode` | string | `off` | 使用者介入模式：`off` / `on_error` / `always` |
+| `user_reply_mode` | string | `off` | 使用者介入模式：`off` / `exec` / `edit` / `always` |
 
 ## 5. CLI 命令擴充
 
@@ -164,14 +153,17 @@ if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) 
 
 ```
 /reply-mode          # 顯示當前模式
-/reply-mode on_error # 切換為錯誤介入模式
-/reply-mode always   # 切換為全程介入模式
+/reply-mode exec     # 切換為執行前確認模式
+/reply-mode edit     # 切換為編輯後執行模式
+/reply-mode always   # 切換為全程介入模式（同 exec）
 /reply-mode off      # 關閉介入
 ```
 
 ## 6. UI/UX 設計
 
 當 Agent 暫停等待使用者回復時，顯示清晰的提示：
+
+### 正常模式下的提示：
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -181,16 +173,12 @@ if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) 
 │    What would you like to do?                │
 │    y/yes   - Continue (default)              │
 │    n/no    - Skip this tool call             │
-│    skip    - Skip and continue               │
-│    abort   - Stop the reasoning loop         │
-│    edit:{json}  - Modify arguments           │
-│    <free text> - Inject custom message       │
 │                                             │
 │ Reply: [cursor]                              │
 └─────────────────────────────────────────────┘
 ```
 
-錯誤模式下的提示：
+### 錯誤模式下的提示：
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -201,9 +189,6 @@ if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) 
 │    What would you like to do?                │
 │    y/yes   - Retry with same arguments       │
 │    n/no    - Skip this tool call             │
-│    abort   - Stop the reasoning loop         │
-│    edit:{json}  - Modify and retry           │
-│    <free text> - Inject custom message       │
 │                                             │
 │ Reply: [cursor]                              │
 └─────────────────────────────────────────────┘
@@ -213,12 +198,10 @@ if (user_reply_mode_ == UserReplyMode::OnError && starts_with(result, "ERROR")) 
 
 | 階段 | 工作項目 | 影響範圍 |
 |------|---------|---------|
-| **P0** | `user_reply.h/cpp` — 核心模組 | 新增檔案 |
+| **P0** | `user_reply.h/cpp` — 核心模組（UserReplyMode: Off/Exec/Edit/Always, ReplyAction: Yes/No） | 新增檔案 |
 | **P1** | `Config` 擴充 — 讀取 `user_reply_mode` | `config.h/cpp`, `zlagent.ini` |
 | **P2** | `Agent` 整合 — 推理循環介入點 | `agent.h/cpp` |
 | **P3** | CLI 命令 `/reply-mode` | `command_handlers.cpp` |
-| **P4** | ESC 中斷後自動進入回復模式 | `main.cpp` |
-| **P5** | 測試 — 單元測試 + 整合測試 | `tests/` |
 
 ## 8. 與現有功能的關聯
 

@@ -69,23 +69,27 @@ TUI::out(fmt, ...)
 
 ### Phase 2: 遷移 std::cout → TUI::out()
 
-- [x] Step 2.1 — `src/main.cpp`：將所有 `std::cout << ...` 改為 `TUI::out(...)`
+- [x] Step 2.1 — `src/main.cpp`：大部分 `std::cout` 已替換為 `TUI::out()`（歡迎訊息、狀態列、提示字元、Token 統計、Spinner）
 - [x] Step 2.2 — `src/agent.cpp`：替換 `std::cout`
 - [x] Step 2.3 — `src/command_dispatcher.cpp`：替換 `std::cout`
 - [x] Step 2.4 — `src/llm_client.cpp`：替換 `std::cout`
 - [x] Step 2.5 — `src/reply_mode_command.cpp`：替換 `std::cout`
 - [x] Step 2.6 — `src/safety_guard.cpp`：替換 `std::cout`
 
+### Phase 2 未完成項目（仍需處理）
+
+| 檔案 | 行號 | 用途 | 說明 |
+|------|------|------|------|
+| `src/main.cpp:92` | `std::cout << bar.str();` | Status bar renderer | 狀態列渲染器，目前仍直接寫入 std::cout |
+| `src/terminal_command_detector.cpp:236` | `std::cout << buffer;` | 終端命令偵測器輸出 | 偵測結果輸出尚未遷移 |
+| `src/user_reply.cpp:66-95` | 多處 `std::cout` | User reply 模式顯示 | 用戶回覆模式的錯誤/狀態訊息尚未遷移 |
+
+> **注意**：Phase 2 大部分已完成，但上述三個位置仍需將 `std::cout` 改為 `TUI::out()`。
+
 ### Phase 3: TUI 內部方法改用 out()
 
 - [x] Step 3.1 — `tui.h` 中的 inline 方法（`cls()`、`flush()`、`clearScreen()` 等）**維持直接操作 std::cout**，避免遞迴呼叫。這是有意設計。
 - [x] Step 3.2 — `include/tui.h` **保留** `#include <iostream>`，因為低層級 inline 方法需要它
-
-### Phase 4: 驗證
-
-- [ ] Step 4.1 — 編譯通過（`cmake --build build`）
-- [ ] Step 4.2 — 執行基本互動測試，確認輸出正常
-- [ ] Step 4.3 — 檢查 ANSI 色彩是否正常顯示
 
 ## 注意事項
 

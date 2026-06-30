@@ -40,6 +40,12 @@ void TUI::out(const char* fmt, ...) {
     agent::send_event("out", buf);
 }
 
+void TUI::out(const std::string& text) {
+    if (!s_enabled) return;
+    std::cout << text << std::flush;
+    agent::send_event("out", text);
+}
+
 void TUI::err(const char* fmt, ...) {
     if (!s_enabled) return;
 

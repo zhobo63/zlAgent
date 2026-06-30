@@ -183,6 +183,9 @@ public:
     /// printf-style output to stdout, auto-flush, thread-safe.
     static void out(const char* fmt, ...);
 
+    /// Output a string directly to stdout, auto-flush, thread-safe.
+    static void out(const std::string& text);
+
     /// printf-style output to stderr, auto-flush, thread-safe.
     static void err(const char* fmt, ...);
 
