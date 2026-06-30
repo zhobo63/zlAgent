@@ -32,6 +32,10 @@ std::vector<std::string> Agent::get_tool_names() const {
     return names;
 }
 
+std::vector<ToolPtr> Agent::get_tools() const {
+    return registry_.get_tools();
+}
+
 void Agent::set_system_prompt(const std::string& prompt) {
     memory_.set_system_prompt(prompt);
 }

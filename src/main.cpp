@@ -359,9 +359,10 @@ int main(int argc, char* argv[]) {
     ag.add_tool(agent::create_get_file_outline_tool());
     ag.add_tool(agent::create_grep_with_context_tool());
     ag.add_tool(agent::create_run_build_tool());
-    ag.add_tool(agent::create_git_status_tool());
-    ag.add_tool(agent::create_git_diff_tool());
+    //ag.add_tool(agent::create_git_status_tool());
+    //ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
+    ag.add_tool(agent::create_project_overview_tool());
 
     // === Skill System ===
     agent::SkillRegistry skill_registry;

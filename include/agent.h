@@ -31,6 +31,9 @@ public:
     // Get all registered tool names (for dependency validation)
     std::vector<std::string> get_tool_names() const;
 
+    // Get all registered tools (for listing / inspection)
+    std::vector<ToolPtr> get_tools() const;
+
     // Set the system prompt (role, constraints, etc.)
     void set_system_prompt(const std::string& prompt);
 

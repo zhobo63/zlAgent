@@ -66,6 +66,7 @@ set(TOOL_SOURCES
     tools/skill_tool.cpp
     tools/rag_tool.cpp
     tools/memory_tool.cpp
+    tools/overview_tool.cpp
 )
 
 # Include directories

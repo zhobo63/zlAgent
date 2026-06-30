@@ -25,6 +25,8 @@ void register_command_handlers(
             "  /status            Show agent status (tools, skills, memory)\n"
             "  /config            Show current configuration summary\n"
             "  /skills            List registered skills\n"
+            "  /tools             List all internal tools\n"
+            "  /tool <name>       Show details for a specific tool\n"
             "\nModel commands:\n"
             "  /model             List available models and switch interactively\n"
             "  /model-info        Show current LLM model info\n"
@@ -113,6 +115,49 @@ void register_command_handlers(
             if (s->description.size() > 80) desc += "...";
             LOG_INFO("Command", "  " + status + " **" + s->name + "** - " + desc);
         }
+    });
+
+    // ── /tools - list all internal tools ────────────────
+    dispatcher.register_command("tools", [ag](const std::vector<std::string>&, std::string&) {
+        if (!ag) return;
+
+        auto tools = ag->get_tools();
+        if (tools.empty()) {
+            LOG_INFO("Command", "  No tools registered.");
+            return;
+        }
+
+        LOG_INFO("Command", "\n--- Registered Tools ---");
+        for (const auto& t : tools) {
+            std::string desc = t->description();
+            if (desc.size() > 100) desc = desc.substr(0, 97) + "...";
+            LOG_INFO("Command", "  **" + t->name() + "** - " + desc);
+        }
+    });
+
+    // ── /tool <name> - show tool details ────────────────
+    dispatcher.register_command("tool", [ag](const std::vector<std::string>& args, std::string&) {
+        if (!ag) return;
+
+        if (args.empty()) {
+            LOG_INFO("Command", "  Usage: /tool <name> - Show details for a specific tool.");
+            return;
+        }
+
+        std::string name = args[0];
+        auto tools = ag->get_tools();
+
+        for (const auto& t : tools) {
+            if (t->name() == name) {
+                LOG_INFO("Command", "\n--- Tool Details ---");
+                LOG_INFO("Command", "  Name:      **" + t->name() + "**");
+                LOG_INFO("Command", "  Description: " + t->description());
+                LOG_INFO("Command", "  Parameters:\n" + t->parameters_schema());
+                return;
+            }
+        }
+
+        LOG_INFO("Command", "  Tool '" + name + "' not found. Use /tools to list available tools.");
     });
 
     // ── /model - interactive model switcher ────────────────
