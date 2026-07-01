@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <optional>
 
 namespace agent {
 
@@ -89,7 +90,7 @@ public:
 
     // Build the JSON request body for chat (shared by both streaming and non-streaming).
     // Takes model explicitly so it can be called from free functions too.
-    static std::string build_chat_json(
+    static std::optional<std::string> build_chat_json(
         const std::string& model,
         const std::vector<ChatMessage>& messages,
         const std::vector<ToolDefinition>& tools,

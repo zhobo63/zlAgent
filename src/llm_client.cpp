@@ -90,7 +90,7 @@ std::string LLMClient::post_json(const std::string& path, const std::string& jso
 // Shared JSON builder using nlohmann::json
 // ---------------------------------------------------------------------------
 
-std::string LLMClient::build_chat_json(
+std::optional<std::string> LLMClient::build_chat_json(
     const std::string& model,
     const std::vector<ChatMessage>& messages,
     const std::vector<ToolDefinition>& tools,
@@ -188,6 +188,7 @@ std::string LLMClient::build_chat_json(
     catch(const std::exception& e)
     {
         LOG_ERROR("LLMClient", "Failed to serialize chat request: " + std::string(e.what()));
+        return std::nullopt;
     }
 
     return req_str;
@@ -347,11 +348,15 @@ ChatResponse LLMClient::chat(
         }
     }
 
-    std::string json_body = build_chat_json(model_, messages, tools, temperature, max_tokens, false);
-    std::string response_str = post_json("/v1/chat/completions", json_body);
-
+    auto json_body = build_chat_json(model_, messages, tools, temperature, max_tokens, false);
     ChatResponse resp;
     resp.max_tokens = static_cast<size_t>(max_tokens);
+    if (!json_body) {
+        LOG_ERROR("LLMClient", "Chat request build failed, aborting");
+        return resp;
+    }
+    std::string response_str = post_json("/v1/chat/completions", *json_body);
+
     parse_full_response(response_str, resp);
     return resp;
 }
@@ -377,9 +382,15 @@ ChatResponse chat_stream_impl(
     client.set_write_timeout(WRITE_TIMEOUT, 0);
 
     // Build JSON body using the shared helper.
-    std::string json_body = LLMClient::build_chat_json(model, messages, tools,
+    auto json_body = LLMClient::build_chat_json(model, messages, tools,
                                                        temperature, max_tokens, true);
-    LOG(Color::CYAN, "JSON_BODY:%s", json_body.c_str());
+    ChatResponse resp;
+    resp.max_tokens = static_cast<size_t>(max_tokens);
+    if (!json_body) {
+        LOG_ERROR("LLMClient", "Chat request build failed, aborting");
+        return resp;
+    }
+    LOG(Color::CYAN, "JSON_BODY:%s", json_body->c_str());
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
@@ -408,12 +419,10 @@ ChatResponse chat_stream_impl(
     // when ESC is pressed — this notifies the LLM server to stop generating.
     handle = std::make_unique<httplib::ClientImpl::StreamHandle>(
         client.open_stream("POST", "/v1/chat/completions",
-            {}, headers, json_body));
+            {}, headers, *json_body));
 
     if (!handle->is_valid()) return {};
 
-    ChatResponse resp;
-    resp.max_tokens = static_cast<size_t>(max_tokens);
     std::string buffer;
 
     char read_buf[4096] = {0};
@@ -431,7 +440,7 @@ ChatResponse chat_stream_impl(
         //char* kb = keyboard_getstate();
 
         buffer.append(read_buf, static_cast<size_t>(n));
-        LOG(Color::GRAY, "%s", buffer.c_str());
+        LOG(Color::GRAY, "%s", read_buf);
 
         size_t line_start = 0;
         while (!was_interrupted) {
