@@ -16,42 +16,25 @@
 
 ## 設計理念
 
-**一次給出全貌，而非碎片資訊。** 類似人類看地圖的「鳥瞰視角」。
-
-LLM 拿到 Overview 後會自己決定下一步：
-- 需要看某個工具的實作？→ `get_file_outline` + `read_file`
-- 需要知道改了什麼？→ `git_status` + `git_diff`
-- 需要搜尋特定內容？→ `search_code`
+**一次給出全貌，而非碎片資訊。** 
 
 ---
 
-## 輸出範例
+## Level 1: Overview（鳥瞰圖）— 預設，5 秒內完成
 
 ```
-📂 PROJECT OVERVIEW — zlagent v0.1.0
+📂 PROJECT OVERVIEW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔧 BUILD SYSTEM: CMake (C++17)
-   - MSVC / MinGW supported
-   - OpenSSL dependency (NuGet package)
+🔧 BUILD SYSTEM: 
+   - CMakeLists.txt for CMake
+   - .sln .vcxproj for MSVC / MinGW supported
    
 📊 CODE METRICS:
-   - src/     : 32 .cpp files (~45K lines)
-   - include/ : 41 .h files (~8K lines)  
-   - tools/   : 7 tool implementations
-   
-🧠 CORE ARCHITECTURE:
-   Agent → LLMClient → ToolRegistry → Tools (7 built-in + plugin DLLs)
-   
-🔁 REASONING LOOP:
-   Send to LLM → Decide tool call? → Execute → Repeat → Final answer
-   
-⚡ ADVANCED FEATURES:
-   ✅ Task Planning    ✅ Self-Reflection    ✅ Multi-Agent
-   ✅ RAG              ✅ Long-term Memory   ✅ Telegram Bot
-   
+   - search .cpp .h ... 
+     
 📦 CURRENT STATUS:
-   - Git: 3 modified files, 2 untracked
+   - Git: git status, git submodule status
    - Build dir exists (build/)
 ```
 
@@ -76,23 +59,14 @@ LLM 拿到 Overview 後會自己決定下一步：
 
 ---
 
-## 使用策略
+## 輸出格式設計考量
 
-```
-收到任務 → 是否需要了解專案？
-    │
-    ├── 是 → project_inspector（5秒內拿到全貌）
-    │         ↓
-    │      LLM 根據 Overview 決定下一步：
-    │         ├── 資訊已足夠 → ✅ 不再調用其他工具
-    │         └── 需要深入某個領域 → 🔁 調用特定工具
-    │
-    └── 否 → 直接調用所需工具
-```
+### 1. 人類可讀 + LLM 可解析
+
+- 使用 markdown 格式
+
+### 2. 可壓縮性 — LLM 不需要每次都讀完整報告
+
+報告中標註關鍵資訊的「摘要行」，LLM 可以決定是否要深入某個部分。
 
 ---
-
-## 侷限性
-
-1. **可能過時** — 如果專案結構剛被修改，Overview 可能還沒更新
-2. **不處理版本控制** — git_status、git_diff 是它的職責範圍之外

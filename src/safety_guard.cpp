@@ -158,8 +158,28 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
     std::string lower = response;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-    if (lower == "y" || lower == "yes")
+    if (lower == "y" || lower == "yes") {
+        // Remember this path so we don't ask again.
+        // Add the parent directory to the whitelist rather than the file itself,
+        // so that sibling files under the same directory are also allowed.
+        std::string parent = norm;
+        auto last_slash = parent.find_last_of('/');
+        if (last_slash != std::string::npos && last_slash > 0)
+            parent = parent.substr(0, last_slash);
+
+        // Avoid duplicates — only add if not already covered.
+        bool already_allowed = false;
+        for (const auto& wd : path_whitelist_) {
+            if (parent.compare(0, wd.size(), wd) == 0) {
+                already_allowed = true;
+                break;
+            }
+        }
+        if (!already_allowed)
+            path_whitelist_.push_back(parent);
+
         return PathCheckResult::Allowed;
+    }
 
     return PathCheckResult::Denied;
 }

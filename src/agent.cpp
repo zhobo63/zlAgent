@@ -24,6 +24,10 @@ void Agent::add_tool(ToolPtr tool) {
     registry_.register_tool(std::move(tool));
 }
 
+ToolPtr Agent::get_tool(const std::string& name) {
+    return registry_.find_tool(name);
+}
+
 std::vector<std::string> Agent::get_tool_names() const {
     std::vector<std::string> names;
     for (const auto& tool : registry_.get_tools()) {

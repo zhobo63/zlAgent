@@ -7,7 +7,7 @@
 #include "skill_system.h"
 #include "rag_manager.h"
 #include "long_term_memory.h"
-#include "project_summary/summary_tool.h"
+#include "json.hpp"
 
 namespace agent {
 
@@ -27,6 +27,7 @@ void register_command_handlers(
             "  /skills            List registered skills\n"
             "  /tools             List all internal tools\n"
             "  /tool <name>       Show details for a specific tool\n"
+            "  /view <path>       Overview project directory and generate code summary\n"
             "\nModel commands:\n"
             "  /model             List available models and switch interactively\n"
             "  /model-info        Show current LLM model info\n"
@@ -34,7 +35,6 @@ void register_command_handlers(
             "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
             "  /sessions [n]      List recent session summaries (default: 5)\n"
             "  /summary           Summarize current history and start a new conversation with the summary\n"
-            "  /scan <path>       Scan C++ project directory and generate code summary\n"
             "  /new               Start a new conversation (clear history)\n"
             "  /save              Save current session to long-term memory now\n"
             "\nRAG commands:\n"
@@ -495,34 +495,35 @@ void register_command_handlers(
     });
 
     // ── /scan [path] ────────────────────────────────────────
-    dispatcher.register_command("scan", [](const std::vector<std::string>& args, std::string&) {
-        if (args.empty()) {
-            LOG_INFO("Command", "  Usage: /scan <directory_path>");
-            return;
-        }
-
-        std::string path = args[0];
-        try {
-            if (!std::filesystem::is_directory(path)) {
-                LOG_ERROR("Command", "Path is not a directory: '" + path + "'");
+    dispatcher.register_command("view", [](const std::vector<std::string>& args, std::string&) {
+        std::string path = ".";
+        if (!args.empty()) {
+            path = args[0];
+            try {
+                if (!std::filesystem::is_directory(path)) {
+                    LOG_ERROR("Command", "Path is not a directory: '" + path + "'");
+                    return;
+                }
+            } catch (...) {
+                LOG_ERROR("Command", "Failed to check path: '" + path + "'");
                 return;
             }
-        } catch (...) {
-            LOG_ERROR("Command", "Failed to check path: '" + path + "'");
+        }
+
+        Agent *ag = get_global_agent();
+        auto overview = ag->get_tool("project_overview");
+
+        if (!overview) {
+            LOG_ERROR("Command", "Tool 'project_overview' not found");
             return;
         }
 
-        ProjectSummaryEngine engine;
-        static const std::vector<std::string> excluded = {
-            ".git", ".hg", ".svn",
-            ".vs", ".vscode", ".idea", "out",
-            "build", "_build", "cmake", ".cmake", "obj", "bin",
-            "Debug", "Release", "dist",
-            "vendor", "third_party", "deps", "node_modules", "packages",
-            "conan", "vcpkg"
-        };
-        engine.scan_directory(path, excluded);
-        engine.print_preview();
+        nlohmann::json args_json;
+        args_json["directory"] = path;
+        std::string result = overview->execute(args_json.dump());
+        LOG_INFO("Command", result.c_str());
+
+
     });
 
     // ── /reply [mode] ──────────────────────────────────────

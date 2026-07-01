@@ -28,6 +28,8 @@ public:
     // Register a tool the agent can use
     void add_tool(ToolPtr tool);
 
+    ToolPtr get_tool(const std::string &name);
+
     // Get all registered tool names (for dependency validation)
     std::vector<std::string> get_tool_names() const;
 
