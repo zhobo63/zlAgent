@@ -17,6 +17,31 @@ static std::string read_file_content(const std::string& path) {
     return oss.str();
 }
 
+// ── Detect the current OS name at runtime ────────────────────────────────────
+static std::string get_os_name() {
+#if defined(_WIN32)
+    // On Windows, use environment variables to distinguish:
+    //   MSYSTEM  → MinGW/MSYS (e.g. "MINGW64", "MINGW32")
+    //   CYGWIN   → Cygwin
+    //   neither  → native Windows (MSVC / Visual Studio)
+    {
+        const char* msys = getenv("MSYSTEM");
+        if (msys && *msys) return "MinGW";
+    }
+    {
+        const char* cygwin = getenv("CYGWIN");
+        if (cygwin && *cygwin) return "Cygwin";
+    }
+    return "Windows";
+#elif defined(__linux__)
+    return "Linux";
+#elif defined(__APPLE__)
+    return "macOS";
+#else
+    return "Unknown";
+#endif
+}
+
 // ── Try to load system_prompt.md ─────────────────────────────────────────────
 static bool try_load_md(std::string* out) {
     static const char* candidates[] = {
@@ -62,23 +87,29 @@ std::string SystemPromptProvider::get(const std::string& /*language*/) {
 
     if (try_load_md(&md_content)) {
         LOG_INFO("SystemPrompt", "Loaded from system_prompt.md");
-
-        // Also try to load AGENTS.md and append it.
-        std::string agents_content;
-        if (try_load_agents_md(&agents_content)) {
-            LOG_INFO("SystemPrompt", "Loaded from AGENTS.md, merging...");
-            md_content += "\n\n## Additional guidelines (from AGENTS.md)\n\n";
-            md_content += agents_content;
-        } else {
-            LOG_INFO("SystemPrompt", "AGENTS.md not found, using system_prompt.md only");
-        }
-
-        return md_content;
+    } else {
+        // Fall back to hardcoded prompt.
+        LOG_WARN("SystemPrompt", "system_prompt.md not found, using hardcoded fallback");
+        md_content = hardcoded_fallback();
     }
 
-    // Fall back to hardcoded prompt.
-    LOG_WARN("SystemPrompt", "system_prompt.md not found, using hardcoded fallback");
-    return hardcoded_fallback();
+    // Also try to load AGENTS.md and append it.
+    std::string agents_content;
+    if (try_load_agents_md(&agents_content)) {
+        LOG_INFO("SystemPrompt", "Loaded from AGENTS.md, merging...");
+        md_content += agents_content;
+    } else {
+        LOG_INFO("SystemPrompt", "AGENTS.md not found, using system_prompt.md only");
+    }
+
+    // Append OS context as a dynamic section.
+    std::string os_name = get_os_name();
+    if (!os_name.empty() && os_name != "Unknown") {
+        md_content += "- Operating System: " + os_name + "\n";
+        LOG_INFO("SystemPromptProvider", "Operating System: " + os_name);
+    }
+
+    return md_content;
 }
 
 // ── Hardcoded fallback ──────────────────────────────────────────────────────

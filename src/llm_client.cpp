@@ -480,6 +480,16 @@ ChatResponse chat_stream_impl(
     std::string buffer;
 
     char read_buf[4096] = {0};
+    std::atomic<bool> was_interrupted{false};
+    KeyWatcher::on_key([&](int ch) {
+        if (ch == 3 || ch == 27) { // Ctrl-C or ESC
+            LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
+            if(handle)
+                handle->close();
+            was_interrupted.store(true);
+        }
+    });
+
     while (handle && handle->is_valid()) {
         ssize_t n = 0;
         {
@@ -487,19 +497,11 @@ ChatResponse chat_stream_impl(
         }
         if (n <= 0) break;
 
-        bool was_interrupted = KeyWatcher::was_interrupted();
-        if (was_interrupted) {
-            LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
-            handle->close();
-            break;
-        }
-        //char* kb = keyboard_getstate();
-
         buffer.append(read_buf, static_cast<size_t>(n));
         //LOG(Color::GRAY, "%s", read_buf);
 
         size_t line_start = 0;
-        while (!was_interrupted) {
+        while (!was_interrupted.load()) {
             size_t nl_pos = buffer.find('\n', line_start);
             if (nl_pos == std::string::npos) break;
 
@@ -511,7 +513,7 @@ ChatResponse chat_stream_impl(
                 std::string data_payload = line.substr(5);
                 if (!LLMClient::parse_sse_chunk(data_payload, resp, on_token)) {
                     // Token callback signaled interruption — stop generation
-                    was_interrupted = true;
+                    was_interrupted.store(true);
                     break;
                 }
             }
@@ -522,6 +524,10 @@ ChatResponse chat_stream_impl(
         if (line_start > 0) {
             buffer.erase(0, line_start);
         }
+    }
+    if (was_interrupted.load()) {
+        buffer.clear();
+        buffer.append("Interrupted by user");
     }
 
     // If handle was released early (ESC), discard any partial tool calls — the response is incomplete.
