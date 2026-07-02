@@ -1,8 +1,7 @@
 ﻿#include "pch.h"
-
 #include "llm_client.h"
+#include "key_watcher.h"
 #include "encoding.h"
-#include "httplib.h"
 #include "logger.h"
 #include "token_counter.h"
 #include <mutex>
@@ -48,27 +47,80 @@ LLMClient::UrlParts LLMClient::parse_url() const {
 
 template<typename ClientType>
 std::string post_json_impl(const std::string& path, const std::string& json_body,
-                           const LLMClient::UrlParts& url) {
-    ClientType client(url.host, url.port);
-    if (!client.is_valid()) return "{}";
+    ClientType* client) {
+    LOG_DEBUG("LLMClient", "POST " + client->host() + ":" + std::to_string(client->port()) + path);
 
-    client.set_read_timeout(READ_TIMEOUT, 0);
-    client.set_write_timeout(WRITE_TIMEOUT, 0);
+    if (!client->is_valid()) {
+        LOG_ERROR("LLMClient", "HTTP client invalid for " + client->host() + ":" + std::to_string(client->port()));
+        return "{}";
+    }
 
-    auto res = client.Post(path, json_body, "application/json");
+    auto res = client->Post(path, json_body, "application/json");
     if (!res) {
         LOG_ERROR("LLMClient", std::string{"Post failed: error="} +
                   std::to_string(static_cast<int>(res.error())) +
                   " body_size=" + std::to_string(json_body.size()));
         return "{}";
     }
-    if (res->status == 200) {
+
+    LOG_DEBUG("LLMClient", "Response status=" + std::to_string(res->status) +
+              " body_size=" + std::to_string(res->body.size()));
+
+    // Accept all 2xx success status codes (not just 200).
+    if (res->status >= 200 && res->status < 300) {
         return res->body;
     }
+
     LOG_ERROR("LLMClient", std::string{"Post failed: status="} +
               std::to_string(res->status) + " body_size=" +
               std::to_string(json_body.size()) + " response=" + res->body);
     return "{}";
+}
+
+// ---------------------------------------------------------------------------
+// list_models - template to handle both Client and SSLClient
+// ---------------------------------------------------------------------------
+
+template<typename ClientType>
+std::vector<LLMClient::ModelInfo> list_models_impl(ClientType* client) {
+    std::vector<LLMClient::ModelInfo> models;
+
+    if (!client->is_valid()) return models;
+    auto res = client->Get("/v1/models");
+    if (!res || res->status != 200) return models;
+
+    try {
+        auto j = json::parse(res->body);
+        if (j.contains("data") && j["data"].is_array()) {
+            for (const auto& item : j["data"]) {
+                LLMClient::ModelInfo mi;
+                mi.id = item.value("id", "unknown");
+                mi.owned_by = item.value("owned_by", "-");
+
+                // Try to read context_length from various API fields.
+                if (item.contains("max_model_len")) {
+                    try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {
+                        LOG_ERROR("LLMClient", "Failed to parse max_model_len for model '" + mi.id + "'");
+                    }
+                }
+                if (mi.context_length == 0 && item.contains("context_length")) {
+                    try { mi.context_length = item["context_length"].get<int>(); } catch (...) {
+                        LOG_ERROR("LLMClient", "Failed to parse context_length for model '" + mi.id + "'");
+                    }
+                }
+
+                // If API didn't provide it, fall back to our built-in table.
+                if (mi.context_length == 0)
+                    mi.context_length = LLMClient::get_model_context_length(mi.id);
+
+                models.push_back(mi);
+            }
+        }
+    } catch (...) {
+        LOG_ERROR("LLMClient", "Failed to parse /v1/models API response");
+    }
+
+    return models;
 }
 
 std::string LLMClient::post_json(const std::string& path, const std::string& json_body) {
@@ -76,13 +128,29 @@ std::string LLMClient::post_json(const std::string& path, const std::string& jso
     if (url.host.empty()) return "{}";
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    if (url.is_ssl)
-        return post_json_impl<httplib::SSLClient>(path, json_body, url);
-    else
-        return post_json_impl<httplib::Client>(path, json_body, url);
+    if (url.is_ssl) {
+        if (!ssl_client_) {
+            ssl_client_ = std::make_unique<httplib::SSLClient>(url.host, url.port);
+            ssl_client_->set_read_timeout(READ_TIMEOUT, 0);
+            ssl_client_->set_write_timeout(WRITE_TIMEOUT, 0);
+        }
+        return post_json_impl<httplib::SSLClient>(path, json_body, ssl_client_.get());
+    } else {
+        if (!client_) {
+            client_ = std::make_unique<httplib::Client>(url.host, url.port);
+            client_->set_read_timeout(READ_TIMEOUT, 0);
+            client_->set_write_timeout(WRITE_TIMEOUT, 0);
+        }
+        return post_json_impl<httplib::Client>(path, json_body, client_.get());
+    }
 #else
     if (url.is_ssl) return "{}";
-    return post_json_impl<httplib::Client>(path, json_body, url);
+    if (!client_) {
+        client_ = std::make_unique<httplib::Client>(url.host, url.port);
+        client_->set_read_timeout(READ_TIMEOUT, 0);
+        client_->set_write_timeout(WRITE_TIMEOUT, 0);
+    }
+    return post_json_impl<httplib::Client>(path, json_body, client_.get());
 #endif
 }
 
@@ -189,6 +257,13 @@ std::optional<std::string> LLMClient::build_chat_json(
     {
         LOG_ERROR("LLMClient", "Failed to serialize chat request: " + std::string(e.what()));
         return std::nullopt;
+    }
+
+    LOG_DEBUG("LLMClient", "Chat request built, size=" + std::to_string(req_str.size()) + " bytes");
+    
+    // Warn if the request body is unusually large (potential issue with large tool calls)
+    if (req_str.size() > 1024 * 1024) {  // > 1MB
+        LOG_WARN("LLMClient", std::string{"Large chat request: "} + std::to_string(req_str.size()) + " bytes");
     }
 
     return req_str;
@@ -372,14 +447,10 @@ ChatResponse chat_stream_impl(
     const std::vector<ToolDefinition>& tools,
     double temperature,
     int max_tokens,
-    const LLMClient::UrlParts& url,
+    ClientType* client,
     const std::string& model) {
 
-    ClientType client(url.host, url.port);
-    if (!client.is_valid()) return {};
-
-    client.set_read_timeout(READ_TIMEOUT, 0);
-    client.set_write_timeout(WRITE_TIMEOUT, 0);
+    if (!client->is_valid()) return {};
 
     // Build JSON body using the shared helper.
     auto json_body = LLMClient::build_chat_json(model, messages, tools,
@@ -390,35 +461,18 @@ ChatResponse chat_stream_impl(
         LOG_ERROR("LLMClient", "Chat request build failed, aborting");
         return resp;
     }
-    LOG(Color::CYAN, "JSON_BODY:%s", json_body->c_str());
+    LOG(Color::WHITE, "JSON_BODY:%s", json_body->c_str());
+    LOG(Color::CYAN, "JSON_BODY SIZE:%llu", json_body->size());
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
 
-    std::atomic<bool> interrupted{ false };
     std::unique_ptr<httplib::ClientImpl::StreamHandle> handle;
-
-    auto esc_watcher = [&]() {
-        while (!interrupted.load()) {
-            if (_kbhit()) {
-                char ch = _getch();
-                if (ch == 27) {  // ESC
-                    if (handle) {
-                        handle->close();  // release our reference; main thread may still hold one via local_handle
-                    }
-                    interrupted.store(true);
-                    LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        };
-    auto esc_thread = std::thread{ esc_watcher };
 
     // Wrap StreamHandle in unique_ptr so we can close the socket immediately
     // when ESC is pressed — this notifies the LLM server to stop generating.
     handle = std::make_unique<httplib::ClientImpl::StreamHandle>(
-        client.open_stream("POST", "/v1/chat/completions",
+        client->open_stream("POST", "/v1/chat/completions",
             {}, headers, *json_body));
 
     if (!handle->is_valid()) return {};
@@ -433,14 +487,16 @@ ChatResponse chat_stream_impl(
         }
         if (n <= 0) break;
 
-        bool was_interrupted = interrupted.load();
+        bool was_interrupted = KeyWatcher::was_interrupted();
         if (was_interrupted) {
+            LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
+            handle->close();
             break;
         }
         //char* kb = keyboard_getstate();
 
         buffer.append(read_buf, static_cast<size_t>(n));
-        LOG(Color::GRAY, "%s", read_buf);
+        //LOG(Color::GRAY, "%s", read_buf);
 
         size_t line_start = 0;
         while (!was_interrupted) {
@@ -455,7 +511,7 @@ ChatResponse chat_stream_impl(
                 std::string data_payload = line.substr(5);
                 if (!LLMClient::parse_sse_chunk(data_payload, resp, on_token)) {
                     // Token callback signaled interruption — stop generation
-                    interrupted.store(true);
+                    was_interrupted = true;
                     break;
                 }
             }
@@ -467,8 +523,6 @@ ChatResponse chat_stream_impl(
             buffer.erase(0, line_start);
         }
     }
-    interrupted.store(true);
-    if (esc_thread.joinable()) esc_thread.join();
 
     // If handle was released early (ESC), discard any partial tool calls — the response is incomplete.
     if (!handle) {
@@ -476,6 +530,8 @@ ChatResponse chat_stream_impl(
         resp.tool_calls.clear();
     }
 	TUI::out("\n");  // ensure prompt is on a new line after streaming output
+    LOG(Color::CYAN, "RESPONSE:%s", resp.content);
+    LOG(Color::CYAN, "RESPONSE SIZE:%llu", resp.content.size());
 
     LOG_DEBUG("LLMClient", "Stream complete: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
              ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));
@@ -512,13 +568,29 @@ ChatResponse LLMClient::chat_stream(
     if (url.host.empty()) return {};
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    if (url.is_ssl)
-        return chat_stream_impl<httplib::SSLClient>(messages, on_token, tools, temperature, max_tokens, url, model_);
-    else
-        return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url, model_);
+    if (url.is_ssl) {
+        if (!ssl_client_) {
+            ssl_client_ = std::make_unique<httplib::SSLClient>(url.host, url.port);
+            ssl_client_->set_read_timeout(READ_TIMEOUT, 0);
+            ssl_client_->set_write_timeout(WRITE_TIMEOUT, 0);
+        }
+        return chat_stream_impl<httplib::SSLClient>(messages, on_token, tools, temperature, max_tokens, ssl_client_.get(), model_);
+    } else {
+        if (!client_) {
+            client_ = std::make_unique<httplib::Client>(url.host, url.port);
+            client_->set_read_timeout(READ_TIMEOUT, 0);
+            client_->set_write_timeout(WRITE_TIMEOUT, 0);
+        }
+        return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, client_.get(), model_);
+    }
 #else
     if (url.is_ssl) return {};
-    return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, url, model_);
+    if (!client_) {
+        client_ = std::make_unique<httplib::Client>(url.host, url.port);
+        client_->set_read_timeout(READ_TIMEOUT, 0);
+        client_->set_write_timeout(WRITE_TIMEOUT, 0);
+    }
+    return chat_stream_impl<httplib::Client>(messages, on_token, tools, temperature, max_tokens, client_.get(), model_);
 #endif
 }
 
@@ -527,46 +599,34 @@ ChatResponse LLMClient::chat_stream(
 // ---------------------------------------------------------------------------
 
 std::vector<LLMClient::ModelInfo> LLMClient::list_models() const {
-    std::vector<ModelInfo> models;
-
     auto parts = parse_url();
+    if (parts.host.empty()) return {};
 
-    // Use plain HTTP client - local LM Studio typically runs on HTTP.
-    httplib::Client client(parts.host, parts.port);
-    auto res = client.Get("/v1/models");
-    if (!res || res->status != 200) return models;
-    try {
-        auto j = json::parse(res->body);
-        if (j.contains("data") && j["data"].is_array()) {
-            for (const auto& item : j["data"]) {
-                ModelInfo mi;
-                mi.id = item.value("id", "unknown");
-                mi.owned_by = item.value("owned_by", "-");
-
-                // Try to read context_length from various API fields.
-                if (item.contains("max_model_len")) {
-                    try { mi.context_length = item["max_model_len"].get<int>(); } catch (...) {
-                        LOG_ERROR("LLMClient", "Failed to parse max_model_len for model '" + mi.id + "'");
-                    }
-                }
-                if (mi.context_length == 0 && item.contains("context_length")) {
-                    try { mi.context_length = item["context_length"].get<int>(); } catch (...) {
-                        LOG_ERROR("LLMClient", "Failed to parse context_length for model '" + mi.id + "'");
-                    }
-                }
-
-                // If API didn't provide it, fall back to our built-in table.
-                if (mi.context_length == 0)
-                    mi.context_length = get_model_context_length(mi.id);
-
-                models.push_back(mi);
-            }
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    if (parts.is_ssl) {
+        if (!ssl_client_) {
+            ssl_client_ = std::make_unique<httplib::SSLClient>(parts.host, parts.port);
+            ssl_client_->set_read_timeout(READ_TIMEOUT, 0);
+            ssl_client_->set_write_timeout(WRITE_TIMEOUT, 0);
         }
-    } catch (...) {
-        LOG_ERROR("LLMClient", "Failed to parse /v1/models API response");
+        return list_models_impl<httplib::SSLClient>(ssl_client_.get());
+    } else {
+        if (!client_) {
+            client_ = std::make_unique<httplib::Client>(parts.host, parts.port);
+            client_->set_read_timeout(READ_TIMEOUT, 0);
+            client_->set_write_timeout(WRITE_TIMEOUT, 0);
+        }
+        return list_models_impl<httplib::Client>(client_.get());
     }
-
-    return models;
+#else
+    if (parts.is_ssl) return {};
+    if (!client_) {
+        client_ = std::make_unique<httplib::Client>(parts.host, parts.port);
+        client_->set_read_timeout(READ_TIMEOUT, 0);
+        client_->set_write_timeout(WRITE_TIMEOUT, 0);
+    }
+    return list_models_impl<httplib::Client>(client_.get());
+#endif
 }
 
 // Built-in context length table for common models.

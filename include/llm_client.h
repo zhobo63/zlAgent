@@ -5,6 +5,7 @@
 #include <memory>
 #include <functional>
 #include <optional>
+#include <httplib.h>
 
 namespace agent {
 
@@ -128,6 +129,13 @@ public:
 private:
     std::string base_url_;
     std::string model_;
+
+    // Cached HTTP clients for connection reuse (keep-alive).
+    // Lazily initialized on first use.
+    mutable std::unique_ptr<httplib::Client> client_;
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    mutable std::unique_ptr<httplib::SSLClient> ssl_client_;
+#endif
 
     // Internal HTTP POST via httplib.h (non-streaming)
     std::string post_json(const std::string& path, const std::string& json_body);

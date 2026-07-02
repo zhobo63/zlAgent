@@ -1,11 +1,23 @@
 ﻿#include "pch.h"
 
+#include <stdexcept>
+
 #include "document_chunker.h"
 
 namespace agent {
 namespace fs = std::filesystem;
 
-DocumentChunker::DocumentChunker(const Config& cfg) : cfg_(cfg) {}
+DocumentChunker::DocumentChunker(const Config& cfg) : cfg_(cfg) {
+    // Validate and clamp configuration values.
+    if (cfg_.chunk_size <= 0) {
+        throw std::invalid_argument("DocumentChunker: chunk_size must be > 0");
+    }
+    if (cfg_.overlap < 0 || cfg_.overlap >= cfg_.chunk_size) {
+        // Clamp overlap to [0, chunk_size - 1].
+        cfg_.overlap = std::min(cfg_.overlap, cfg_.chunk_size - 1);
+        if (cfg_.overlap < 0) cfg_.overlap = 0;
+    }
+}
 
 const std::vector<std::string>& DocumentChunker::default_extensions() {
     static const std::vector<std::string> exts = {

@@ -29,27 +29,64 @@ std::string LanguageDetector::extension_to_language(const std::string& ext) {
     return "";
 }
 
+// Directories to skip during language detection.
+static const std::vector<std::string> EXCLUDED_DIRS = {
+    ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
+    "dist", "build", "target", "out", "bin",
+    ".next", ".nuxt", ".output",
+    "vendor", "third_party", "external",
+    ".idea", ".vscode", ".vs"
+};
+
+static bool is_excluded(const std::string& dir_name, const std::vector<std::string>& excluded) {
+    for (const auto& ex : excluded)
+        if (dir_name == ex) return true;
+    return false;
+}
+
 std::string LanguageDetector::detect_directory(const std::string& dir_path) {
     std::map<std::string, int> lang_counts; // language -> file count
     int total_source_files = 0;
+    const int max_depth = 2; // limit recursion depth to avoid scanning huge trees
 
     try {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(dir_path)) {
-            if (!entry.is_regular_file()) continue;
+        // Normalize the root path for depth calculation.
+        std::filesystem::path root = std::filesystem::absolute(dir_path);
 
-            const auto& path = entry.path();
-            std::string ext = path.extension().string();
+        // Manual recursive helper to enforce depth and exclusion rules.
+        std::function<void(const std::filesystem::path&, int)> scan;
+        scan = [&](const std::filesystem::path& current, int depth) {
+            if (depth > max_depth) return; // stop recursing beyond limit
 
-            // Strip leading dot and lowercase.
-            if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            try {
+                for (const auto& entry : std::filesystem::directory_iterator(current)) {
+                    if (!entry.is_directory() && !entry.is_regular_file()) continue;
 
-            std::string lang = extension_to_language(ext);
-            if (lang.empty()) continue; // not a known source file.
+                    if (entry.is_directory()) {
+                        std::string dir_name = entry.path().filename().string();
+                        if (is_excluded(dir_name, EXCLUDED_DIRS)) continue; // skip excluded dirs
+                        scan(entry.path(), depth + 1); // recurse into allowed dirs
+                    } else {
+                        // Regular file - check extension.
+                        std::string ext = entry.path().extension().string();
+                        LOG_DEBUG("LanguageDetector::detect_directory", entry.path().string());
 
-            total_source_files++;
-            lang_counts[lang]++;
-        }
+                        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+                        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+                        std::string lang = extension_to_language(ext);
+                        if (lang.empty()) continue;
+
+                        total_source_files++;
+                        lang_counts[lang]++;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error&) {
+                // Skip inaccessible directories silently.
+            }
+        };
+
+        scan(root, 0);
     } catch (const std::filesystem::filesystem_error& e) {
         LOG_ERROR("LanguageDetector", "Error scanning directory: " + std::string(e.what()));
         return ""; // let config default take over.

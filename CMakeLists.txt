@@ -15,6 +15,7 @@ set(CORE_SOURCES
     src/safety_guard.cpp
     src/system_prompt.cpp
     src/language_detector.cpp
+    src/key_watcher.cpp
     src/skill_system.cpp
     src/llm_client.cpp
     src/tool.cpp

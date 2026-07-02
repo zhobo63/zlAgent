@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 
 #include <atomic>
+#include "key_watcher.h"
 #include "llm_client.h"
 #include "logger.h"
 #include "config.h"
@@ -408,6 +409,7 @@ int main(int argc, char* argv[]) {
     // 4. Register create_skill and delete_skill tools.
     ag.add_tool(agent::create_create_skill_tool());
     ag.add_tool(agent::create_delete_skill_tool());
+    ag.add_tool(agent::create_reload_skills_tool());
 
     // Log summary.
     int enabled_count = 0, disabled_count = 0;
@@ -587,6 +589,9 @@ int main(int argc, char* argv[]) {
     // If -p was provided, use it as the single prompt instead of reading interactively.
     std::string cli_input = cli_prompt;
 
+    // Start background Ctrl-C watcher.
+    agent::KeyWatcher::start();
+
     // Interactive loop with streaming output.
 	bool running = true;
     while (running) {
@@ -600,11 +605,23 @@ int main(int argc, char* argv[]) {
         }
         else {
             char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
-            if (!raw) break;  // Ctrl-C / Ctrl-D
+            if (!raw) {
+                // Ctrl-D on empty — clean exit.
+                running = false;
+                break;
+            }
             input.assign(raw);
             ic_free(raw);
         }
-        if (input.empty()) continue;
+        if (input.empty()) {
+            // isocline returns empty string for both Ctrl-C and Enter-on-empty.
+            // Use KeyWatcher to distinguish: only exit on actual Ctrl-C.
+            if (agent::KeyWatcher::was_interrupted()) {
+                running = false;
+                break;
+            }
+            continue;  // just an empty Enter, stay in loop
+        }
 
 		std::string response;
         running = run_interactive(input, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
@@ -612,6 +629,19 @@ int main(int argc, char* argv[]) {
         if (cli_mode) {
 			break;  // Exit after one interaction in CLI mode
         }
+    }
+
+    // Stop background Ctrl-C watcher.
+    agent::KeyWatcher::stop();
+
+    // === Cleanup on exit ===
+    if (long_term_memory) {
+        long_term_memory->save();
+        LOG_INFO("Memory", "Long-term memory saved.");
+    }
+    if (agent::get_global_rag_manager() && !cfg.rag.store_path.empty()) {
+        agent::get_global_rag_manager()->save(cfg.rag.store_path);
+        LOG_INFO("RAG", "Knowledge base saved.");
     }
 
     return 0;

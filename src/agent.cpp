@@ -85,6 +85,9 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
     ChatMessage user_msg{"user", user_input, ""};
     memory_.add(user_msg);
 
+    // Reset iteration count before task
+    current_iteration_ = 0;
+
     // Run streaming reasoning loop
     ChatResponse response = reasoning_loop_stream(user_input, on_token);
 
@@ -144,10 +147,24 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
         }
 
         const auto& messages = memory_.get_messages();
+
+        // Ensure the last message in history is a "user" role.
+        // LM Studio's Jinja prompt template requires a user query at the end;
+        // after tool results are added, the tail may be [tool] or [assistant],
+        // which causes "No user query found in messages." errors.
+        std::vector<ChatMessage> messages_for_llm = messages;
+        if (!messages.empty()) {
+            const auto& last = messages.back();
+            if (last.role != "user") {
+                ChatMessage continue_user{"user", "Continue based on the tool results above."};
+                messages_for_llm.push_back(continue_user);
+            }
+        }
+
         auto tool_defs = registry_.get_definitions();
 
         // Call LLM with streaming
-        ChatResponse resp = llm_.chat_stream(messages, on_token, tool_defs);
+        ChatResponse resp = llm_.chat_stream(messages_for_llm, on_token, tool_defs);
 
         // Accumulate token usage across iterations
 		tokens_used_ += resp.total_tokens();

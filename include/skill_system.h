@@ -4,6 +4,8 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <set>
+#include <filesystem>
 
 namespace agent {
 
@@ -39,8 +41,17 @@ public:
     // Build a summary string of all skills for LLM selection context.
     std::string build_skill_summary() const;
 
+    /**
+     * Hot-reload: scan native skill directories, detect file changes by mtime,
+     * re-parse changed SKILL.md files and update the registry in-place.
+     * Returns a human-readable summary of what was updated/removed.
+     */
+    std::string reload_skills(const std::vector<std::string>& scan_dirs = {});
+
 private:
     std::map<std::string, SkillPtr> skills_;
+    // Track modification time per source directory for hot-reload detection.
+    std::map<std::string, std::filesystem::file_time_type> skill_mtime_;
 };
 
 // Global skill registry accessor (set by main.cpp, used by skill tools).

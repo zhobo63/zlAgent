@@ -169,12 +169,68 @@ public:
     }
 };
 
+// -----------------------------------------------------------------------
+// ReloadSkillsTool - hot-reload native skills from disk
+// -----------------------------------------------------------------------
+class ReloadSkillsTool : public Tool {
+public:
+    std::string name() const override { return "reload_skills"; }
+    std::string description() const override {
+        return "Hot-reload native skills by scanning zlagent/skills/ for changes. Detects file modifications via mtime, re-parses changed SKILL.md files in-place, and removes deleted ones.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+        schema["properties"]["scan_dirs"]["type"] = "array";
+        schema["properties"]["scan_dirs"]["items"]["type"] = "string";
+        schema["properties"]["scan_dirs"]["description"] = "Optional list of directories to scan. Defaults to zlagent/skills/.";
+        return schema.dump();
+    }
+
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (!g_skill_registry) {
+                return "Error: Skill registry not initialized.";
+            }
+
+            std::vector<std::string> dirs;
+            if (!json_args.empty()) {
+                auto args = json::parse(json_args);
+                if (args.contains("scan_dirs") && args["scan_dirs"].is_array()) {
+                    for (const auto& d : args["scan_dirs"]) {
+                        dirs.push_back(d.get<std::string>());
+                    }
+                }
+            }
+
+            std::string result = g_skill_registry->reload_skills(dirs);
+
+            // Re-validate dependencies after reload.
+            if (g_skill_registry) {
+                // Note: we don't have access to the tool registry here,
+                // but validate_dependencies is available for callers that need it.
+            }
+
+            return result;
+
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        } catch (const std::exception& e) {
+            return std::string("Error: ") + e.what();
+        }
+    }
+};
+
 ToolPtr create_create_skill_tool() {
     return std::make_shared<CreateSkillTool>();
 }
 
 ToolPtr create_delete_skill_tool() {
     return std::make_shared<DeleteSkillTool>();
+}
+
+ToolPtr create_reload_skills_tool() {
+    return std::make_shared<ReloadSkillsTool>();
 }
 
 } // namespace agent
