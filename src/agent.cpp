@@ -98,6 +98,9 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
     // Add assistant response to memory
     memory_.add(ChatMessage{"assistant", response.content, ""});
 
+    // Reset iteration count after task completes
+    current_iteration_ = 0;
+
     return response.content;
 }
 
