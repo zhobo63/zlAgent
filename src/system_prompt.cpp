@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 
 #include "system_prompt.h"
 
@@ -7,58 +7,46 @@
 
 namespace agent {
 
-using json = nlohmann::json;
+// ── Read an entire file into a string ────────────────────────────────────────
+static std::string read_file_content(const std::string& path) {
+    std::ifstream f(path);
+    if (!f.is_open()) return {};
 
-// ── Build a prompt string from a single language entry in the JSON ────────────
-static std::string build_prompt(const json& lang) {
     std::ostringstream oss;
-
-    // Identity line
-    if (lang.contains("identity") && lang["identity"].is_string()) {
-        oss << lang["identity"].get<std::string>();
-    }
-
-
-
-    // Guidelines list (numbered)
-    if (lang.contains("guidelines") && lang["guidelines"].is_array()) {
-        oss << "\n\nGuidelines:";
-        int i = 1;
-        for (const auto& g : lang["guidelines"]) {
-            oss << "\n" << i++ << ". " << g.get<std::string>();
-        }
-    }
-
-    // Language-specific notes
-    if (lang.contains("language_notes") && lang["language_notes"].is_array()) {
-        oss << "\n\nLanguage-specific notes:";
-        for (const auto& note : lang["language_notes"]) {
-            oss << "\n- " << note.get<std::string>();
-        }
-    }
-
-
-
+    oss << f.rdbuf();
     return oss.str();
 }
 
-// ── Try to load prompts from system_prompt.json ──────────────────────────────
-static bool try_load_json(json* root_out) {
+// ── Try to load system_prompt.md ─────────────────────────────────────────────
+static bool try_load_md(std::string* out) {
     static const char* candidates[] = {
-        "system_prompt.json",
-        "./system_prompt.json",
+        "system_prompt.md",
+        "./system_prompt.md",
     };
 
     for (const auto* path : candidates) {
-        std::ifstream f(path);
-        if (!f.is_open()) continue;
-
-        try {
-            json root = json::parse(f);
-            *root_out = root["languages"]["multi"];
+        std::string content = read_file_content(path);
+        if (!content.empty()) {
+            *out = std::move(content);
             return true;
-        } catch (const std::exception& e) {
-            LOG_ERROR("SystemPrompt", "JSON parse error: " + std::string(e.what()));
+        }
+    }
+
+    return false;
+}
+
+// ── Try to load AGENTS.md ────────────────────────────────────────────────────
+static bool try_load_agents_md(std::string* out) {
+    static const char* candidates[] = {
+        "AGENTS.md",
+        "./AGENTS.md",
+    };
+
+    for (const auto* path : candidates) {
+        std::string content = read_file_content(path);
+        if (!content.empty()) {
+            *out = std::move(content);
+            return true;
         }
     }
 
@@ -69,14 +57,27 @@ static bool try_load_json(json* root_out) {
 static std::string hardcoded_fallback();
 
 std::string SystemPromptProvider::get(const std::string& /*language*/) {
-    // Try loading from system_prompt.json first.
-    json lang_entry;
+    // 1. Try loading system_prompt.md first.
+    std::string md_content;
 
-    if (try_load_json(&lang_entry)) {
-        return build_prompt(lang_entry);
+    if (try_load_md(&md_content)) {
+        LOG_INFO("SystemPrompt", "Loaded from system_prompt.md");
+
+        // Also try to load AGENTS.md and append it.
+        std::string agents_content;
+        if (try_load_agents_md(&agents_content)) {
+            LOG_INFO("SystemPrompt", "Loaded from AGENTS.md, merging...");
+            md_content += "\n\n## Additional guidelines (from AGENTS.md)\n\n";
+            md_content += agents_content;
+        } else {
+            LOG_INFO("SystemPrompt", "AGENTS.md not found, using system_prompt.md only");
+        }
+
+        return md_content;
     }
 
     // Fall back to hardcoded prompt.
+    LOG_WARN("SystemPrompt", "system_prompt.md not found, using hardcoded fallback");
     return hardcoded_fallback();
 }
 
