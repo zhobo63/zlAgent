@@ -46,9 +46,11 @@ chunk_size、overlap 可能為 0 或不合理大，未做任何校驗。
 
 ---
 
-### [ ] 9. Task Planner — fallback 解析缺少步驟驗證
-**文件:** `src/task_planner.cpp:127-133`
+### [x] 9. Task Planner — fallback 解析缺少步驟驗證
+**文件:** `src/task_planner.cpp:127-138`
 
 fallback 路徑捕獲到 step regex 就直接 push，沒有檢查步驟是否非空或長度合理。
 
 **建議:** 加入基本驗證（non-empty、合理長度）。
+
+**已修復:** 加入描述驗證 — 跳過空字串與少於 2 字元的噪音條目，超過 500 字元則截斷。

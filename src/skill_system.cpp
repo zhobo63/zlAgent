@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 
 #include "skill_system.h"
 #include "logger.h"
@@ -218,6 +218,92 @@ bool SkillLoader::validate_dependencies(SkillPtr skill, const std::vector<std::s
         }
     }
     return true;
+}
+
+std::string SkillRegistry::reload_skills(const std::vector<std::string>& scan_dirs) {
+    // Default: scan zlagent/skills/ if no dirs specified.
+    std::vector<std::string> dirs = scan_dirs.empty() ? std::vector<std::string>{"zlagent/skills"} : scan_dirs;
+
+    std::ostringstream oss;
+    int updated = 0, removed = 0, unchanged = 0, errors = 0;
+
+    // Collect all skill directories and their mtimes from disk.
+    std::map<std::string, fs::path> disk_skills;   // dir -> SKILL.md path
+    std::set<std::string> disk_skill_names;          // names found on disk
+
+    for (const auto& dir : dirs) {
+        if (!fs::exists(dir)) continue;
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (!entry.is_directory()) continue;
+            std::string md_path = entry.path().string() + "/SKILL.md";
+            if (!fs::exists(md_path)) continue;
+
+            // Get mtime of the SKILL.md file.
+            auto mtime = fs::last_write_time(md_path);
+            disk_skills[entry.path().string()] = md_path;
+
+            // Parse temporarily to get skill name for tracking.
+            auto tmp = SkillLoader::parse_skill_md(md_path);
+            if (tmp && !tmp->name.empty()) {
+                disk_skill_names.insert(tmp->name);
+            }
+        }
+    }
+
+    // 1. Check existing skills: update changed, remove deleted.
+    std::vector<std::string> to_remove;
+    for (auto& [name, skill] : skills_) {
+        if (skill->source_type != "native") continue;
+
+        auto it = disk_skills.find(skill->source_path);
+        if (it == disk_skills.end()) {
+            // Skill directory no longer exists — remove.
+            to_remove.push_back(name);
+            continue;
+        }
+
+        auto mtime_it = skill_mtime_.find(skill->source_path);
+        if (mtime_it != skill_mtime_.end() && mtime_it->second == fs::last_write_time(it->second)) {
+            // No change.
+            ++unchanged;
+            continue;
+        }
+
+        // File changed — re-parse and update in-place.
+        auto new_skill = SkillLoader::parse_skill_md(it->second.string());
+        if (new_skill && !new_skill->name.empty()) {
+            *skill = *new_skill;  // Preserve the shared_ptr, update contents.
+            skill->source_type = "native";
+            ++updated;
+            LOG_INFO("Skill", u8"  \u2714 reload: " + name);
+        } else {
+            ++errors;
+            LOG_WARN("Skill", "  failed to re-parse: " + it->second.string());
+        }
+    }
+
+    // Remove skills that no longer exist on disk.
+    for (const auto& name : to_remove) {
+        skills_.erase(name);
+        skill_mtime_.erase(name);
+        ++removed;
+        LOG_INFO("Skill", u8"  \u2718 removed: " + name);
+    }
+
+    // Update tracked mtimes.
+    for (const auto& [dir_path, md_path] : disk_skills) {
+        skill_mtime_[dir_path] = fs::last_write_time(md_path.string());
+    }
+
+    oss << u8"Skill hot-reload complete: "
+        << updated << u8" updated, "
+        << removed << u8" removed, "
+        << unchanged << u8" unchanged";
+    if (errors > 0) {
+        oss << ", " << errors << u8" errors";
+    }
+
+    return oss.str();
 }
 
 std::vector<SkillPtr> SkillLoader::auto_detect_and_import(

@@ -34,6 +34,7 @@ ToolPtr create_project_overview_tool();
 // Skill tools
 ToolPtr create_create_skill_tool();
 ToolPtr create_delete_skill_tool();
+ToolPtr create_reload_skills_tool();
 
 // RAG tool
 ToolPtr create_search_knowledge_base_tool();

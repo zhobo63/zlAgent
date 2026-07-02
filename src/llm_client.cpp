@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "llm_client.h"
+#include "key_watcher.h"
 #include "encoding.h"
 #include "logger.h"
 #include "token_counter.h"
@@ -460,31 +461,13 @@ ChatResponse chat_stream_impl(
         LOG_ERROR("LLMClient", "Chat request build failed, aborting");
         return resp;
     }
-    LOG(Color::CYAN, "JSON_BODY:%s", json_body->c_str());
+    LOG(Color::WHITE, "JSON_BODY:%s", json_body->c_str());
     LOG(Color::CYAN, "JSON_BODY SIZE:%llu", json_body->size());
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
 
-    std::atomic<bool> interrupted{ false };
     std::unique_ptr<httplib::ClientImpl::StreamHandle> handle;
-
-    auto esc_watcher = [&]() {
-        while (!interrupted.load()) {
-            if (_kbhit()) {
-                char ch = _getch();
-                if (ch == 27) {  // ESC
-                    if (handle) {
-                        handle->close();  // release our reference; main thread may still hold one via local_handle
-                    }
-                    interrupted.store(true);
-                    LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        };
-    auto esc_thread = std::thread{ esc_watcher };
 
     // Wrap StreamHandle in unique_ptr so we can close the socket immediately
     // when ESC is pressed — this notifies the LLM server to stop generating.
@@ -504,14 +487,16 @@ ChatResponse chat_stream_impl(
         }
         if (n <= 0) break;
 
-        bool was_interrupted = interrupted.load();
+        bool was_interrupted = KeyWatcher::was_interrupted();
         if (was_interrupted) {
+            LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
+            handle->close();
             break;
         }
         //char* kb = keyboard_getstate();
 
         buffer.append(read_buf, static_cast<size_t>(n));
-        LOG(Color::GRAY, "%s", read_buf);
+        //LOG(Color::GRAY, "%s", read_buf);
 
         size_t line_start = 0;
         while (!was_interrupted) {
@@ -526,7 +511,7 @@ ChatResponse chat_stream_impl(
                 std::string data_payload = line.substr(5);
                 if (!LLMClient::parse_sse_chunk(data_payload, resp, on_token)) {
                     // Token callback signaled interruption — stop generation
-                    interrupted.store(true);
+                    was_interrupted = true;
                     break;
                 }
             }
@@ -538,8 +523,6 @@ ChatResponse chat_stream_impl(
             buffer.erase(0, line_start);
         }
     }
-    interrupted.store(true);
-    if (esc_thread.joinable()) esc_thread.join();
 
     // If handle was released early (ESC), discard any partial tool calls — the response is incomplete.
     if (!handle) {
@@ -547,6 +530,8 @@ ChatResponse chat_stream_impl(
         resp.tool_calls.clear();
     }
 	TUI::out("\n");  // ensure prompt is on a new line after streaming output
+    LOG(Color::CYAN, "RESPONSE:%s", resp.content);
+    LOG(Color::CYAN, "RESPONSE SIZE:%llu", resp.content.size());
 
     LOG_DEBUG("LLMClient", "Stream complete: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
              ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));

@@ -125,10 +125,16 @@ Plan TaskPlanner::parse_plan(const std::string& raw_response) {
         while (std::getline(iss, line)) {
             std::smatch match;
             if (std::regex_search(line, match, step_regex)) {
+                std::string desc = match[1].str();
+                
+                // Validate step description: skip empty/too-short entries, truncate excessively long ones.
+                if (desc.empty() || desc.size() < 2) continue;
+                if (desc.size() > 500) desc = desc.substr(0, 500);
+                
                 id++;
                 Step s;
                 s.id = id;
-                s.description = match[1].str();
+                s.description = std::move(desc);
                 plan.steps.push_back(s);
             }
         }
