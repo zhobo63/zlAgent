@@ -48,7 +48,7 @@ inline const char* level_color(LogLevel lvl) {
 #endif
     switch (lvl) {
         case LogLevel::Debug: return "\033[90m";  // grey
-        case LogLevel::Info:  return "\033[32m";  // green
+        case LogLevel::Info:  return "\033[36m";  // cyan
         case LogLevel::Warn:  return "\033[33m";  // yellow
         case LogLevel::Error: return "\033[31m";  // red
         default:              return "";
