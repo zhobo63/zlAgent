@@ -604,6 +604,7 @@ int main(int argc, char* argv[]) {
             cli_input.clear();  // consume once
         }
         else {
+#ifdef USE_ISOCLINE
             char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
             if (!raw) {
                 running = false;
@@ -611,6 +612,9 @@ int main(int argc, char* argv[]) {
             }
             input.assign(raw);
             ic_free(raw);
+#endif
+            std::string prompt = "You:[" + ag.get_llm().get_model() + "]>";
+            input = agent::KeyWatcher::readline(prompt.c_str(), [](int ch) {});
         }
         if (input.empty()) {
             continue;  // just an empty Enter, stay in loop

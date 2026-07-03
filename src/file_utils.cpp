@@ -561,6 +561,8 @@ std::string GenerateFileOutline(const std::string& path) {
     // Parse symbols with depth tracking
     std::vector<RawSymbol> raw_symbols;
 
+    //TODO .c 
+
     if (ext == ".cpp" || ext == ".h" || ext == ".hpp" || ext == ".cc" || ext == ".cxx") {
         parse_cpp_outline(lines, ext, raw_symbols);
     } else if (ext == ".py") {
