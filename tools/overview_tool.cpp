@@ -383,11 +383,7 @@ private:
     static std::vector<std::string> execute_shell_command(const std::string& cmd) {
         LOG_DEBUG("execute_shell_command", cmd);
         std::vector<std::string> result;
-#if defined(_WIN32)
-        FILE* pipe = _popen(cmd.c_str(), "r");
-#else
         FILE* pipe = popen(cmd.c_str(), "r");
-#endif
         if (!pipe) return result;
 
         char buffer[256];
@@ -398,12 +394,7 @@ private:
             if (!line.empty() && line.back() == '\r') line.pop_back();
             result.push_back(line);
         }
-
-#if defined(_WIN32)
-        _pclose(pipe);
-#else
         pclose(pipe);
-#endif
         std::ostringstream result_log;
         for (size_t i = 0; i < result.size(); ++i) {
             if (i > 0) result_log << "\n";

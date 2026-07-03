@@ -597,7 +597,7 @@ int main(int argc, char* argv[]) {
     while (running) {
         print_status_bar(ag, long_term_memory);
         TUI::out("\n");
-
+        
         std::string input;
         if (!cli_input.empty()) {
             input = cli_input;
@@ -606,20 +606,13 @@ int main(int argc, char* argv[]) {
         else {
             char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
             if (!raw) {
-                // Ctrl-D on empty — clean exit.
                 running = false;
-                break;
+                continue;
             }
             input.assign(raw);
             ic_free(raw);
         }
         if (input.empty()) {
-            // isocline returns empty string for both Ctrl-C and Enter-on-empty.
-            // Use KeyWatcher to distinguish: only exit on actual Ctrl-C.
-            if (agent::KeyWatcher::was_interrupted()) {
-                running = false;
-                break;
-            }
             continue;  // just an empty Enter, stay in loop
         }
 

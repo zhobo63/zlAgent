@@ -1,4 +1,4 @@
-# Project Inspector — 專案狀況總覽工具
+# Project Overview Tool — 專案狀況總覽工具
 
 ## 核心問題
 
