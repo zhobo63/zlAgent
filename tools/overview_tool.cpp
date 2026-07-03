@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "tool.h"
+#include "agent.h"
 #include "json.hpp"
 
 namespace agent {
@@ -37,7 +38,15 @@ public:
             std::string directory = args.value("directory", "");
             if (directory.empty()) directory = ".";
 
-            return overview(directory);
+            std::string result = overview(directory);
+
+            // Trigger local tool discovery using the generated overview.
+            Agent* ag = get_global_agent();
+            if (ag) {
+                ag->discover_local_tools_from_overview(result);
+            }
+
+            return result;
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         } catch (const std::exception& e) {

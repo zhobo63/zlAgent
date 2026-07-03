@@ -13,7 +13,7 @@ public:
     // Get the built-in system prompt. Always returns the multi-language prompt
     // covering C++/JS/TS/Python/Rust/Go/Java. The `language` parameter is kept
     // for API compatibility but ignored.
-    static std::string get(const std::string& language = "multi");
+    static std::string get();
 
 private:
     SystemPromptProvider() = default;

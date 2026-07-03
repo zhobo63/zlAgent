@@ -93,6 +93,12 @@ public:
 	int get_max_iterations() const { return max_iterations_; }
 	int get_tokens_used() const { return tokens_used_; }
     int get_max_token() const {return max_tokens_; }
+
+    // Discover and register local tools if lazy discovery is enabled.
+    void discover_local_tools();
+
+    // Discover local tools from a project overview string, excluding already-registered ones.
+    void discover_local_tools_from_overview(const std::string& overview);
 private:
     LLMClient llm_;
     ToolRegistry registry_;
@@ -116,9 +122,6 @@ private:
 
     // User Reply mode — controls when the Agent pauses for user input.
     UserReplyMode user_reply_mode_ = UserReplyMode::Off;
-
-    // Discover and register local tools if lazy discovery is enabled.
-    void discover_local_tools();
 
     // Internal streaming loop: same logic but uses chat_stream with token callback
     ChatResponse reasoning_loop_stream(const std::string& user_input, TokenCallback on_token);

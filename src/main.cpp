@@ -302,14 +302,14 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Config", "Strict mode: " + std::string(cfg.safety.strict_mode ? "enabled (reject out-of-scope paths)" : "disabled (confirm out-of-scope paths)"));
 
     // Determine the effective language: auto-detect > config value.
-    std::string effective_language = cfg.agent_.language;
-    if (cfg.agent_.auto_detect_language) {
-        std::string detected = agent::LanguageDetector::detect_directory(".");
-        if (!detected.empty()) {
-            effective_language = detected;
-            LOG_INFO("Config", "Auto-detected language: " + detected + " (overriding config value '" + cfg.agent_.language + "')");
-        }
-    }
+    //std::string effective_language = cfg.agent_.language;
+    //if (cfg.agent_.auto_detect_language) {
+    //    std::string detected = agent::LanguageDetector::detect_directory(".");
+    //    if (!detected.empty()) {
+    //        effective_language = detected;
+    //        LOG_INFO("Config", "Auto-detected language: " + detected + " (overriding config value '" + cfg.agent_.language + "')");
+    //    }
+    //}
 
     // System prompt: external file > built-in language-specific > multi-language default.
     std::string system_prompt;
@@ -322,10 +322,10 @@ int main(int argc, char* argv[]) {
             LOG_INFO("Config", "System prompt loaded from: " + cfg.agent_.prompt_file);
         } else {
             LOG_WARN("Config", "Cannot open prompt file '" + cfg.agent_.prompt_file + "', using built-in.");
-            system_prompt = agent::SystemPromptProvider::get(effective_language);
+            system_prompt = agent::SystemPromptProvider::get();
         }
     } else {
-        system_prompt = agent::SystemPromptProvider::get(effective_language);
+        system_prompt = agent::SystemPromptProvider::get();
     }
     ag.set_system_prompt(system_prompt);
 

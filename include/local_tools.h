@@ -73,4 +73,10 @@ private:
  */
 std::vector<ToolPtr> create_local_tools();
 
+/**
+ * Creates a ToolPtr for each discovered local tool, using the project overview
+ * string to infer which tools are relevant without scanning the filesystem.
+ */
+std::vector<ToolPtr> create_local_tools(const std::string& overview);
+
 } // namespace agent

@@ -56,7 +56,7 @@ static bool try_load_agents_md(std::string* out) {
 // ── Hardcoded fallback prompt ───────────────────────────────────────────────
 static std::string hardcoded_fallback();
 
-std::string SystemPromptProvider::get(const std::string& /*language*/) {
+std::string SystemPromptProvider::get() {
     // 1. Try loading system_prompt.md first.
     std::string md_content;
 

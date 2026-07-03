@@ -58,6 +58,32 @@ void Agent::discover_local_tools() {
     LOG_INFO("Lazy", "Local tools discovered and registered.");
 }
 
+void Agent::discover_local_tools_from_overview(const std::string& overview) {
+    if (!local_tools_enabled_ || local_tools_discovered_) return;
+    local_tools_discovered_ = true;
+
+    LOG_INFO("Lazy", "\nDiscovering local tools from project overview...");
+    auto new_tools = create_local_tools(overview);
+
+    // Collect already-registered tool names to exclude duplicates.
+    std::set<std::string> registered_names;
+    for (const auto& t : registry_.get_tools()) {
+        registered_names.insert(t->name());
+    }
+
+    int added = 0, skipped = 0;
+    for (auto& tool : new_tools) {
+        if (registered_names.count(tool->name())) {
+            skipped++;
+        } else {
+            registry_.register_tool(std::move(tool));
+            added++;
+        }
+    }
+
+    LOG_INFO("Lazy", "Local tools from overview: " + std::to_string(added) + " registered, " + std::to_string(skipped) + " skipped (already registered)." );
+}
+
 // ── LLM-based planning decision ────────────────────────────
 
 bool Agent::needs_planning(ChatResponse &resp) {
@@ -79,7 +105,7 @@ bool Agent::needs_planning(ChatResponse &resp) {
 // Streaming version: tokens are printed as they arrive via on_token callback
 std::string Agent::run_stream(const std::string& user_input, TokenCallback on_token, ChatResponse* usage_out) {
     // Lazy discover local tools on first chat.
-    discover_local_tools();
+    // discover_local_tools();
 
     // Add user message to memory
     ChatMessage user_msg{"user", user_input, ""};

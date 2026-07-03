@@ -28,6 +28,10 @@ const std::map<std::string, std::string>& LocalToolDiscovery::known_tools() {
         {"g++",       "GNU G++ compiler. Compile and link C++ source files."},
         {"clang++",   "Clang C++ compiler (LLVM). Compile and link C++ source files with better diagnostics."},
         {"cl",        "Microsoft Visual C++ compiler (MSVC). Compile C++ on Windows."},
+        {"link",      "Microsoft linker. Bundle object files into .exe or .dll outputs."},
+        {"msbuild",   "Microsoft Build Engine. Compile .sln and .vcxproj files without opening the UI."},
+        {"nmake",     "Microsoft Makefile tool. Traditional project management for C/C++ builds."},
+        {"lib",       "Microsoft library manager. Build and manage static libraries (.lib)."},
 
         // ── JavaScript / TypeScript ─────────────────────────
         {"node",      "Node.js runtime. Execute JavaScript/TypeScript code, run npm scripts."},
@@ -106,10 +110,12 @@ std::string LocalToolDiscovery::resolve_path(const std::string& exe_name) {
         return agent::wide_to_utf8(result);
     }
 
-    // If it's 'cl' and not found in PATH, return bare name for dev cmd env
-    if (exe_name == "cl") {
-        return exe_name;
-    }
+    	// If it's an MSVC toolchain command and not found in PATH, return bare name
+    	// for dev cmd env (cl, link, msbuild, nmake, lib)
+    	static const std::set<std::string> msvc_tools = {"cl", "link", "msbuild", "nmake", "lib"};
+    	if (msvc_tools.count(exe_name)) {
+    		return exe_name;
+    	}
 
     return "";
 #else
@@ -341,6 +347,8 @@ std::string LocalExecutableTool::name() const {
     std::string n = info_.name;
     std::replace(n.begin(), n.end(), '+', 'p');   // g++ -> gpp, clang++ -> clangpp
     if (n == "cl") n = "msvc_cl";                 // avoid conflict with common word
+    if (n == "link") n = "msvc_link";
+    if (n == "lib") n = "msvc_lib";
     return n + "_tool";
 }
 
@@ -452,6 +460,105 @@ std::vector<ToolPtr> create_local_tools() {
     auto found = discovery.discover(suggested);
 
     LOG_INFO("LocalTools", "Scanning for installed tools...");
+
+    std::vector<ToolPtr> tools;
+    for (const auto& info : found) {
+        LOG_INFO("LocalTools", "  Found: " + info.name + " v:" + info.version + " (" + info.path + ")");
+        tools.push_back(std::make_shared<LocalExecutableTool>(info));
+    }
+
+    if (tools.empty()) {
+        LOG_INFO("LocalTools", "No known dev tools found in PATH.");
+        LOG_INFO("LocalTools", "  Install compilers/build tools (g++, node, python3, cargo, go, etc.) to enable these features.");
+    } else {
+        LOG_INFO("LocalTools", "Registered " + std::to_string(tools.size()) + " local tool(s).");
+    }
+
+    return tools;
+}
+
+std::vector<ToolPtr> create_local_tools(const std::string &overview) {
+    LocalToolDiscovery discovery;
+
+    // Parse the overview to infer relevant tools without scanning the filesystem.
+    std::set<std::string> suggested;
+
+    // ── Build system detection ───────────────────────────────
+    if (overview.find("CMake") != std::string::npos) {
+        suggested.insert("cmake");
+        suggested.insert("make");
+        suggested.insert("ninja");
+    }
+    if (overview.find("Make") != std::string::npos && overview.find("CMake") == std::string::npos) {
+        suggested.insert("make");
+    }
+    if (overview.find("Visual Studio") != std::string::npos) {
+        suggested.insert("cl");
+        suggested.insert("link");
+        suggested.insert("msbuild");
+        suggested.insert("nmake");
+        suggested.insert("lib");
+    }
+    if (overview.find("Node.js") != std::string::npos || overview.find("npm") != std::string::npos) {
+        suggested.insert("node");
+        suggested.insert("npm");
+        suggested.insert("npx");
+    }
+    if (overview.find("Maven") != std::string::npos) {
+        suggested.insert("mvn");
+        suggested.insert("javac");
+        suggested.insert("java");
+    }
+    if (overview.find("Gradle") != std::string::npos) {
+        suggested.insert("gradle");
+        suggested.insert("javac");
+        suggested.insert("java");
+    }
+    if (overview.find("Rust") != std::string::npos || overview.find("Cargo") != std::string::npos) {
+        suggested.insert("cargo");
+        suggested.insert("rustc");
+    }
+    if (overview.find("Go modules") != std::string::npos) {
+        suggested.insert("go");
+    }
+    if (overview.find("Python") != std::string::npos || overview.find("setuptools") != std::string::npos || overview.find("PEP 517") != std::string::npos) {
+        suggested.insert("python3");
+        suggested.insert("pip3");
+        suggested.insert("pytest");
+    }
+
+    // ── Code metrics: file extensions ────────────────────────
+    static const std::map<std::string, std::vector<std::string>> ext_tools = {
+        {".cpp",     {"g++", "clang++", "cmake", "make", "ninja", "vcpkg", "conan", "clang-format", "clang-tidy", "cppcheck", "gdb", "lldb"}},
+        {".c",       {"gcc", "cmake", "make", "ninja", "clang-format", "clang-tidy", "cppcheck", "gdb", "lldb"}},
+        {".js",      {"node", "npm"}},
+        {".ts",      {"node", "npm", "tsc"}},
+        {".py",      {"python3", "pip3", "pytest"}},
+        {".rs",      {"cargo", "rustc"}},
+        {".go",      {"go"}},
+        {".java",    {"javac", "java"}},
+    };
+
+    for (const auto& [ext, tools] : ext_tools) {
+        if (overview.find(ext) != std::string::npos) {
+            for (const auto& t : tools) suggested.insert(t);
+        }
+    }
+
+    // ── VCS detection ────────────────────────────────────────
+    if (overview.find("Git") != std::string::npos) {
+        suggested.insert("git");
+    }
+    if (overview.find("Mercurial") != std::string::npos || overview.find("hg") != std::string::npos) {
+        // hg is typically not a standalone tool we wrap
+    }
+    if (overview.find("SVN") != std::string::npos || overview.find("svn") != std::string::npos) {
+        // svn is not in known_tools registry
+    }
+
+    auto found = discovery.discover(suggested);
+
+    LOG_INFO("LocalTools", "Scanning for installed tools (from overview)..." );
 
     std::vector<ToolPtr> tools;
     for (const auto& info : found) {
