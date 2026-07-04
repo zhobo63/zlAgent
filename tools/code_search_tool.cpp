@@ -4,11 +4,47 @@
 #include "encoding.h"
 #include <regex>
 #include <cstring>
+#include <set>
 
 namespace agent {
 using json = nlohmann::json;
 
 class CodeSearchTool : public Tool {
+private:
+    // Load excluded directory names from .gitignore / .hgignore
+    std::set<std::string> load_ignored_dirs(const std::filesystem::path& root) {
+        std::set<std::string> ignored;
+        for (const auto& ignore_file : {".gitignore", ".hgignore"}) {
+            std::ifstream f(root / ignore_file);
+            if (!f.is_open()) continue;
+            std::string line;
+            while (std::getline(f, line)) {
+                // Trim whitespace
+                size_t start = line.find_first_not_of(" \t\r\n");
+                if (start == std::string::npos) continue;
+                size_t end = line.find_last_not_of(" \t\r\n");
+                line = line.substr(start, end - start + 1);
+
+                // Skip comments and empty lines
+                if (line.empty() || line[0] == '#') continue;
+
+                // Strip trailing slash to get directory name
+                std::string dir_name = line;
+                if (!dir_name.empty() && dir_name.back() == '/')
+                    dir_name.pop_back();
+
+                // Only add simple directory names (no wildcards, no path separators)
+                if (!dir_name.empty() &&
+                    dir_name.find('*') == std::string::npos &&
+                    dir_name.find('?') == std::string::npos &&
+                    dir_name.find('/') == std::string::npos) {
+                    ignored.insert(dir_name);
+                }
+            }
+        }
+        return ignored;
+    }
+
 public:
     std::string name() const override { return "search_code"; }
     std::string description() const override {
@@ -81,13 +117,20 @@ private:
             return;
         }
 
-        search_dir_recursive(resolved, file_pattern, re, results, match_count, max_results);
+        // Load ignored directories from .gitignore / .hgignore at the search root
+        auto ignored_dirs = load_ignored_dirs(resolved);
+        if (!ignored_dirs.empty()) {
+            LOG_DEBUG("CodeSearchTool", "ignored dirs: " + std::string("") + ", count=" + std::to_string(ignored_dirs.size()));
+        }
+
+        search_dir_recursive(resolved, file_pattern, re, results, match_count, max_results, ignored_dirs);
     }
 
     // Manual recursive traversal so we can skip hidden directories entirely.
     void search_dir_recursive(const std::filesystem::path& dir, const std::string& file_pattern,
                               const std::regex& re, std::ostringstream& results,
-                              int& match_count, int max_results) {
+                              int& match_count, int max_results,
+                              const std::set<std::string>& ignored_dirs) {
         namespace fs = std::filesystem;
         try {
             for (const auto& entry : fs::directory_iterator(dir)) {
@@ -97,7 +140,9 @@ private:
                 if (entry.is_directory()) {
                     std::string dirname = entry.path().filename().string();
                     if (!dirname.empty() && dirname[0] == '.') continue;
-                    search_dir_recursive(entry.path(), file_pattern, re, results, match_count, max_results);
+                    // Skip directories listed in .gitignore / .hgignore
+                    if (ignored_dirs.count(dirname)) continue;
+                    search_dir_recursive(entry.path(), file_pattern, re, results, match_count, max_results, ignored_dirs);
                     continue;
                 }
 

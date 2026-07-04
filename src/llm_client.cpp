@@ -481,8 +481,8 @@ ChatResponse chat_stream_impl(
 
     char read_buf[4096] = {0};
     std::atomic<bool> was_interrupted{false};
-    KeyWatcher::on_key([&](int ch) {
-        if (ch == 3 || ch == 27) { // Ctrl-C or ESC
+    KeyWatcher::on_key([&](int k) {
+        if (k == 27) { //ESC
             LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
             if(handle)
                 handle->close();
@@ -529,6 +529,7 @@ ChatResponse chat_stream_impl(
         buffer.clear();
         buffer.append("Interrupted by user");
     }
+    KeyWatcher::clear_callback();
 
     // If handle was released early (ESC), discard any partial tool calls — the response is incomplete.
     if (!handle) {

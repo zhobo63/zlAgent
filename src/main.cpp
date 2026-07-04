@@ -20,14 +20,13 @@
 #include "tools.h"
 #include "plugin_loader.h"
 #include "local_tools.h"
-#include "completion.h"
-#include <isocline.h>
+
 #include "tui.h"
 #include "user_reply.h"
 #include "event.h"
 #include "telegram_client.h"
 
-// ── Input history (managed by isocline) ─────────
+// ── Input history ─────────
 static const int MAX_HISTORY = 50;
 
 // ── Status bar renderer (pure std::cout + ANSI via TUI) ───
@@ -248,12 +247,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Initialize isocline for rich console input (handles terminal setup on all platforms)
-    ic_init(false);
-    ic_set_history(nullptr, MAX_HISTORY);
 
-    // Register auto-completion callback for slash commands
-    //agent::register_completion();
 
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
@@ -589,9 +583,7 @@ int main(int argc, char* argv[]) {
     // If -p was provided, use it as the single prompt instead of reading interactively.
     std::string cli_input = cli_prompt;
 
-    // Start background Ctrl-C watcher.
     agent::KeyWatcher::start();
-
     // Interactive loop with streaming output.
 	bool running = true;
     while (running) {
@@ -602,36 +594,29 @@ int main(int argc, char* argv[]) {
         if (!cli_input.empty()) {
             input = cli_input;
             cli_input.clear();  // consume once
+            running = false;    // Exit after one interaction in CLI mode
         }
         else {
-//#define USE_ISOCLINE
-#ifdef USE_ISOCLINE
-            char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
-            if (!raw) {
-                running = false;
-                continue;
-            }
-            input.assign(raw);
-            ic_free(raw);
-#else
+            agent::KeyWatcher::init_keyboard();
             std::string prompt = "You:[" + ag.get_llm().get_model() + "]>";
-            input = agent::KeyWatcher::readline(prompt.c_str(), [](int ch) {});
+            input = agent::KeyWatcher::readline(prompt.c_str(), [&](const agent::Key& k) {
+                if (k == agent::Key::K_CTRL_C) {
+                    running = false;
+                    std::cout << std::endl;  // ensure newline after Ctrl-C
+                }
+                });
+            // Stop background Ctrl-C watcher.
+            agent::KeyWatcher::close_keyboard();
+
 			std::cout << std::endl;  // ensure newline after input
-#endif
         }
         if (input.empty()) {
             continue;  // just an empty Enter, stay in loop
         }
 
-		std::string response;
+			std::string response;
         running = run_interactive(input, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
-
-        if (cli_mode) {
-			break;  // Exit after one interaction in CLI mode
-        }
     }
-
-    // Stop background Ctrl-C watcher.
     agent::KeyWatcher::stop();
 
     // === Cleanup on exit ===

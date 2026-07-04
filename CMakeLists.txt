@@ -48,8 +48,7 @@ set(CORE_SOURCES
     # User reply (intervention during reasoning loop)
     src/user_reply.cpp
     src/reply_mode_command.cpp
-    # Isocline auto-completion
-    src/completion.cpp
+
     # Event broker (message broadcast)
     src/event.cpp
     # Telegram Bot client
@@ -132,10 +131,7 @@ elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
 
-# isocline: portable readline replacement for rich console input
-add_subdirectory(isocline)
 
-target_link_libraries(zlagent PRIVATE isocline)
 
 
 
