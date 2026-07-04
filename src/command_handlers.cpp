@@ -8,6 +8,7 @@
 #include "rag_manager.h"
 #include "long_term_memory.h"
 #include "json.hpp"
+#include "key_watcher.h"
 
 namespace agent {
 

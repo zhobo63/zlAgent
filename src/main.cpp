@@ -253,7 +253,7 @@ int main(int argc, char* argv[]) {
     ic_set_history(nullptr, MAX_HISTORY);
 
     // Register auto-completion callback for slash commands
-    agent::register_completion();
+    //agent::register_completion();
 
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     auto cfg = agent::Config::load("zlagent.ini");
@@ -604,6 +604,7 @@ int main(int argc, char* argv[]) {
             cli_input.clear();  // consume once
         }
         else {
+//#define USE_ISOCLINE
 #ifdef USE_ISOCLINE
             char* raw = ic_readline(("You: (" + ag.get_llm().get_model() + ")").c_str());
             if (!raw) {
@@ -612,9 +613,11 @@ int main(int argc, char* argv[]) {
             }
             input.assign(raw);
             ic_free(raw);
-#endif
+#else
             std::string prompt = "You:[" + ag.get_llm().get_model() + "]>";
             input = agent::KeyWatcher::readline(prompt.c_str(), [](int ch) {});
+			std::cout << std::endl;  // ensure newline after input
+#endif
         }
         if (input.empty()) {
             continue;  // just an empty Enter, stay in loop

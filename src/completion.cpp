@@ -4,6 +4,7 @@
 #include "isocline.h"
 #include "agent.h"
 #include "long_term_memory.h"
+#include "key_watcher.h"
 
 // Forward declarations for runtime context access
 namespace agent {
@@ -175,10 +176,18 @@ static void on_completion(ic_completion_env_t* cenv, const char* prefix) {
 }
 
 void register_completion() {
+    // Populate the global keyword pool with slash commands for tab completion
+    std::vector<std::string> keywords;
+    for (const auto* cmd : ALL_COMMANDS) {
+        if (!cmd) break;  // null-terminated
+        keywords.push_back(cmd);
+    }
+    KeyWatcher::add_keywords(keywords);
+
     // Enable auto-tab: single Tab = unique match completion, double Tab = show all options
     ic_enable_auto_tab(true);
     ic_enable_completion_preview(true);
-    //ic_set_default_completer(on_completion, nullptr);
+    ic_set_default_completer(on_completion, nullptr);
 }
 
 } // namespace agent
