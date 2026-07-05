@@ -9,8 +9,8 @@
 #include <stack>
 
 #include "key_watcher.h"
+#include "tui.h"
 #include "logger.h"
-#include "utf8.h"
 
 namespace agent {
 
@@ -56,8 +56,8 @@ void KeyWatcher::init_keyboard() {
         // KEY_EVENT instead of throwing an SEH exception (0x40010005).
         // s_console_mode &= ~(ENABLE_PROCESSED_INPUT);
         // s_console_mode &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_EXTENDED_FLAGS);
-        s_console_mode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
-        SetConsoleMode(hIn, s_console_mode);
+        DWORD console_mode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
+        SetConsoleMode(hIn, console_mode);
     }
 }
 void KeyWatcher::close_keyboard() {
@@ -111,7 +111,6 @@ static int getch() {
 
 std::thread*                KeyWatcher::s_thread      = nullptr;
 std::atomic<bool>           KeyWatcher::s_running      = false;
-using KeyCallback = std::function<void(int k)>;
 KeyCallback KeyWatcher::s_callback     = nullptr;
 std::vector<std::string>    KeyWatcher::s_keywords;
 KeyWatcher::History         KeyWatcher::history;
@@ -168,119 +167,6 @@ void KeyWatcher::stop() {
 }
 
 // ============================================================================
-// Terminal I/O helpers — ANSI escape codes for cross-platform rendering
-// ============================================================================
-
-namespace term {
-
-/// Get terminal width (columns). Falls back to 80.
-static int get_width() {
-#ifdef _WIN32
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
-        return csbi.srWindow.Right - csbi.srWindow.Left + 1;
-#else
-    struct winsize ws{};
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
-        return ws.ws_col;
-#endif
-    return 80;
-}
-
-/// Get terminal height (rows). Falls back to 24.
-static int get_height() {
-#ifdef _WIN32
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
-        return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-#else
-    struct winsize ws{};
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0)
-        return ws.ws_row;
-#endif
-    return 24;
-}
-
-/// Move cursor to position (row, col), 1-based.
-static void move_cursor(int row, int col) {
-    printf("\x1b[%d;%dH", row, col);
-}
-
-/// Save cursor position.
-static void save_cursor() {
-    printf("\x1b[s");
-}
-
-/// Restore cursor position.
-static void restore_cursor() {
-    printf("\x1b[u");
-}
-
-/// Clear from cursor to end of line.
-static void clear_eol() {
-    printf("\x1b[K");
-}
-
-/// Clear entire screen and move cursor to (1,1).
-static void clear_screen() {
-    printf("\x1b[2J\x1b[H");
-}
-
-/// Move cursor up by n rows.
-static void cursor_up(int n) {
-    if (n > 0) printf("\x1b[%dA", n);
-}
-
-/// Move cursor down by n rows.
-static void cursor_down(int n) {
-    if (n > 0) printf("\x1b[%dB", n);
-}
-
-/// Set text color: 2 = dim (for hints), 0 = reset.
-static void set_color(int code) {
-    printf("\x1b[%dm", code);
-}
-
-/// Flush output immediately.
-static void flush() {
-    fflush(stdout);
-}
-
-struct CursorPosition {
-	int row;    // Y
-	int col;    // X
-};
-
-#ifdef _WIN32
-static CursorPosition get_cursor_position() {
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
-        return {1, 1};
-    return {csbi.dwCursorPosition.Y + 1, csbi.dwCursorPosition.X + 1};
-}
-#else
-static CursorPosition get_cursor_position() {
-    // Send DSR request and read response synchronously (non-blocking)
-    printf("\x1b[6n");
-    fflush(stdout);
-    struct timeval tv = {0, 50000}; // 50ms timeout
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-    if (select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) <= 0)
-        return {1, 1};
-    char buf[32];
-    ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
-    if (n < 5 || buf[n - 1] != 'R')
-        return {1, 1};
-    int row = 0, col = 0;
-    sscanf(buf + 2, "%d;%d", &row, &col);
-    return {row, col};
-}
-#endif
-
-} // namespace term
-
 // ============================================================================
 // UTF-8 helpers — compute display width of a UTF-8 string
 // ============================================================================
@@ -303,118 +189,46 @@ static int utf8_char_width(ucs4_t cp) {
     return 1;
 }
 
-/// Compute the display width of a UTF-8 string.
-static int utf8_str_width(const std::string& s) {
-    int width = 0;
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
-    size_t len = s.size();
-    while (len > 0) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, p, static_cast<int>(len));
-        if (n <= 0) break;
-        width += utf8_char_width(cp);
-        p += n;
-        len -= n;
-    }
-    return width;
-}
-
-/// Advance `pos` bytes in the string by one display column.
-static size_t utf8_advance_col(const std::string& s, size_t pos) {
-    if (pos >= s.size()) return pos;
-    ucs4_t cp;
-    int n = utf8_mbtowc(&cp, reinterpret_cast<const unsigned char*>(s.data() + pos),
-                        static_cast<int>(s.size() - pos));
-    if (n <= 0) return pos + 1; // fallback: skip one byte
-    return pos + n;
-}
-
-/// Go back `pos` bytes in the string by one display column.
-static size_t utf8_back_col(const std::string& s, size_t pos) {
-    if (pos == 0) return 0;
-    // Walk backwards: find the start of the current UTF-8 character
-    size_t p = pos - 1;
-    while (p > 0 && (s[p] & 0xC0) == 0x80) {
-        --p;
-    }
-    return p;
-}
-
-// Helper: get Unicode code point from Key (for callback)
-static int key_to_codepoint(const Key& k) {
-    if (k.size < 0 || k.size > 4) return -1; // special key or invalid
-    ucs4_t cp = 0;
-    utf8_mbtowc(&cp, k.code, k.size);
-    return static_cast<int>(cp);
-}
-
-// Helper: get UTF-8 bytes as string from Key
-static std::string key_to_utf8(const Key& k) {
-    if (k.size < 0 || k.size > 4) return ""; // special key or invalid
-    return std::string(reinterpret_cast<const char*>(k.code), static_cast<size_t>(k.size));
-}
-
-// Helper: convert Unicode code point to Key
-static Key cp_to_key(ucs4_t cp) {
-    // Cast to uint32_t so shifts work correctly even when ucs4_t is 16-bit (Windows wchar_t)
-    uint32_t c = static_cast<uint32_t>(cp);
-    Key k{};
-    if (c < 0x80) { k.code[0] = static_cast<unsigned char>(c); k.size = 1; }
-    else if (c < 0x800) {
-        k.code[0] = static_cast<unsigned char>(0xC0 | ((c >> 6) & 0x1F));
-        k.code[1] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-        k.size = 2;
-    }
-    else if (c < 0x10000) {
-        k.code[0] = static_cast<unsigned char>(0xE0 | ((c >> 12) & 0x0F));
-        k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
-        k.code[2] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-        k.size = 3;
-    }
-    else {
-        k.code[0] = static_cast<unsigned char>(0xF0 | ((c >> 18) & 0x07));
-        k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 12) & 0x3F));
-        k.code[2] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
-        k.code[3] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-        k.size = 4;
-    }
-    return k;
+// Helper: convert a code point to Key (UTF-8 encoded)
+Key Key::from_codepoint(ucs4_t cp) {
+	// Cast to uint32_t so shifts work correctly even when ucs4_t is 16-bit (Windows wchar_t)
+	uint32_t c = static_cast<uint32_t>(cp);
+	Key k{};
+	if (c < 0x80) { k.code[0] = static_cast<unsigned char>(c); k.size = 1; }
+	else if (c < 0x800) {
+		k.code[0] = static_cast<unsigned char>(0xC0 | ((c >> 6) & 0x1F));
+		k.code[1] = static_cast<unsigned char>(0x80 | (c & 0x3F));
+		k.size = 2;
+	}
+	else if (c < 0x10000) {
+		k.code[0] = static_cast<unsigned char>(0xE0 | ((c >> 12) & 0x0F));
+		k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
+		k.code[2] = static_cast<unsigned char>(0x80 | (c & 0x3F));
+		k.size = 3;
+	}
+	else {
+		k.code[0] = static_cast<unsigned char>(0xF0 | ((c >> 18) & 0x07));
+		k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 12) & 0x3F));
+		k.code[2] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
+		k.code[3] = static_cast<unsigned char>(0x80 | (c & 0x3F));
+		k.size = 4;
+	}
+	return k;
 }
 
 // Helper: convert a UTF-8 string to vector<Key>
 std::vector<Key> KeyWatcher::utf8_to_keys(const std::string& s) {
-    std::vector<Key> keys;
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
-    size_t len = s.size();
-    while (len > 0) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, p, static_cast<int>(len));
-        if (n <= 0) break;
-        uint32_t c = static_cast<uint32_t>(cp);
-        Key k{};
-        if (c < 0x80) { k.code[0] = static_cast<unsigned char>(c); k.size = 1; }
-        else if (c < 0x800) {
-            k.code[0] = static_cast<unsigned char>(0xC0 | ((c >> 6) & 0x1F));
-            k.code[1] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-            k.size = 2;
-        }
-        else if (c < 0x10000) {
-            k.code[0] = static_cast<unsigned char>(0xE0 | ((c >> 12) & 0x0F));
-            k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
-            k.code[2] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-            k.size = 3;
-        }
-        else {
-            k.code[0] = static_cast<unsigned char>(0xF0 | ((c >> 18) & 0x07));
-            k.code[1] = static_cast<unsigned char>(0x80 | ((c >> 12) & 0x3F));
-            k.code[2] = static_cast<unsigned char>(0x80 | ((c >> 6) & 0x3F));
-            k.code[3] = static_cast<unsigned char>(0x80 | (c & 0x3F));
-            k.size = 4;
-        }
-        keys.push_back(k);
-        p += n; len -= n;
-    }
-    return keys;
+	std::vector<Key> keys;
+	const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
+	size_t len = s.size();
+	while (len > 0) {
+		ucs4_t cp;
+		int n = utf8_mbtowc(&cp, p, static_cast<int>(len));
+		if (n <= 0) break;
+		keys.push_back(Key::from_codepoint(cp));
+		p += n; len -= n;
+	}
+	return keys;
 }
 
 // ============================================================================
@@ -422,7 +236,7 @@ std::vector<Key> KeyWatcher::utf8_to_keys(const std::string& s) {
 // ============================================================================
 
 void KeyWatcher::LineBuffer::recompute() {
-    int term_width = term::get_width();
+    int term_width = TUI::getTerminalWidth();
 
     // Count display columns from prompt up to cursor position
     row = 1;
@@ -591,7 +405,7 @@ std::string KeyWatcher::LineBuffer::suffix() const {
 }
 
 void KeyWatcher::LineBuffer::print_hint() {
-    term::set_color(2); // dim
+	TUI::setAnsiCode(2); // dim
     for (size_t i = 0; i < hint.size(); ++i) {
         if (hint[i] == '\n') {
             printf("\n");
@@ -600,6 +414,31 @@ void KeyWatcher::LineBuffer::print_hint() {
             putchar(hint[i]);
         }
     }
+}
+
+int KeyWatcher::LineBuffer::prefix_start() const {
+    int prefix_start = pos;
+    for (int i = static_cast<int>(pos) - 1; i >= 0; i--) {
+        auto& k = text[i];
+        if (k.ch == ' ' || k.ch == '@') break;
+        prefix_start = i;
+    }
+    return prefix_start;
+}
+
+void KeyWatcher::LineBuffer::apply_hint() {
+    auto hint_keys = utf8_to_keys(hint);
+    auto keys = utf8_to_keys(hint_candidates);
+    int trim_count = static_cast<int>(keys.size()) - static_cast<int>(hint_keys.size());
+    resize(text.size() - trim_count);
+    insert(keys);
+    hint.clear();
+    hint_candidates.clear();
+}
+
+void KeyWatcher::LineBuffer::clear_hint() {
+    hint.clear();
+    hint_candidates.clear();
 }
 
 // ============================================================================
@@ -649,127 +488,104 @@ const std::string* KeyWatcher::History::get_current() const {
 // ============================================================================
 // Completion — build candidates, hint display, menu rendering
 // ============================================================================
+// Completion helpers
+// ============================================================================
 
-/// Case-insensitive prefix match.
-static bool ci_starts_with(const std::string& str, const std::string& prefix) {
-    if (str.size() < prefix.size()) return false;
-    for (size_t i = 0; i < prefix.size(); ++i)
-        if (std::tolower(static_cast<unsigned char>(str[i])) !=
-            std::tolower(static_cast<unsigned char>(prefix[i])))
-            return false;
-    return true;
+bool KeyWatcher::ci_starts_with(const std::string& str, const std::string& prefix) {
+	if (str.size() < prefix.size()) return false;
+	for (size_t i = 0; i < prefix.size(); ++i)
+		if (std::tolower(static_cast<unsigned char>(str[i])) !=
+			std::tolower(static_cast<unsigned char>(prefix[i])))
+			return false;
+	return true;
 }
 
-/// Normalize path separators: convert all '\\' to '/' so we can use a single rfind('/') everywhere.
-static std::string normalize_path(const std::string& path) {
-    std::string result = path;
-    for (auto& c : result)
-        if (c == '\\')
-            c = '/';
-    return result;
+std::string KeyWatcher::normalize_path(const std::string& path) {
+	std::string result = path;
+	for (auto& c : result)
+		if (c == '\\')
+			c = '/';
+	return result;
 }
 
-/// Extract the directory portion of a path.
-/// "src/main.cpp" -> "src/"
-/// "src/"         -> "src/"
-static std::string get_path(const std::string& path) {
-    std::string norm = normalize_path(path);
-    if (!norm.empty() && norm.back() == '/')
-        return norm;
-    size_t last_sep = norm.rfind('/');
-    if (last_sep != std::string::npos)
-        return norm.substr(0, last_sep + 1);
-    return "";
+std::string KeyWatcher::get_path(const std::string& path) {
+	std::string norm = normalize_path(path);
+	if (!norm.empty() && norm.back() == '/')
+		return norm;
+	size_t last_sep = norm.rfind('/');
+	if (last_sep != std::string::npos)
+		return norm.substr(0, last_sep + 1);
+	return "";
 }
 
-/// Scan a directory and collect file/directory names. Directories get trailing '/'.
-static void scan_directory(const std::filesystem::path& dir, std::vector<std::string>& entries) {
-    try {
-        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-            if (entry.is_directory()) {
-                entries.push_back(entry.path().filename().string() + "/");
-            } else if (entry.is_regular_file()) {
-                entries.push_back(entry.path().filename().string());
-            }
-        }
-    } catch (const std::filesystem::filesystem_error&) {
-        // silently skip
-    }
+void KeyWatcher::scan_directory(const std::filesystem::path& dir, std::vector<std::string>& entries) {
+	try {
+		for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+			if (entry.is_directory()) {
+				entries.push_back(entry.path().filename().string() + "/");
+			} else if (entry.is_regular_file()) {
+				entries.push_back(entry.path().filename().string());
+			}
+		}
+	} catch (const std::filesystem::filesystem_error&) {
+		// silently skip
+	}
 }
 
-/// Build the candidate pool based on path-aware logic.
-static void build_candidates(const std::string& prefix, std::vector<std::string>& candidates) {
-    // Normalize all separators to '/' so we can use a single rfind
-    std::string norm = normalize_path(prefix);
-    size_t last_sep = norm.rfind('/');
+void KeyWatcher::build_candidates(const std::string& prefix, std::vector<std::string>& candidates) {
+	// Normalize all separators to '/' so we can use a single rfind
+	std::string norm = normalize_path(prefix);
+	size_t last_sep = norm.rfind('/');
 
-    if (last_sep != std::string::npos) {
-        // Path-aware: scan the directory before the separator
-        std::filesystem::path dir_path(norm.substr(0, last_sep));
-        if (!dir_path.is_absolute()) {
-            dir_path = std::filesystem::current_path() / dir_path;
-        }
-        std::string after_sep = norm.substr(last_sep + 1);
+	if (last_sep != std::string::npos) {
+		// Path-aware: scan the directory before the separator
+		std::filesystem::path dir_path(norm.substr(0, last_sep));
+		if (!dir_path.is_absolute()) {
+			dir_path = std::filesystem::current_path() / dir_path;
+		}
+		std::string after_sep = norm.substr(last_sep + 1);
 
-        scan_directory(dir_path, candidates);
+		scan_directory(dir_path, candidates);
 
 		if (!after_sep.empty()) {
-            auto it = std::remove_if(candidates.begin(), candidates.end(),
-                [&after_sep](const std::string& e) {
-                    return !ci_starts_with(e, after_sep);
-                });
-            candidates.erase(it, candidates.end());
-        }
-    } else {
-        // No path separator: merge keywords + current directory entries
-        for (const auto& kw : KeyWatcher::s_keywords) {
-            if (ci_starts_with(kw, prefix)) {
-                candidates.push_back(kw);
-            }
-        }
+			auto it = std::remove_if(candidates.begin(), candidates.end(),
+				[&after_sep](const std::string& e) {
+					return !ci_starts_with(e, after_sep);
+				});
+			candidates.erase(it, candidates.end());
+		}
+	} else {
+		// No path separator: merge keywords + current directory entries
+		for (const auto& kw : s_keywords) {
+			if (ci_starts_with(kw, prefix)) {
+				candidates.push_back(kw);
+			}
+		}
 
-        std::vector<std::string> dir_entries;
-        scan_directory(std::filesystem::current_path(), dir_entries);
-        for (const auto& de : dir_entries) {
-            if (ci_starts_with(de, prefix)) {
-                candidates.push_back(de);
-            }
-        }
-    }
+		std::vector<std::string> dir_entries;
+		scan_directory(std::filesystem::current_path(), dir_entries);
+		for (const auto& de : dir_entries) {
+			if (ci_starts_with(de, prefix)) {
+				candidates.push_back(de);
+			}
+		}
+	}
 
-    // Remove duplicates and sort alphabetically (case-insensitive)
-    std::set<std::string> seen;
-    auto it = std::remove_if(candidates.begin(), candidates.end(),
-        [&seen](const std::string& c) { return !seen.insert(c).second; });
-    candidates.erase(it, candidates.end());
+	// Remove duplicates and sort alphabetically (case-insensitive)
+	std::set<std::string> seen;
+	auto it = std::remove_if(candidates.begin(), candidates.end(),
+		[&seen](const std::string& c) { return !seen.insert(c).second; });
+	candidates.erase(it, candidates.end());
 
-    std::sort(candidates.begin(), candidates.end(),
-        [](const std::string& a, const std::string& b) {
-            for (size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
-                char ca = std::tolower(static_cast<unsigned char>(a[i]));
-                char cb = std::tolower(static_cast<unsigned char>(b[i]));
-                if (ca != cb) return ca < cb;
-            }
-            return a.size() < b.size();
-        });
-}
-
-/// Compute the longest common prefix of all candidates.
-static std::string longest_common_prefix(const std::vector<std::string>& candidates) {
-    if (candidates.empty()) return "";
-    std::string lcp = candidates[0];
-    for (size_t i = 1; i < candidates.size(); ++i) {
-        size_t j = 0;
-        for (; j < lcp.size() && j < candidates[i].size(); ++j) {
-            if (std::tolower(static_cast<unsigned char>(lcp[j])) !=
-                std::tolower(static_cast<unsigned char>(candidates[i][j]))) {
-                break;
-            }
-        }
-        lcp = lcp.substr(0, j);
-        if (lcp.empty()) break;
-    }
-    return lcp;
+	std::sort(candidates.begin(), candidates.end(),
+		[](const std::string& a, const std::string& b) {
+			for (size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
+				char ca = std::tolower(static_cast<unsigned char>(a[i]));
+				char cb = std::tolower(static_cast<unsigned char>(b[i]));
+				if (ca != cb) return ca < cb;
+			}
+			return a.size() < b.size();
+		});
 }
 
 // ============================================================================
@@ -1022,7 +838,7 @@ static constexpr size_t MAX_DISPLAYED = 9;
 void KeyWatcher::LineBuffer::insert_completion(const std::string& completion) {
     int start = prefix_start();
 	std::string prefix = get_prefix();
-	std::string path = get_path(prefix);
+	std::string path = KeyWatcher::get_path(prefix);
     resize(start + path.length());
 	auto keys = utf8_to_keys(completion);
 	for (const auto& k : keys) insert_char(k);
@@ -1038,9 +854,9 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
         size_t idx = page_offset + i;
         bool is_selected = (static_cast<int>(idx - page_offset) == selected);
         printf("\x1b[32m%zu\x1b[0m ", idx + 1);
-        printf("\x1b[%dm%s\x1b[0m", is_selected ? 37 : 2, candidates[idx].c_str());
-        term::set_color(0);
-        printf("\n");
+        	printf("\x1b[%dm%s\x1b[0m", is_selected ? 37 : 2, candidates[idx].c_str());
+        	TUI::setAnsiCode(0);
+        	printf("\n");
     }
 
     if (candidates.size() > MAX_DISPLAYED) {
@@ -1048,17 +864,16 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
         bool can_go_down = (page_offset + MAX_DISPLAYED < candidates.size());
         printf("\x1b[2m");
         printf("candidates %zu-%zu of %zu ", page_offset + 1,
-               std::min(page_offset + MAX_DISPLAYED, candidates.size()),
-               candidates.size());
+            std::min(page_offset + MAX_DISPLAYED, candidates.size()),
+            candidates.size());
         if (can_go_up)
             printf("[PgUp] ");
         if (can_go_down)
             printf("[PgDn]");
-        term::set_color(0);
+        TUI::setAnsiCode(0);
         printf("\n");
     }
-
-    term::flush();
+    TUI::flush();
 }
 
 /// Clear the completion menu lines and restore cursor.
@@ -1069,12 +884,12 @@ void KeyWatcher::LineBuffer::clear_completion_menu(int current_input_row) {
         total_menu_lines++;
 
     for (size_t i = 0; i < total_menu_lines; ++i) {
-        term::move_cursor(current_input_row + 1 + static_cast<int>(i), 1);
-        term::clear_eol();
+	TUI::setCursorPos(current_input_row + 1 + static_cast<int>(i), 1);
+	TUI::clearLine();
     }
     printf("\x1b[0m");
-    term::move_cursor(current_input_row, input_col);
-    term::flush();
+    TUI::setCursorPos(current_input_row, input_col);
+    TUI::flush();
 }
 
 int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string> &_candidates)
@@ -1084,19 +899,19 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string> &_cand
     page_offset = 0;
     is_completion_active = true;
 
-    int H = term::get_height();
+    int H = TUI::getTerminalHeight();
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
     size_t total_menu_lines = max_displayed + (candidates.size() > MAX_DISPLAYED ? 2 : 1);
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
-    auto pos_before = term::get_cursor_position();
+    	auto pos_before = TUI::getCursorPos();
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     for (int i = 0; i < scroll_amount; i++) {
         printf("\n");
     }
-    auto pos = term::get_cursor_position();
-    pos.col = pos_before.col;
-    term::flush();
+    	auto pos = TUI::getCursorPos();
+    	pos.col = pos_before.col;
+    TUI::flush();
     input_col = pos.col;
     if (scroll_amount > 0) {
         pos.row = std::max(1, pos_before.row - scroll_amount);
@@ -1129,7 +944,7 @@ void KeyWatcher::add_keywords(const std::vector<std::string>& keywords) {
 std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     const char* prompt_text = (prompt ? prompt : "");
     int prompt_len = static_cast<int>(strlen(prompt_text));
-    int term_width = term::get_width();
+	int term_width = TUI::getTerminalWidth();
 
     LineBuffer buf;
 
@@ -1143,31 +958,31 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     std::string original_text;
     bool was_browsing = false;
     // Get cursor position before printing (prompt's starting row)
-    auto cursor_pos = term::get_cursor_position();
+    	auto cursor_pos = TUI::getCursorPos();
 
     while (true) {
         // ── Render the current line(s) ────────────────────────
-        term::move_cursor(cursor_pos.row, 1);
-        term::clear_eol();
-        std::cout << buf.display_text();
+        	TUI::setCursorPos(cursor_pos.row, 1);
+        	TUI::clearLine();
+        	std::cout << buf.display_text();
 
         // Print hint in dim color
         if (!buf.hint.empty()) {
             buf.print_hint();
         }
 
-        term::set_color(0); // reset color
-        term::flush();
+        	TUI::setAnsiCode(0); // reset color
+        	TUI::flush();
         buf.recompute();
         // Add offset: prompt starts at start_row, not row 1
-        int final_row = buf.row + cursor_pos.row - 1;
-        term::move_cursor(final_row, buf.col);
+        	int final_row = buf.row + cursor_pos.row - 1;
+        	TUI::setCursorPos(final_row, buf.col);
 
         // ── Completion menu rendering ────────────────────────
         if (buf.is_completion_active) {
-            buf.draw_completion_menu(final_row);
-            term::move_cursor(final_row, buf.input_col);
-            term::flush();
+            		buf.draw_completion_menu(final_row);
+            	TUI::setCursorPos(final_row, buf.input_col);
+            	TUI::flush();
         }
 
         // ── Read a key ────────────────────────────────────────
@@ -1333,7 +1148,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         if (k == Key::K_TAB) {
             std::string prefix = buf.get_prefix();
             std::vector<std::string> candidates;
-            build_candidates(prefix, candidates);
+            KeyWatcher::build_candidates(prefix, candidates);
 
             if (!candidates.empty()) {
                 if (candidates.size() == 1) {
@@ -1401,11 +1216,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 buf.insert_char(k);
             }
 
-            // Auto-complete: check candidates after inserting a character
-            std::string prefix = buf.get_prefix();
-            std::string path = get_path(prefix);
-            std::vector<std::string> candidates;
-            build_candidates(prefix, candidates);
+            		// Auto-complete: check candidates after inserting a character
+                        std::string prefix = buf.get_prefix();
+                        std::string path = KeyWatcher::get_path(prefix);
+                        std::vector<std::string> candidates;
+                        KeyWatcher::build_candidates(prefix, candidates);
 
             if (!candidates.empty()) {
                 // Always show hint (first candidate) — menu only on Tab

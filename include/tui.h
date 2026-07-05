@@ -8,6 +8,13 @@
 #include <string>
 #include <sstream>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/ioctl.h>
+#endif
+
 // ── ANSI color helpers ───────────────────────────
 enum class AnsiColor {
     Black       = 0,
@@ -134,10 +141,76 @@ public:
         for (int i = 0; i < n; ++i) std::cout << ANSI_SCROLL_DOWN;
     }
 
-    /// Set cursor to specific row/col (1-based)
-    static inline void setCursorPos(int row, int col) {
-        std::cout << "\033[" << row << ";" << col << "H";
-    }
+    	/// Set cursor to specific row/col (1-based)
+    	static inline void setCursorPos(int row, int col) {
+    		std::cout << "\033[" << row << ";" << col << "H";
+    	}
+
+    	/// Get terminal width in columns. Falls back to 80.
+    	static inline int getTerminalWidth() {
+    #ifdef _WIN32
+    		CONSOLE_SCREEN_BUFFER_INFO csbi;
+    		if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+    			return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    #else
+    		struct winsize ws{};
+    		if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+    			return ws.ws_col;
+    #endif
+    		return 80;
+    	}
+
+    	/// Get terminal height in rows. Falls back to 24.
+    	static inline int getTerminalHeight() {
+    #ifdef _WIN32
+    		CONSOLE_SCREEN_BUFFER_INFO csbi;
+    		if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+    			return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    #else
+    		struct winsize ws{};
+    		if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0)
+    			return ws.ws_row;
+    #endif
+    		return 24;
+    	}
+
+    	/// Cursor position (1-based row/col).
+    	struct CursorPos {
+    		int row = 1;
+    		int col = 1;
+    	};
+
+    	/// Get current cursor position. Falls back to {1, 1} on failure.
+    	static inline CursorPos getCursorPos() {
+    #ifdef _WIN32
+    		CONSOLE_SCREEN_BUFFER_INFO csbi;
+    		if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+    			return {1, 1};
+    		return {static_cast<int>(csbi.dwCursorPosition.Y + 1), static_cast<int>(csbi.dwCursorPosition.X + 1)};
+    #else
+    		// Send DSR request and read response (non-blocking, 50ms timeout)
+    		printf("\033[6n");
+    		fflush(stdout);
+    		struct timeval tv = {0, 50000};
+    		fd_set fds;
+    		FD_ZERO(&fds);
+    		FD_SET(STDIN_FILENO, &fds);
+    		if (select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) <= 0)
+    			return {1, 1};
+    		char buf[32];
+    		ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+    		if (n < 5 || buf[n - 1] != 'R')
+    			return {1, 1};
+    		int row = 0, col = 0;
+    		sscanf(buf + 2, "%d;%d", &row, &col);
+    		return {row, col};
+    #endif
+    	}
+
+    	/// Emit a raw ANSI SGR code (e.g. 2=dim, 37=white, 0=reset).
+    	static inline void setAnsiCode(int code) {
+    		printf("\x1b[%dm", code);
+    	}
 
     /// Wrap text with a foreground color and optional bold
     static inline std::string color(const std::string& text, AnsiColor fg, bool bold = false) {

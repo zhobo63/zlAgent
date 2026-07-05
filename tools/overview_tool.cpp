@@ -87,6 +87,54 @@ private:
         return false;
     }
 
+    // Check if a path should be skipped (build artifacts, third-party libs).
+    static bool is_build_path(const std::string& path) {
+        namespace fs = std::filesystem;
+        auto p = fs::path(path);
+        const auto ext = p.extension().string();
+        // Filter out build artifacts and third-party library files.
+        if (ext == ".obj" || ext == ".tlog" || ext == ".pdb" ||
+            ext == ".lib" || ext == ".exp" || ext == ".ilk" ||
+            ext == ".pch" || ext == ".ipch" || ext == ".sdf" ||
+            ext == ".suo" || ext == ".user" || ext == ".vslist" ||
+            ext == ".tlog" || ext == ".lastbuildstate") return true;
+        // Filter out third-party library paths.
+        const auto& s = p.string();
+        if (s.find("_deps/") != std::string::npos) return true;
+        if (s.find("__cmake_systeminformation") != std::string::npos) return true;
+        if (s.find("/build/_deps/") != std::string::npos) return true;
+        // Filter out example and test files from third-party libs.
+        if (s.find("/examples/") != std::string::npos) return true;
+        if (s.find("/tests/ExtraTests") != std::string::npos) return true;
+        // Filter out fuzzing paths.
+        if (s.find("/fuzzing/") != std::string::npos) return true;
+        return false;
+    }
+
+    static bool is_project_source(const std::string& path) {
+        namespace fs = std::filesystem;
+        auto p = fs::path(path);
+        const auto ext = p.extension().string();
+        // Only keep source and header files.
+        if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" &&
+            ext != ".c" && ext != ".h" && ext != ".hpp" &&
+            ext != ".hh" && ext != ".hxx" && ext != ".in") return false;
+        // Filter out build artifacts and third-party library files.
+        if (is_build_path(path)) return false;
+        // Check path components for unwanted directories.
+        std::string pstr = p.string();
+        if (pstr.find("/build/") != std::string::npos) return false;
+        if (pstr.find("/_deps/") != std::string::npos) return false;
+        if (pstr.find("__cmake_systeminformation") != std::string::npos) return false;
+        // Filter out example and test files from third-party libs.
+        if (pstr.find("/examples/") != std::string::npos) return false;
+        if (pstr.find("/tests/ExtraTests") != std::string::npos) return false;
+        if (pstr.find("/fuzzing/") != std::string::npos) return false;
+        // Filter out fuzzing and test files.
+        if (pstr.find("/fuzzing/") != std::string::npos) return false;
+        return true;
+    }
+
     // Count files and estimate lines in a directory tree.
     static void count_files(const std::string& dir, int max_depth, int current_depth,
                             std::unordered_map<std::string, int>& file_counts,
@@ -97,6 +145,8 @@ private:
         try {
             for (const auto& entry : fs::recursive_directory_iterator(dir)) {
                 if (!entry.is_regular_file()) continue;
+                // Filter out non-source files and build artifacts.
+                if (!is_project_source(entry.path().string())) continue;
                 std::string ext = entry.path().extension().string();
                 file_counts[ext]++;
                 // Rough line estimate: ~50 bytes per line average.
@@ -111,7 +161,7 @@ private:
                 for (const auto& entry : fs::directory_iterator(dir)) {
                     if (!entry.is_directory()) continue;
                     const auto& dname = entry.path().filename().string();
-                    // Skip hidden and build dirs.
+                    // Skip hidden, build, and dependency dirs.
                     if (dname.substr(0, 1) == "." || dname == "build" || dname == ".git") continue;
                     count_files(entry.path().string(), max_depth, current_depth + 1,
                                 file_counts, line_estimates);
@@ -149,6 +199,9 @@ private:
                 try {
                     for (const auto& entry : fs::directory_iterator(dir)) {
                         if (!entry.is_regular_file()) continue;
+                        const std::string epath = entry.path().string();
+                        // Filter out build artifacts and third-party library paths.
+                        if (is_build_path(epath)) continue;
                         if (entry.path().extension().string() == bf.pattern) {
                             oss << "   - " << bf.label << ": " << entry.path().filename().string() << "\n";
                             found = true;
@@ -178,8 +231,10 @@ private:
         try {
             for (const auto& entry : fs::recursive_directory_iterator(dir)) {
                 if (!entry.is_regular_file()) continue;
+                const auto& path_str = entry.path().string();
+                // Use centralized filtering to avoid duplication.
+                if (is_build_path(path_str)) continue;
                 std::string ext = entry.path().extension().string();
-                if (ext.empty()) continue;
                 file_counts[ext]++;
             }
         } catch (...) {}
@@ -207,6 +262,11 @@ private:
                 // List immediate subdirectories and files.
                 try {
                     for (const auto& sub : fs::directory_iterator(entry.path())) {
+                        const std::string sub_path = sub.path().string();
+                        // Filter out build artifacts and third-party library paths.
+                        if (is_build_path(sub_path)) continue;
+                        if (!is_project_source(sub_path) && !sub.is_directory()) continue;
+
                         std::string label;
                         if (sub.is_directory()) {
                             label = u8"  📂 " + sub.path().filename().string() + u8"/";
