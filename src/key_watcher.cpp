@@ -930,30 +930,45 @@ void KeyWatcher::LineBuffer::insert_completion(const std::string& completion) {
 /// Draw the completion menu below the input line.
 void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-    printf("\n");
+
+    // Build the entire menu in a single string to minimize I/O and flicker.
+    std::string out;
+    out += "\n";
     for (size_t i = 0; i < max_displayed; ++i) {
         size_t idx = page_offset + i;
+        if (idx >= candidates.size())
+            break;
         bool is_selected = (static_cast<int>(idx - page_offset) == selected);
-        printf("\x1b[32m%zu\x1b[0m ", idx + 1);
-        printf("\x1b[%dm%s\x1b[0m", is_selected ? 37 : 2, candidates[idx].c_str());
-        TUI::setAnsiCode(0);
-        if(i<max_displayed-1)
-        	printf("\n");
+        out += "\x1b[32m";
+        out += std::to_string(i + 1);
+        out += "\x1b[0m ";
+        out += "\x1b[";
+        out += is_selected ? "37" : "2";
+        out += "m";
+        out += candidates[idx];
+        out += "\x1b[0m";
+        if (i < max_displayed - 1)
+            out += "\n";
     }
 
     if (candidates.size() > MAX_DISPLAYED) {
         bool can_go_up = (page_offset > 0);
         bool can_go_down = (page_offset + MAX_DISPLAYED < candidates.size());
-        printf("\x1b[2m");
-        printf("candidates %zu-%zu of %zu ", page_offset + 1,
-            std::min(page_offset + MAX_DISPLAYED, candidates.size()),
-            candidates.size());
+        out += "\n\x1b[2m";
+        out += "candidates ";
+        out += std::to_string(page_offset + 1);
+        out += "-";
+        out += std::to_string(std::min(page_offset + MAX_DISPLAYED, candidates.size()));
+        out += " of ";
+        out += std::to_string(candidates.size());
+        out += " ";
         if (can_go_up)
-            printf("[PgUp] ");
+            out += "[PgUp] ";
         if (can_go_down)
-            printf("[PgDn]");
-        TUI::setAnsiCode(0);
+            out += "[PgDn]";
     }
+
+    printf("%s", out.c_str());
     TUI::flush();
 }
 
@@ -965,16 +980,27 @@ void KeyWatcher::LineBuffer::clear_completion_menu(int current_input_row) {
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
 
+    // Build a single ANSI string: position → erase each line and move down → restore cursor.
+    std::string cmd;
+    cmd += "\x1b[";                          // position to first menu line
+    cmd += std::to_string(current_input_row + 1);
+    cmd += ";1H";
     for (size_t i = 0; i < total_menu_lines; ++i) {
-	TUI::setCursorPos(current_input_row + 1 + static_cast<int>(i), 1);
-	TUI::clearLine();
+        cmd += "\x1b[2K";                    // erase entire line
+        if (i + 1 < total_menu_lines)
+            cmd += "\x1b[B";                 // move down one row
     }
-    printf("\x1b[0m");
-    TUI::setCursorPos(current_input_row, input_col);
+    cmd += "\x1b[0m";
+    cmd += "\x1b[";                          // restore cursor to input line
+    cmd += std::to_string(current_input_row);
+    cmd += ";";
+    cmd += std::to_string(input_col);
+    cmd += "H";
+    printf("%s", cmd.c_str());
     TUI::flush();
 }
 
-int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string> &_candidates)
+int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _candidates)
 {
     candidates = std::move(_candidates);
     selected = 0;
@@ -987,10 +1013,12 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string> &_cand
     size_t total_menu_lines = max_displayed;
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
-     	auto pos_before = TUI::getCursorPos();
+    auto pos_before = TUI::getCursorPos();
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
-    for (int i = 0; i < scroll_amount; i++) {
-        printf("\n");
+    // Build a single string with all newlines instead of N printf calls
+    if (scroll_amount > 0) {
+        std::string cmd(scroll_amount, '\n');
+        printf("%s", cmd.c_str());
     }
     auto pos = TUI::getCursorPos();
     pos.col = pos_before.col;
@@ -1069,8 +1097,10 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
 
         // ── Completion menu rendering ────────────────────────
         if (buf.is_completion_active) {
+            buf.clear_completion_menu(final_row);
             buf.draw_completion_menu(final_row);
-            TUI::setCursorPos(final_row, buf.input_col);
+            //TUI::setCursorPos(final_row, buf.input_col);
+            TUI::setCursorPos(final_row, buf.col);
             TUI::flush();
         }
 
@@ -1099,31 +1129,61 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 }
             }
 
-            if (!handled && (k == Key::K_DOWN || k == Key::K_RIGHT)) {
+            if (!handled && (k == Key::K_DOWN)) {
                 buf.selected++;
-                if (buf.selected >= static_cast<int>(max_displayed)) buf.selected = 0;
+                // Current page may have fewer items than max_displayed (last page)
+                int items_on_page = std::min(static_cast<int>(max_displayed),
+                                            static_cast<int>(buf.candidates.size()) - (int)buf.page_offset);
+                if (buf.selected >= items_on_page) {
+                    if (buf.page_offset + max_displayed < buf.candidates.size()) {
+                        // Advance to next page
+                        buf.page_offset += max_displayed;
+                        buf.selected = 0;
+                    } else {
+                        // Already at last page, clamp to actual last item
+                        buf.selected = items_on_page - 1;
+                    }
+                }
                 handled = true;
             }
-            else if (!handled && (k == Key::K_UP || k == Key::K_LEFT)) {
+            else if (!handled && (k == Key::K_UP)) {
                 buf.selected--;
-                if (buf.selected < 0) buf.selected = static_cast<int>(max_displayed) - 1;
+                if (buf.selected < 0) {
+                    if (buf.page_offset >= max_displayed) {
+                        // Go to previous page, set selected to last item
+                        buf.page_offset -= max_displayed;
+                        buf.selected = static_cast<int>(max_displayed) - 1;
+                    } else {
+                        // Already at first page, clamp selected
+                        buf.selected = 0;
+                    }
+                }
                 handled = true;
             }
 
             // Page navigation
-            if (!handled && k == Key::K_PGDOWN && buf.candidates.size() > max_displayed) {
-                buf.page_offset += max_displayed;
-                if (buf.page_offset + max_displayed > buf.candidates.size())
-                    buf.page_offset = buf.candidates.size() - max_displayed;
-                buf.selected = 0;
+            if (!handled && (k == Key::K_PGDOWN || k == Key::K_RIGHT) && buf.candidates.size() > max_displayed) {
+                // Advance by one page; stay put if already at last page
+                if (buf.page_offset + max_displayed < buf.candidates.size())
+                    buf.page_offset += max_displayed;
+                // Clamp selected to the new page's actual item count
+                int items_on_page = std::min(static_cast<int>(max_displayed),
+                                            static_cast<int>(buf.candidates.size()) - (int)buf.page_offset);
+                if (buf.selected >= items_on_page)
+                    buf.selected = items_on_page - 1;
                 handled = true;
             }
-            else if (!handled && k == Key::K_PGUP && buf.candidates.size() > max_displayed) {
+            else if (!handled && (k == Key::K_PGUP || k == Key::K_LEFT) && buf.candidates.size() > max_displayed) {
+                // Go back one page; stay at first page if already there
                 if (buf.page_offset >= max_displayed)
                     buf.page_offset -= max_displayed;
                 else
                     buf.page_offset = 0;
-                buf.selected = static_cast<int>(max_displayed) - 1;
+                // Clamp selected to the new page's actual item count
+                int items_on_page = std::min(static_cast<int>(max_displayed),
+                                            static_cast<int>(buf.candidates.size()) - (int)buf.page_offset);
+                if (buf.selected >= items_on_page)
+                    buf.selected = items_on_page - 1;
                 handled = true;
             }
 
@@ -1316,8 +1376,10 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (!candidates.empty()) {
                 // Always show hint (first candidate) — menu only on Tab
                 std::string filename = prefix.substr(path.length());
-                buf.hint = candidates[0].substr(filename.size());
-                buf.hint_candidates = candidates[0];
+                if (!filename.empty()) {
+                    buf.hint = candidates[0].substr(filename.size());
+                    buf.hint_candidates = candidates[0];
+                }
                 if (buf.is_completion_active) {
                     buf.clear_completion_menu(cursor_pos.row);
                     buf.candidates = std::move(candidates);
