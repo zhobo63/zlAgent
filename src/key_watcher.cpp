@@ -115,6 +115,10 @@ KeyCallback KeyWatcher::s_callback     = nullptr;
 std::vector<std::string>    KeyWatcher::s_keywords;
 KeyWatcher::History         KeyWatcher::history;
 
+std::thread* KeyWatcher::s_read_thread = nullptr;
+std::mutex KeyWatcher::s_read_mutex;
+std::vector<Key> KeyWatcher::s_read_queue;
+
 // ============================================================================
 // Original API (unchanged)
 // ============================================================================
@@ -152,6 +156,9 @@ void KeyWatcher::start() {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     });
+    s_read_thread = new std::thread([] {
+        read_key_thread();        
+    });
 }
 
 void KeyWatcher::stop() {
@@ -163,6 +170,11 @@ void KeyWatcher::stop() {
         s_thread->join();
         delete s_thread;
         s_thread = nullptr;
+    }
+    if (s_read_thread) {
+        s_read_thread->join();
+        delete s_read_thread;
+        s_read_thread = nullptr;
     }
 }
 
@@ -238,12 +250,29 @@ std::vector<Key> KeyWatcher::utf8_to_keys(const std::string& s) {
 void KeyWatcher::LineBuffer::recompute() {
     int term_width = TUI::getTerminalWidth();
 
-    // Count display columns from prompt up to cursor position
+    // Prompt is single-line; input starts right after it on the same line.
     row = 1;
     col = 1;
-    for (size_t i = 0; i < prompt.size(); ++i) {
-        if (prompt[i] == '\n') { row++; col = 1; }
-        else { col += utf8_char_width(static_cast<unsigned char>(prompt[i])); }
+    int size = prompt.length();
+    unsigned char* bp = (unsigned char*)prompt.c_str();
+    while (bp && bp[0] && size > 0) {
+        unsigned char b = bp[0];
+        if (b >= 0x80 && b <= 0xBF) {
+            bp++;
+            size--;
+            continue; // continuation byte, skip
+        }
+        ucs4_t cp;
+        int n = utf8_mbtowc(&cp, bp, size);
+        if (n <= 0) { 
+            col++; 
+            bp++;
+            size--;
+            continue;
+        }
+        col += utf8_char_width(cp);
+        bp += n;
+        size -= n;
     }
 
     // Count display columns from user input up to cursor
@@ -257,6 +286,51 @@ void KeyWatcher::LineBuffer::recompute() {
             col = 1;
         }
     }
+}
+
+int KeyWatcher::LineBuffer::get_input_lines() const {
+    int term_width = TUI::getTerminalWidth();
+    // Line 1 is occupied by prompt + possibly some input.
+    int lines = 1;
+
+    // Compute display width of the single-line prompt (col starts at 1, same as recompute)
+    int cur_col = 1;
+    int size = prompt.length();
+    unsigned char* bp = (unsigned char*)prompt.c_str();
+    while (bp && bp[0] && size > 0) {
+        unsigned char b = bp[0];
+
+        if (b >= 0x80 && b <= 0xBF) {
+            bp++;
+            size--;
+            continue; // continuation byte, skip
+        }
+        ucs4_t cp;
+        int n = utf8_mbtowc(&cp, bp, size);
+        if (n <= 0) { 
+            cur_col++; 
+            bp++;
+            size--;
+            continue; 
+        }
+        cur_col += utf8_char_width(cp);
+        bp += n;
+        size -= n;
+    }
+
+    // Count full text lines (all characters, not just up to cursor)
+    for (size_t i = 0; i < text.size(); ++i) {
+        ucs4_t cp;
+        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
+        if (n <= 0 || cp == '\n') { lines++; cur_col = 1; continue; }
+        cur_col += utf8_char_width(cp);
+        if (cur_col > term_width) {
+            lines++;
+            cur_col = 1;
+        }
+    }
+
+    return lines;
 }
 
 void KeyWatcher::LineBuffer::insert_char(const Key& k) {
@@ -593,18 +667,14 @@ void KeyWatcher::build_candidates(const std::string& prefix, std::vector<std::st
 // ============================================================================
 
 #ifdef _WIN32
-static std::string get_clipboard_text() {
-    if (!OpenClipboard(nullptr)) return "";
+static std::wstring get_clipboard_text() {
+    if (!OpenClipboard(nullptr)) return L"";
     HANDLE h = GetClipboardData(CF_UNICODETEXT);
-    std::string result;
+    std::wstring result;
     if (h) {
         const wchar_t* wtext = static_cast<const wchar_t*>(GlobalLock(h));
         if (wtext) {
-            int len = WideCharToMultiByte(CP_UTF8, 0, wtext, -1, nullptr, 0, nullptr, nullptr);
-            if (len > 0) {
-                result.resize(len - 1);
-                WideCharToMultiByte(CP_UTF8, 0, wtext, -1, &result[0], len, nullptr, nullptr);
-            }
+            result = wtext;
             GlobalUnlock(h);
         }
     }
@@ -612,7 +682,7 @@ static std::string get_clipboard_text() {
     return result;
 }
 #else
-static std::string get_clipboard_text() {
+static std::wstring get_clipboard_text() {
     return ""; // not supported on POSIX in v1
 }
 #endif
@@ -621,74 +691,85 @@ static std::string get_clipboard_text() {
 // Completion menu — render and interact with completion options
 // ============================================================================
 
+Key KeyWatcher::read_key()
+{
+    while (!s_read_queue.size() && s_running.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (!s_read_queue.size()) return Key::K_ZERO;
+    s_read_mutex.lock();
+    Key k = *s_read_queue.begin();
+    s_read_queue.erase(s_read_queue.begin());
+    s_read_mutex.unlock();
+    return k;
+}
+
+void KeyWatcher::push_key_queue(const Key& k)
+{
+    s_read_mutex.lock();
+    s_read_queue.push_back(k);
+    s_read_mutex.unlock();
+}
+
 /// Read a single key press, handling escape sequences for arrow keys etc.
-Key KeyWatcher::read_key() {
+void KeyWatcher::read_key_thread() {
 #ifdef _WIN32
     INPUT_RECORD rec;
     DWORD count;
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
 
-    while (true) {
-        //if (!PeekConsoleInput(hIn, &rec, 1, &count)) return K_ESC;
-        //if (count == 0) continue;
-
+    while (s_running.load()) {
         ReadConsoleInputW(hIn, &rec, 1, &count);
-
-        if (rec.EventType == MENU_EVENT) {
-            LOG_DEBUG("ReadConsoleInputW", "Menu event detected:" + std::to_string(rec.Event.MenuEvent.dwCommandId));
-        }
 
         if (rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown) {
             // ESC detection
             if (rec.Event.KeyEvent.wVirtualKeyCode == 27) {
-                return Key::K_ESC;
+                push_key_queue(Key::K_ESC);
             }
             // Ctrl+V detection
-            if (rec.Event.KeyEvent.wVirtualKeyCode == 'V' &&
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == 'V' &&
                 (rec.Event.KeyEvent.dwControlKeyState & LEFT_CTRL_PRESSED ||
                  rec.Event.KeyEvent.dwControlKeyState & RIGHT_CTRL_PRESSED)) {
-                return Key::K_CTRL_V;
+                push_key_queue(Key::K_CTRL_V);
             }
-
             // Alt+Enter detection
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
                 (rec.Event.KeyEvent.dwControlKeyState & LEFT_ALT_PRESSED ||
                  rec.Event.KeyEvent.dwControlKeyState & RIGHT_ALT_PRESSED)) {
-                return Key::K_ALT_ENTER;
+                push_key_queue(Key::K_ALT_ENTER);
             }
-
             // Ctrl+Enter — insert newline + enable line display mode
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
                 (rec.Event.KeyEvent.dwControlKeyState & LEFT_CTRL_PRESSED ||
                  rec.Event.KeyEvent.dwControlKeyState & RIGHT_CTRL_PRESSED)) {
-                return Key::K_CTRL_ENTER;
+                push_key_queue(Key::K_CTRL_ENTER);
             }
 
             // Shift+Enter — insert newline + enable line display mode
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN &&
                 (rec.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED)) {
-                return Key::K_SHIFT_ENTER;
+                push_key_queue(Key::K_SHIFT_ENTER);
             }
 
             // Ctrl+C detection (already handled by ASCII 3, but be explicit)
-            if (rec.Event.KeyEvent.wVirtualKeyCode == 'C' &&
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == 'C' &&
                 (rec.Event.KeyEvent.dwControlKeyState & LEFT_CTRL_PRESSED ||
                  rec.Event.KeyEvent.dwControlKeyState & RIGHT_CTRL_PRESSED)) {
-                return Key::K_CTRL_C;
+                push_key_queue(Key::K_CTRL_C);
             }
 
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_UP)    return Key::K_UP;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_DOWN)  return Key::K_DOWN;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)  return Key::K_LEFT;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RIGHT) return Key::K_RIGHT;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_TAB)   return Key::K_TAB;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)return Key::K_ENTER;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_BACK)  return Key::K_BACKSPACE;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_DELETE && rec.Event.KeyEvent.uChar.AsciiChar == 0) return Key::K_DELETE;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_PRIOR) return Key::K_PGUP;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_NEXT)  return Key::K_PGDOWN;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_HOME)  return Key::K_HOME;
-            if (rec.Event.KeyEvent.wVirtualKeyCode == VK_END)   return Key::K_END;
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_UP)    push_key_queue(Key::K_UP);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_DOWN)  push_key_queue(Key::K_DOWN);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)  push_key_queue(Key::K_LEFT);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RIGHT) push_key_queue(Key::K_RIGHT);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_TAB)   push_key_queue(Key::K_TAB);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)push_key_queue(Key::K_ENTER);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_BACK)  push_key_queue(Key::K_BACKSPACE);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_DELETE && rec.Event.KeyEvent.uChar.AsciiChar == 0) push_key_queue(Key::K_DELETE);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_PRIOR) push_key_queue(Key::K_PGUP);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_NEXT)  push_key_queue(Key::K_PGDOWN);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_HOME)  push_key_queue(Key::K_HOME);
+            else if (rec.Event.KeyEvent.wVirtualKeyCode == VK_END)   push_key_queue(Key::K_END);
 
             // Normal character — use UnicodeChar and convert to UTF-8
             uint32_t chr = rec.Event.KeyEvent.uChar.UnicodeChar;
@@ -710,124 +791,124 @@ Key KeyWatcher::read_key() {
             }
 
             // Convert Unicode code point to UTF-8 bytes
-            Key k{};
-            if (chr < 0x80) {
-                k.code[0] = static_cast<unsigned char>(chr);
-                k.size = 1;
-            } else if (chr < 0x800) {
-                k.code[0] = static_cast<unsigned char>(0xC0 | ((chr >> 6) & 0x1F));
-                k.code[1] = static_cast<unsigned char>(0x80 | (chr & 0x3F));
-                k.size = 2;
-            } else if (chr < 0x10000) {
-                k.code[0] = static_cast<unsigned char>(0xE0 | ((chr >> 12) & 0x0F));
-                k.code[1] = static_cast<unsigned char>(0x80 | ((chr >> 6) & 0x3F));
-                k.code[2] = static_cast<unsigned char>(0x80 | (chr & 0x3F));
-                k.size = 3;
-            } else {
-                k.code[0] = static_cast<unsigned char>(0xF0 | ((chr >> 18) & 0x07));
-                k.code[1] = static_cast<unsigned char>(0x80 | ((chr >> 12) & 0x3F));
-                k.code[2] = static_cast<unsigned char>(0x80 | ((chr >> 6) & 0x3F));
-                k.code[3] = static_cast<unsigned char>(0x80 | (chr & 0x3F));
-                k.size = 4;
-            }
-            return k;
+            push_key_queue(Key::from_codepoint(chr));
         }
     }
 #else
-    unsigned char buf[8];
-    size_t n = 0;
+    // Linux: use select() to check for input, then drain all available bytes.
+    // This prevents lost input during fast typing — same principle as Windows.
+    fd_set fds;
+    struct timeval tv;
 
-    if (read(STDIN_FILENO, &buf[n], 1) != 1) return Key::K_ESC;
-    n++;
+    while (s_running.load()) {
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds);
 
-    // Ctrl+V = ASCII 22
-    if (buf[0] == 22) return Key::K_CTRL_V;
-    if (buf[0] == 3) return Key::K_CTRL_C;
+        // Block until there's something to read
+        tv.tv_sec = 0;
+        tv.tv_usec = 10000; // 10ms timeout
+        if (select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) <= 0)
+            continue;
 
-    if (buf[0] == '\t')   return Key::K_TAB;
-    if (buf[0] == '\r') {
-        // On POSIX, Ctrl+Enter and Enter both produce \r.
-        // Detect Ctrl modifier: if the previous byte was a control char (1..26), this is Ctrl+Enter.
-        static unsigned char last_byte = 0;
-        bool ctrl_pressed = (last_byte >= 1 && last_byte <= 26);
-        last_byte = buf[0];
+        // Drain all available bytes as fast as possible
+        unsigned char buf[256];
+        ssize_t total = read(STDIN_FILENO, buf, sizeof(buf));
+        if (total <= 0) continue;
 
-        if (ctrl_pressed) {
-            // Check Shift modifier: if the byte before the control char was ESC, it's Alt+Enter.
-            // For Ctrl+Enter vs Shift+Enter on POSIX we can't distinguish without raw mode,
-            // so we treat Ctrl+Enter as K_CTRL_ENTER and plain Enter as K_ENTER.
-            return Key::K_CTRL_ENTER;
-        }
-        return Key::K_ENTER;
-    }
-    if (buf[0] == 127)    return Key::K_BACKSPACE; // DEL key on Linux
-    if (buf[0] == 8)      return Key::K_BACKSPACE; // Ctrl+H = backspace
+        size_t pos = 0;
+        while (pos < static_cast<size_t>(total)) {
+            unsigned char c = buf[pos++];
 
-    if (buf[0] == 27) {   // ESC sequence or Alt+
-        if (read(STDIN_FILENO, &buf[n], 1) != 1) return Key::K_ESC;
-        n++;
+            // Ctrl+V = ASCII 22
+            if (c == 22) { push_key_queue(Key::K_CTRL_V); continue; }
+            // Ctrl+C = ASCII 3
+            if (c == 3) { push_key_queue(Key::K_CTRL_C); continue; }
+            // Tab
+            if (c == '\t') { push_key_queue(Key::K_TAB); continue; }
+            // Backspace: DEL(127) or Ctrl+H(8)
+            if (c == 127 || c == 8) { push_key_queue(Key::K_BACKSPACE); continue; }
 
-        if (buf[1] == '[') {
-            if (read(STDIN_FILENO, &buf[n], 1) != 1) return Key::K_ESC;
-            n++;
+            // Enter / Ctrl+Enter / Shift+Enter
+            if (c == '\r') {
+                // On POSIX, Ctrl+Enter and Enter both produce \r.
+                // We treat plain Enter as K_ENTER for simplicity.
+                push_key_queue(Key::K_ENTER);
+                continue;
+            }
 
-            switch (buf[2]) {
-                case 'A': return Key::K_UP;
-                case 'B': return Key::K_DOWN;
-                case 'C': return Key::K_RIGHT;
-                case 'D': return Key::K_LEFT;
-                case 'F': return Key::K_END;
-                case 'H': return Key::K_HOME;
-                case '~':
-                    if (read(STDIN_FILENO, &buf[n], 1) != 1) return Key::K_ESC;
-                    n++;
-                    switch (buf[3]) {
-                        case '2': return Key::K_DELETE;
-                        case '5': return Key::K_PGUP;
-                        case '6': return Key::K_PGDOWN;
-                        default:  return Key::K_ESC;
+            // ESC sequence or Alt+
+            if (c == 27) {
+                if (pos >= static_cast<size_t>(total)) { push_key_queue(Key::K_ESC); break; }
+                unsigned char c2 = buf[pos++];
+
+                if (c2 == '[') {
+                    if (pos >= static_cast<size_t>(total)) { push_key_queue(Key::K_ESC); break; }
+                    unsigned char c3 = buf[pos++];
+
+                    switch (c3) {
+                        case 'A': push_key_queue(Key::K_UP); break;
+                        case 'B': push_key_queue(Key::K_DOWN); break;
+                        case 'C': push_key_queue(Key::K_RIGHT); break;
+                        case 'D': push_key_queue(Key::K_LEFT); break;
+                        case 'F': push_key_queue(Key::K_END); break;
+                        case 'H': push_key_queue(Key::K_HOME); break;
+                        case '~':
+                            if (pos >= static_cast<size_t>(total)) { push_key_queue(Key::K_ESC); break; }
+                            unsigned char c4 = buf[pos++];
+                            switch (c4) {
+                                case '2': push_key_queue(Key::K_DELETE); break;
+                                case '5': push_key_queue(Key::K_PGUP); break;
+                                case '6': push_key_queue(Key::K_PGDOWN); break;
+                                default:  push_key_queue(Key::K_ESC); break;
+                            }
+                            break;
+                        default: push_key_queue(Key::K_ESC); break;
                     }
-                default: return Key::K_ESC;
+                } else if (c2 == 'O') {
+                    if (pos >= static_cast<size_t>(total)) { push_key_queue(Key::K_ESC); break; }
+                    unsigned char c3 = buf[pos++];
+                    switch (c3) {
+                        case 'F': push_key_queue(Key::K_END); break;
+                        case 'H': push_key_queue(Key::K_HOME); break;
+                        case 'P': push_key_queue(Key::K_PGUP); break;
+                        case 'Q': push_key_queue(Key::K_PGDOWN); break;
+                        default:  push_key_queue(Key::K_ESC); break;
+                    }
+                } else if (c2 == '\r') {
+                    // Alt+Enter on some terminals
+                    push_key_queue(Key::K_ALT_ENTER);
+                } else {
+                    push_key_queue(Key::K_ESC);
+                }
             }
-        } else if (buf[1] == 'O') {
-            if (read(STDIN_FILENO, &buf[n], 1) != 1) return Key::K_ESC;
-            n++;
-            switch (buf[2]) {
-                case 'F': return Key::K_END;
-                case 'H': return Key::K_HOME;
-                case 'P': return Key::K_PGUP;
-                case 'Q': return Key::K_PGDOWN;
-                default:  return Key::K_ESC;
+            // Normal ASCII character
+            else if (c >= 32 && c < 127) {
+                Key k{};
+                k.code[0] = c;
+                k.size = 1;
+                push_key_queue(k);
             }
-        } else if (buf[1] == '\r') {
-            // Alt+Enter on some terminals
-            return Key::K_ALT_ENTER;
+            // UTF-8 multi-byte: read continuation bytes from the drained buffer
+            else if ((c & 0x80)) {
+                size_t expected;
+                if ((c & 0xE0) == 0xC0) expected = 2;
+                else if ((c & 0xF0) == 0xE0) expected = 3;
+                else if ((c & 0xF8) == 0xF0) expected = 4;
+                else { push_key_queue(Key::K_ESC); continue; }
+
+                size_t have = 1;
+                while (have < expected && pos < static_cast<size_t>(total)) {
+                    pos++;
+                    have++;
+                }
+
+                Key k{};
+                for (size_t i = 0; i < have; ++i) k.code[i] = buf[pos - have + i];
+                k.size = static_cast<int>(have);
+                push_key_queue(k);
+            }
         }
-        return Key::K_ESC;
     }
-
-    // Normal ASCII character
-    if (buf[0] >= 32 && buf[0] < 127) {
-        Key k{};
-        k.code[0] = buf[0];
-        k.size = 1;
-        return k;
-    }
-
-    // UTF-8 multi-byte: read continuation bytes
-    unsigned char c = buf[0];
-    size_t expected;
-    if ((c & 0xE0) == 0xC0) expected = 2;
-    else if ((c & 0xF0) == 0xE0) expected = 3;
-    else if ((c & 0xF8) == 0xF0) expected = 4;
-    else return Key::K_ESC;
-
-    while (n < expected && read(STDIN_FILENO, &buf[n], 1) == 1) n++;
-
-    Key k{};
-    for (size_t i = 0; i < n; ++i) k.code[i] = buf[i];
-    k.size = static_cast<int>(n);
-    return k;
 #endif
 }
 
@@ -854,8 +935,9 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
         size_t idx = page_offset + i;
         bool is_selected = (static_cast<int>(idx - page_offset) == selected);
         printf("\x1b[32m%zu\x1b[0m ", idx + 1);
-        	printf("\x1b[%dm%s\x1b[0m", is_selected ? 37 : 2, candidates[idx].c_str());
-        	TUI::setAnsiCode(0);
+        printf("\x1b[%dm%s\x1b[0m", is_selected ? 37 : 2, candidates[idx].c_str());
+        TUI::setAnsiCode(0);
+        if(i<max_displayed-1)
         	printf("\n");
     }
 
@@ -871,7 +953,6 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
         if (can_go_down)
             printf("[PgDn]");
         TUI::setAnsiCode(0);
-        printf("\n");
     }
     TUI::flush();
 }
@@ -879,7 +960,8 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
 /// Clear the completion menu lines and restore cursor.
 void KeyWatcher::LineBuffer::clear_completion_menu(int current_input_row) {
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-    size_t total_menu_lines = max_displayed + (candidates.size() > MAX_DISPLAYED ? 1 : 0);
+    // 1 line per candidate + 1 info line when paginated
+    size_t total_menu_lines = max_displayed;
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
 
@@ -901,16 +983,17 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string> &_cand
 
     int H = TUI::getTerminalHeight();
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-    size_t total_menu_lines = max_displayed + (candidates.size() > MAX_DISPLAYED ? 2 : 1);
+    // 1 line per candidate + 1 info line when paginated (same as clear_completion_menu)
+    size_t total_menu_lines = max_displayed;
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
-    	auto pos_before = TUI::getCursorPos();
+     	auto pos_before = TUI::getCursorPos();
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     for (int i = 0; i < scroll_amount; i++) {
         printf("\n");
     }
-    	auto pos = TUI::getCursorPos();
-    	pos.col = pos_before.col;
+    auto pos = TUI::getCursorPos();
+    pos.col = pos_before.col;
     TUI::flush();
     input_col = pos.col;
     if (scroll_amount > 0) {
@@ -944,7 +1027,7 @@ void KeyWatcher::add_keywords(const std::vector<std::string>& keywords) {
 std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     const char* prompt_text = (prompt ? prompt : "");
     int prompt_len = static_cast<int>(strlen(prompt_text));
-	int term_width = TUI::getTerminalWidth();
+    int term_width = TUI::getTerminalWidth();
 
     LineBuffer buf;
 
@@ -952,37 +1035,43 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     buf.prompt = prompt_text;
     buf.prompt_len = static_cast<size_t>(prompt_len);
     buf.pos = 0;
-	history.reset();
+    history.reset();
 
     // State for tracking whether we're browsing history
     std::string original_text;
     bool was_browsing = false;
     // Get cursor position before printing (prompt's starting row)
-    	auto cursor_pos = TUI::getCursorPos();
+    auto cursor_pos = TUI::getCursorPos();
 
     while (true) {
         // ── Render the current line(s) ────────────────────────
-        	TUI::setCursorPos(cursor_pos.row, 1);
-        	TUI::clearLine();
-        	std::cout << buf.display_text();
+        // Clear all lines occupied by prompt + text to avoid stale content
+        int total_lines = buf.get_input_lines();
+        for (int r = 0; r < total_lines; ++r) {
+            TUI::setCursorPos(cursor_pos.row + r, 1);
+            TUI::clearLine();
+        }
+        // Restore to start of prompt
+        TUI::setCursorPos(cursor_pos.row, 1);
+        std::cout << buf.display_text();
 
         // Print hint in dim color
         if (!buf.hint.empty()) {
             buf.print_hint();
         }
 
-        	TUI::setAnsiCode(0); // reset color
-        	TUI::flush();
+        TUI::setAnsiCode(0); // reset color
+        TUI::flush();
         buf.recompute();
         // Add offset: prompt starts at start_row, not row 1
-        	int final_row = buf.row + cursor_pos.row - 1;
-        	TUI::setCursorPos(final_row, buf.col);
+        int final_row = buf.row + cursor_pos.row - 1;
+        TUI::setCursorPos(final_row, buf.col);
 
         // ── Completion menu rendering ────────────────────────
         if (buf.is_completion_active) {
-            		buf.draw_completion_menu(final_row);
-            	TUI::setCursorPos(final_row, buf.input_col);
-            	TUI::flush();
+            buf.draw_completion_menu(final_row);
+            TUI::setCursorPos(final_row, buf.input_col);
+            TUI::flush();
         }
 
         // ── Read a key ────────────────────────────────────────
@@ -1081,12 +1170,12 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         }
 
         if (k == Key::K_CTRL_V) {
-            std::string clip = get_clipboard_text();
+            std::wstring clip = get_clipboard_text();
             if (!clip.empty()) {
-                auto keys = utf8_to_keys(clip);
-                for (auto it = keys.rbegin(); it != keys.rend(); ++it)
-                    buf.text.insert(buf.text.begin() + static_cast<long>(buf.pos), *it);
-                buf.pos += keys.size();
+                for (auto ws : clip) {
+                    Key ks = Key::from_codepoint(ws);
+                    buf.insert_char(ks);
+                }
                 buf.recompute();
             }
             continue;
@@ -1099,11 +1188,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         }
 
         if (k == Key::K_LEFT) {
-            buf.move_left();            
+            buf.move_left();
             continue;
         }
         if (k == Key::K_RIGHT) {
-            buf.move_right();            
+            buf.move_right();
             continue;
         }
         if (k == Key::K_UP) {
@@ -1153,7 +1242,8 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (!candidates.empty()) {
                 if (candidates.size() == 1) {
                     buf.insert_completion(candidates[0]);
-                } else {
+                }
+                else {
                     // Multiple candidates — show menu
                     cursor_pos.row = buf.show_completion_menu(candidates);
                 }
@@ -1202,6 +1292,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 k.size = 1;
                 buf.text.insert(buf.text.begin() + static_cast<long>(buf.pos), k);
                 buf.pos++;
+                buf.col++;
                 buf.hint.erase(buf.hint.begin());
                 buf.recompute();
             }
@@ -1216,11 +1307,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 buf.insert_char(k);
             }
 
-            		// Auto-complete: check candidates after inserting a character
-                        std::string prefix = buf.get_prefix();
-                        std::string path = KeyWatcher::get_path(prefix);
-                        std::vector<std::string> candidates;
-                        KeyWatcher::build_candidates(prefix, candidates);
+            // Auto-complete: check candidates after inserting a character
+            std::string prefix = buf.get_prefix();
+            std::string path = KeyWatcher::get_path(prefix);
+            std::vector<std::string> candidates;
+            KeyWatcher::build_candidates(prefix, candidates);
 
             if (!candidates.empty()) {
                 // Always show hint (first candidate) — menu only on Tab

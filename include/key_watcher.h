@@ -183,6 +183,9 @@ public:
 		/// Get the text after the cursor as UTF-8 string.
 		std::string suffix() const;
 
+		/// Return the total number of display lines occupied by prompt + full text (including wrap).
+		int get_input_lines() const;
+
 		std::string display_text() const {
 			std::string s = prompt;
 			for (const auto& k : text) {
@@ -231,6 +234,11 @@ private:
 	/// Watcher thread handle.
 	static std::thread*              s_thread;
 
+	static std::thread*				 s_read_thread;
+	static std::mutex                s_read_mutex;
+
+	static std::vector<Key>          s_read_queue;
+
 	/// Whether the watcher thread should keep running.
 	static std::atomic<bool>         s_running;
 
@@ -259,6 +267,9 @@ private:
 
 	/// Build the candidate pool based on path-aware logic (keywords + filesystem).
 	static void build_candidates(const std::string& prefix, std::vector<std::string>& candidates);
+
+	static void read_key_thread();
+	static void push_key_queue(const Key& k);
 };
 
 } // namespace agent
