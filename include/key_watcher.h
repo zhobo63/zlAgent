@@ -236,9 +236,6 @@ public:
 	};
 
 private:
-	/// Watcher thread handle.
-	static std::thread*              s_thread;
-
 	static std::thread*				 s_read_thread;
 	static std::mutex                s_read_mutex;
 

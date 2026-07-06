@@ -75,6 +75,7 @@ void KeyWatcher::close_keyboard() {
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 
 static struct termios oldt, newt;
 
@@ -110,7 +111,6 @@ static int getch() {
 // Static members
 // ============================================================================
 
-std::thread*                KeyWatcher::s_thread      = nullptr;
 std::atomic<bool>           KeyWatcher::s_running      = false;
 KeyCallback KeyWatcher::s_callback     = nullptr;
 std::vector<std::string>    KeyWatcher::s_keywords;
@@ -136,6 +136,11 @@ void send_enter() {
     rec.Event.KeyEvent.uChar.AsciiChar = '\r';
     DWORD written;
     WriteConsoleInputW(hIn, &rec, 1, &written);
+#else
+    // Push a carriage return ('\r') into the tty input buffer so that
+    // kbhit()/getch() or read_key() returns immediately.
+    char c = '\r';
+    ioctl(STDIN_FILENO, TIOCSTI, &c);
 #endif
 }
 
@@ -147,16 +152,6 @@ void KeyWatcher::start() {
     if (s_running.load()) return;
     s_running.store(true);
 
-    s_thread = new std::thread([] {
-        while (s_running.load()) {
-            int ch = 0;
-            if (kbhit()) {
-                ch = getch();
-                if (s_callback) s_callback(ch);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-    });
     s_read_thread = new std::thread([] {
         read_key_thread();        
     });
@@ -166,13 +161,7 @@ void KeyWatcher::stop() {
     if (!s_running.load()) return;
     s_running.store(false);
 
-	//send_enter();  // wake up the thread if it's blocked on read_key(
-    if (s_thread) {
-        s_thread->join();
-        delete s_thread;
-        s_thread = nullptr;
-    }
-    if (s_read_thread) {
+	if (s_read_thread) {
         s_read_thread->join();
         delete s_read_thread;
         s_read_thread = nullptr;
@@ -723,6 +712,9 @@ void KeyWatcher::read_key_thread() {
         ReadConsoleInputW(hIn, &rec, 1, &count);
 
         if (rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown) {
+            if (s_callback) {
+                s_callback(rec.Event.KeyEvent.wVirtualKeyCode);
+            }
             // ESC detection
             if (rec.Event.KeyEvent.wVirtualKeyCode == 27) {
                 push_key_queue(Key::K_ESC);
@@ -819,6 +811,10 @@ void KeyWatcher::read_key_thread() {
         size_t pos = 0;
         while (pos < static_cast<size_t>(total)) {
             unsigned char c = buf[pos++];
+
+            if (s_callback) {
+                s_callback(c);
+            }
 
             // Ctrl+V = ASCII 22
             if (c == 22) { push_key_queue(Key::K_CTRL_V); continue; }
