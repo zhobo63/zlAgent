@@ -3,7 +3,7 @@
 #include "tool.h"
 #include "file_utils.h"
 #include "tui.h"
-#include "encoding.h"
+#include "safety_guard.h"
 #include "safety_guard.h"
 
 namespace agent {

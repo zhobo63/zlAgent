@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "tool.h"
-#include "encoding.h"
+#include "safety_guard.h"
 #include "safety_guard.h"
 #include "json.hpp"
 

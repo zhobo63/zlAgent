@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
 #include "llm_client.h"
 #include "key_watcher.h"
-#include "encoding.h"
+#include "logger.h"
 #include "logger.h"
 #include "token_counter.h"
 #include <mutex>

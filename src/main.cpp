@@ -10,7 +10,7 @@
 #include "system_prompt.h"
 #include "skill_system.h"
 #include "rag_manager.h"
-#include "encoding.h"
+#include "embedding_provider.h"
 #include "embedding_provider.h"
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
