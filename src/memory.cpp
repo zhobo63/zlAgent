@@ -40,7 +40,8 @@ void Memory::set_system_prompt(const std::string& prompt) {
 
 bool Memory::summarize(LLMClient& llm) {
     bool too_many_messages = static_cast<int>(history_.size()) > max_messages_;
-    bool too_many_tokens   = cached_tokens_ > MAX_TOKENS_BEFORE_SUMMARIZE;
+    size_t threshold = summarize_threshold(llm);
+    bool too_many_tokens   = cached_tokens_ > threshold;
 
     if (!too_many_messages && !too_many_tokens) {
         return false;  // no need to compress yet
@@ -49,7 +50,7 @@ bool Memory::summarize(LLMClient& llm) {
     if (too_many_tokens) {
         LOG_INFO("Memory", std::string{"Summarizing: token budget exceeded ("} +
                  std::to_string(cached_tokens_) + " > " +
-                 std::to_string(MAX_TOKENS_BEFORE_SUMMARIZE) + ")");
+                 std::to_string(threshold) + ")");
     }
 
     // Find system prompt index (always keep it at the front)
@@ -116,6 +117,15 @@ bool Memory::summarize(LLMClient& llm) {
     recalculate();
 
     return true;
+}
+
+size_t Memory::summarize_threshold(LLMClient& llm) const {
+    int ctx_len = LLMClient::get_model_context_length(llm.get_model());
+    if (ctx_len > 0) {
+        return static_cast<size_t>(ctx_len * SUMMARY_THRESHOLD_RATIO);
+    }
+    // Unknown context length — fall back to a reasonable default
+    return 65536;
 }
 
 void Memory::recalculate() {

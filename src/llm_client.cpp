@@ -260,7 +260,7 @@ std::optional<std::string> LLMClient::build_chat_json(
     }
 
     LOG_DEBUG("LLMClient", "Chat request built, size=" + std::to_string(req_str.size()) + " bytes");
-    
+
     // Warn if the request body is unusually large (potential issue with large tool calls)
     if (req_str.size() > 1024 * 1024) {  // > 1MB
         LOG_WARN("LLMClient", std::string{"Large chat request: "} + std::to_string(req_str.size()) + " bytes");
@@ -319,9 +319,9 @@ bool LLMClient::parse_sse_chunk(const std::string& data_line, ChatResponse& resp
             //   later chunks → {index, function:{arguments}} (id may be absent)
             if (delta.contains("tool_calls")) {
                 resp.has_tool_calls = true;
-                LOG_INFO("LLMClient", "Tool call detected in stream, total so far: " + std::to_string(resp.tool_calls.size()));
+                //LOG_INFO("LLMClient", "Tool call detected in stream, total so far: " + std::to_string(resp.tool_calls.size()));
                 for (auto& tc : delta["tool_calls"]) {
-                    LOG_DEBUG("tool_calls", tc.dump());
+                    //LOG_DEBUG("tool_calls", tc.dump());
                     int index = 0;
                     if (tc.contains("index") && !tc["index"].is_null())
                         index = tc["index"].get<int>();

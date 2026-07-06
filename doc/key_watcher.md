@@ -2,7 +2,11 @@
 
 ## 簡介
 
-`KeyWatcher` 是一個背景執行緒，持續監聽使用者輸入的按鍵事件（特別是 `Ctrl-C` 和 `ESC`），並透過回呼函式通知呼叫端。支援 Windows / POSIX 跨平台。
+`KeyWatcher` 是一個跨平台鍵盤輸入模組，提供兩種使用模式：
+1. **背景監控模式**（`on_key / start / stop`）— 持續監聽按鍵事件並透過回呼通知呼叫端。
+2. **readline 互動模式** — 阻塞式行編輯器，支援游標移動、歷史紀錄、自動完成選單與 hint 提示。
+
+支援 Windows（`ReadConsoleInputW`）/ POSIX（raw mode + `select()`）跨平台。
 
 ## 公共 API
 
@@ -10,33 +14,37 @@
 
 | 方法 | 說明 |
 |------|------|
-| `static void on_key(KeyCallback cb)` | 註冊按鍵偵測回呼函式（`ch`: 3=Ctrl-C, 27=ESC） |
-| `static void clear_callback()` | 清除回呼函式 |
-| `static void start()` | 啟動監控背景執行緒（安全、冪等） |
-| `static void stop()` | 停止監控並回收資源 |
+| `static void on_key(KeyCallback cb)` | 註冊按鍵偵測回呼函式（`KeyCallback = std::function<void(int)>`，參數為虛擬鍵碼） |
+| `static void start()` | 啟動監控背景執行緒（冪等：重複呼叫無效） |
+| `static void stop()` | 停止監控並回收資源（join 執行緒、delete thread） |
 
 ### readline 輸入列（readline API）
 
 | 方法 | 說明 |
 |------|------|
-| `static Key read_key()` | 讀取下一個按鍵，會阻塞直到有輸入可用 |
-| `static std::string readline(const char* prompt, ReadlineCallback cb)` | 阻塞式行編輯器，回傳使用者輸入的字串（Enter 回傳、Ctrl+C 回傳空字串） |
-| `static void init_keyboard()` | 初始化鍵盤（raw mode） |
+| `static Key read_key()` | 從按鍵佇列讀取下一個按鍵，阻塞直到有輸入或 `s_running == false`（回傳 `K_ZERO`） |
+| `static std::string readline(const char* prompt, ReadlineCallback cb)` | 阻塞式行編輯器，Enter 回傳輸入內容；Ctrl+C / ESC 回傳空字串 `""` |
+| `static void init_keyboard()` | 初始化鍵盤 raw mode（Windows: 關閉 ENABLE_PROCESSED_INPUT；POSIX: 關閉 ICANON/ECHO） |
 | `static void close_keyboard()` | readline 結束後恢復終端正常模式 |
 
 ### 自動完成 API（Completion API）
 
 | 方法 | 說明 |
 |------|------|
-| `static void add_keywords(const std::vector<std::string>& keywords)` | 註冊自動完成關鍵字（全域共享） |
+| `static void add_keywords(const std::vector<std::string>& keywords)` | 註冊自動完成關鍵字（全域共享，去重後追加） |
+
+### 輔助函式
+
+| 函式 | 說明 |
+|------|------|
+| `void send_enter()` | 向控制台輸入緩衝區注入 Enter 鍵，用於中斷阻塞的 `read_key_thread`（Windows: `WriteConsoleInputW`；POSIX: `ioctl(TIOCSTI)`） |
 
 ### KeyWatcher 靜態成員
 
 | 成員 | 型別 | 說明 |
 |------|------|------|
-| `s_thread` | `std::thread*` | 監控背景執行緒（on_key） |
 | `s_running` | `std::atomic<bool>` | 是否正在運行 |
-| `s_callback` | `KeyCallback` | Ctrl-C/ESC 回呼函式 |
+| `s_callback` | `KeyCallback` | on_key 回呼函式 |
 | `history` | `History` | 歷史紀錄實例（全域唯一） |
 | `s_keywords` | `std::vector<std::string>` | 自動完成關鍵字池 |
 | `s_read_thread` | `std::thread*` | readline 按鍵讀取執行緒 |
@@ -54,6 +62,7 @@ struct Key {
         uint32_t ch;             // Windows 下的 code point
     };
     int size;                    // >0 = 有效位元組數；<0 = 特殊按鍵代碼
+    int char_width;              // UTF-8 字元的顯示寬度（ASCII=1, CJK=2）
 
     constexpr Key(uint32_t c = 0, int s = 0) : ch(c), size(s) {}
 
@@ -64,7 +73,8 @@ struct Key {
 **說明：**
 - `code[4]`：儲存 UTF-8 位元組（最多 4 個位元組）
 - `ch`：Windows 上的 Unicode code point
-- `size`：正數表示有效位元組數，負數表示特殊鍵（`size == -1` 表示 ESC）
+- `size`：正數表示有效位元組數，負數表示特殊鍵
+- `char_width`：字元的顯示寬度（控制字元=0, ASCII=1, CJK/全形=2）
 
 ### 支援的按鍵代碼
 
@@ -97,22 +107,21 @@ struct Key {
 
 ### 工作流程
 
-1. `start()` 建立背景執行緒，每 50ms 輪詢一次鍵盤狀態。
-2. 偵測到按鍵時呼叫使用者註冊的回呼函式。
-3. `stop()` join 執行緒並回收資源。
+1. `start()` 建立背景執行緒，呼叫 `read_key_thread()`。
+2. **Windows**：`ReadConsoleInputW()` 阻塞等待輸入事件；**POSIX**：`select()` + 10ms timeout 輪詢 stdin。
+3. 偵測到按鍵時呼叫使用者註冊的回呼函式（傳遞虛擬鍵碼 `int`），並將解析後的 `Key` 推入佇列 `s_read_queue`。
+4. `stop()` 將 `s_running` 設為 false，join 執行緒並 delete thread。
 
 ### 使用範例
 
 ```cpp
-agent::KeyWatcher::on_key([](int ch) {
-    if (ch == 3) std::cout << "Ctrl-C detected\n";
-    else if (ch == 27) std::cout << "ESC detected\n";
+agent::KeyWatcher::on_key([](int vk) {
+    if (vk == 3) std::cout << "Ctrl-C detected\n";
+    else if (vk == 27) std::cout << "ESC detected\n";
 });
 agent::KeyWatcher::start();
 
-// ... 主程式邏輯...
-
-if (/* interrupted */) { /* 處理中斷 */ }
+// ... 主程式邏輯 ...
 
 agent::KeyWatcher::stop();
 ```
@@ -129,21 +138,30 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 ```
 
 - `prompt`：提示字串（例如 `"> "`、`"git commit: "`）
-- `cb`：每個按鍵都會觸發的回呼，可用來即時通知上層（例如設定旗標中斷 readline）
+- `cb`：每個按鍵都會觸發的回呼，可用來即時通知上層
 - 回傳值：**Enter** → 目前輸入內容；**Ctrl+C / ESC** → 空字串 `""`
 
 ### 按鍵行為總覽
 
 | 按鍵 | 行為 |
 |------|------|
-| `Enter` | 回傳當前輸入文字（多行模式下 Enter 也是回傳，非插入換行） |
+| `Enter` | 回傳當前輸入文字，並加入歷史紀錄 |
 | `Ctrl+C` | 清空輸入文字，回傳空字串 `""` |
 | `ESC` | 回傳空字串 `""` |
 | `Alt+Enter` / `Ctrl+Enter` / `Shift+Enter` | 插入換行 `\n`；若超過終端高度則自動滾動提示列 |
+| `←→↑↓` | 游標移動（多行緩衝區內自由移動） |
+| `Home` / `End` | 移到行首 / 行末 |
+| `Backspace` | 刪除游標前字元；若有 hint 則先清除 hint |
+| `Delete` | 刪除游標後字元 |
+| `Tab` | 觸發自動完成（0 候選：無動作；1 候選：直接填入；≥2 候選：彈出選單） |
+| `Ctrl+V` | 貼上剪貼簿文字（Windows 實作，POSIX 未實作） |
 
 ### UTF-8 支援
 
-使用專案內建的 `include/utf8.h` 處理 UTF-8 編碼。游標移動（`↑↓←→`）可在整個多行緩衝區內自由移動（非僅當前行）。
+使用專案內建的 `include/utf8.h`（`utf8_mbtowc` / `Key::from_codepoint`）處理 UTF-8 編碼。
+- Windows：`ReadConsoleInputW()` 直接取得 Unicode code point，含代理對（surrogate pairs）支援。
+- POSIX：手動解析多位元組 UTF-8 序列。
+- CJK / 全形字元顯示寬度為 2，ASCII 為 1，控制字元為 0。
 
 ---
 
@@ -156,7 +174,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 | 來源 | 說明 |
 |------|------|
 | **關鍵字** | 透過 `KeyWatcher::add_keywords()` 註冊的全域共享關鍵字 |
-| **檔案/目錄名** | 根據輸入的字串動態掃描路徑下的檔案和目錄 |
+| **檔案/目錄名** | 根據輸入的字串動態掃描路徑下的檔案和目錄（`std::filesystem::directory_iterator`） |
 
 ### 路徑感知規則
 
@@ -164,76 +182,66 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 
 | 輸入內容 | 行為 |
 |----------|------|
-| `inc` | 從整個候選池中匹配（關鍵字 + 目前目錄的檔案/目錄名） |
-| `include/ke` | 偵測到路徑分隔符 `/`，僅掃描 `include/` 下的檔案補全 |
-| `hel` | 無路徑分隔符，從整個候選池中匹配（關鍵字 + 目前目錄的檔案/目錄名） |
+| `/h` 或 `/help` | **指令模式**：以 `/` 開頭且無第二個 `/`，僅匹配關鍵字池 |
+| `include/ke` | **路徑模式**：偵測到路徑分隔符 `/`，掃描 `include/` 下的檔案補全（相對路徑會接上 `current_path()`） |
+| `inc` | **混合模式**：無路徑分隔符，從整個候選池中匹配（關鍵字 + 目前目錄的檔案/目錄名） |
 
 ### 候選排序規則
 
-所有候選項目按**字母順序**排列（A→Z），不區分大小寫。
+所有候選項目按**字母順序**排列（A→Z），不區分大小寫；長度相同時較短者優先。
 
 ### Tab 觸發流程
 
 | 候選數 | 行為 |
 |--------|------|
 | **0** | 不做任何動作 |
-| **1** | 顯示暗示文字（hint），游標後方以淡化/灰色顯示剩餘補全文字 |
+| **1** | **直接填入**：將唯一候選插入緩衝區（`insert_completion()`） |
 | **≥2** | 彈出自動完成選單讓使用者選擇 |
 
 ### 選單觸發時機
 
-- **Tab**：彈出選單（≥2 候選）或顯示 hint（1 候選）
+- **Tab**：彈出選單（≥2 候選）或直接填入（1 候選）
 - **輸入字元時**：若候選池非空，自動更新 hint；若已開啟選單則更新候選清單 |
 
-### 暗示文字（Hint）
+### Hint 提示（灰色補全文字）
 
-當 Tab 後只有 **1 個候選**時，將剩餘補全文字以淡化/灰色顯示在游標後方：
-
-```
-提示: inc|                    ← | = 游標位置，無 hint
-提示: inc[lude/]              ← [lude/] = hint（灰色渲染）
-提示: include/k               ← 使用者輸入 k，hint 自動更新
-提示: include/ke[y_watcher.md]← hint 持續跟隨匹配
-```
-
-| 項目 | 說明 |
-|------|------|
-| **觸發條件** | Tab 後只有 1 個候選時 |
-| **顯示位置** | 游標後方，以淡化/灰色文字渲染（ANSI `\x1b[2m`） |
-| **Tab 填入** | 按 Tab → hint 文字填入緩衝區，游標移至末尾 |
-| **自動更新** | 繼續輸入時 hint 跟隨匹配；不匹配則消失 |
-| **→（右箭頭）** | 從 hint 消耗一個字元到緩衝區 |
-| **←（左箭頭）** | 把緩衝區最後一個字元移回 hint |
-| **Backspace** | 清除 hint，然後正常刪除字元 |
-
-### 選單行為
-
-- 每頁最多顯示 **9 項**候選（`MAX_DISPLAYED = 9`）
-- 選項超過 9 項時，`PgUp` / `PgDown` 切換頁面（不展開全部候選）
-- `↑↓←→` 移動游標，`Enter` / `Tab` 確認選用
-- `1~9` 數字鍵直接選取對應項目
-- `ESC` / `Delete` 取消選單
-- 選單關閉時**不清除螢幕內容**（僅設定旗標）
-
-### 自動完成提示（Hint）
-
-當候選池非空且游標前有文字時，自動顯示第一個候選的剩餘部分作為 hint：
+當輸入字元後候選池非空且游標前有文字時，自動顯示第一個候選的剩餘部分作為 hint：
 
 ```
 輸入: "inc" → hint: [lude/]
 輸入: "incl" → hint: [ude/]
-輸入: "include/" → 若有多個候選則彈出選單；若只有一個則直接填入
+輸入: "include/k" → hint 持續跟隨匹配
 ```
 
-- **觸發時機**：輸入字元時自動更新（非 Tab 觸發）
-- **顯示位置**：游標後方，以淡化/灰色文字渲染（ANSI `\x1b[2m`）
-- **Tab 填入**：按 Tab → hint 文字填入緩衝區，游標移至末尾
-- **自動更新**：繼續輸入時 hint 跟隨匹配；不匹配則消失
-- **→（右箭頭）**：從 hint 消耗一個字元到緩衝區
-- **←（左箭頭）**：把緩衝區最後一個字元移回 hint
-- **Backspace**：清除 hint，然後正常刪除字元
+| 項目 | 說明 |
+|------|------|
+| **觸發條件** | 輸入 ASCII 字元後，候選池非空且 prefix 不為空 |
+| **顯示位置** | 游標後方，以淡化/灰色文字渲染（ANSI `\x1b[2m`） |
+| **自動更新** | 繼續輸入時 hint 跟隨匹配；不匹配則消失 |
+| **字元匹配** | 若輸入的字元與 hint 首字元相同，從 hint 消耗該字元到緩衝區 |
+| **Backspace** | 先清除 hint，然後正常刪除字元 |
 
-> **注意：** ≥2 候選時 Tab 只彈出選單，不顯示 hint。Hint 僅在輸入字元時自動更新。
+> **注意：** Hint 僅在輸入 ASCII 字元時自動更新。Unicode 字元（`size >= 2`）會清除 hint。
+
+### 選單行為
+
+- 每頁最多顯示 **9 項**候選（`MAX_DISPLAYED = 9`）
+- 選項超過 9 項時，`PgUp` / `PgDown` / `←→` 切換頁面
+- `↑↓` 移動游標選擇項目
+- `Enter` / `Tab` 確認選用當前選中項目
+- `1~9` 數字鍵直接選取對應項目（1-based）
+- `ESC` / `Delete` 取消選單
+- 選單關閉時**不清除螢幕內容**（僅設定旗標 `is_completion_active = false`，等待下次渲染覆蓋）
+- 輸入普通 ASCII 字元會退出選單並由主循環處理
+
+### 選單分頁邏輯
+
+| 按鍵 | 行為 |
+|------|------|
+| `↓` | 向下移動一項；若到達當前頁面底部且還有更多候選，則翻到下一頁並將 selected 重置為 0 |
+| `↑` | 向上移動一項；若到達頂部且還有前一頁，則翻到上一頁並將 selected 設為最後一項 |
+| `PgDown` / `→` | 翻到下一頁（selected 保持在當前位置，若超出新頁面範圍則 clamp） |
+| `PgUp` / `←` | 翻到上一頁（同上） |
 
 ---
 
@@ -241,23 +249,25 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 
 | 按鍵 | 行為 |
 |------|------|
-| `↑` (Up) | 往舊歷史移動；游標停在行末 |
-| `↓` (Down) | 往新歷史移動；游標停在緩衝區末端 |
+| `↑` (Up) | 若游標不在行首且未瀏覽歷史：在多行緩衝區內向上移動一行；否則往舊歷史移動，游標停在行末 |
+| `↓` (Down) | 若正在瀏覽歷史：往新歷史移動；回到最新時恢復原始文字 |
 
 - **去重規則**：新增時移除所有同內容的舊項（非僅最新一筆）
+- **上限**：500 筆
 - **不支援持久化**：歷史紀錄僅存在記憶體中，程式重啟後消失
 - **全域唯一**：`history` 是 `KeyWatcher` 的靜態成員，多個 `readline()` 呼叫共用同一份歷史
+- 每次進入 `readline()` 時會 `reset()` 瀏覽狀態
 
 ### History API
 
 | 方法 | 說明 |
 |------|------|
-| `void add(const std::string& entry)` | 新增一筆紀錄（自動去重） |
-| `bool prev()` | 往上游一筆，回傳是否移動成功 |
-| `bool next()` | 往下游一筆，回傳是否移動成功 |
+| `void add(const std::string& entry)` | 新增一筆紀錄（自動去重，上限 500） |
+| `bool prev()` | 往上游一筆（索引遞增），回傳是否移動成功 |
+| `bool next()` | 往下游一筆（索引遞減），回傳是否移動成功 |
 | `const std::string* get_current() const` | 取得目前瀏覽的項目指標（若未瀏覽則回傳 `nullptr`） |
 | `bool is_browsing() const` | 檢查是否正在瀏覽歷史 |
-| `void reset()` | 重置瀏覽狀態 |
+| `void reset()` | 重置瀏覽狀態（`current_idx = -1`） |
 
 **注意：** 歷史紀錄以 **newest first** 排序，索引 0 = 最近一筆。
 
@@ -265,8 +275,8 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 
 ## Ctrl+V 貼上
 
-- **Windows**：透過 `GetClipboardData(CF_UNICODETEXT)` 從剪貼簿讀取文字並插入游標處。
-- **POSIX (Linux / macOS)**：v1 未實作（函式回傳空字串）。
+- **Windows**：透過 `GetClipboardData(CF_UNICODETEXT)` 從剪貼簿讀取文字並插入游標處（逐字元轉為 Key）。
+- **POSIX (Linux / macOS)**：未實作，函式回傳空字串。
 
 ---
 
@@ -274,11 +284,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 
 | 項目 | Windows (`_WIN32`) | POSIX (Linux / macOS) |
 |------|---------------------|------------------------|
-| **鍵盤讀取** | `ReadConsoleInputW()` — 直接取得 Unicode code point，支援 UTF-8 和代理對（surrogate pairs） | `read(STDIN_FILENO)` + raw mode — 手動解析 escape sequence 和 UTF-8 位元組序列 |
-| **鍵盤初始化** | 儲存並設定 `ENABLE_WINDOW_INPUT \| ENABLE_MOUSE_INPUT` 模式 | `tcsetattr()` 關閉 `ICANON \| ECHO` |
-| **游標位置擷取** | `GetConsoleScreenBufferInfo()` — 立即回傳，不需 I/O | DSR (`\x1b[6n`) 同步請求 + `select()` 非同步讀取回應 |
-| **終端尺寸** | `GetConsoleScreenBufferInfo()` 的 `srWindow` | `ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)` |
+| **鍵盤讀取** | `ReadConsoleInputW()` — 直接取得 Unicode code point，支援 UTF-8 和代理對（surrogate pairs） | `select()` + `read(STDIN_FILENO)` — raw mode，手動解析 escape sequence 和 UTF-8 位元組序列 |
+| **鍵盤初始化** | 關閉 `ENABLE_PROCESSED_INPUT`（使 Ctrl+C 作為普通 KEY_EVENT 而非 SEH exception），儲存原始模式供恢復 | `tcsetattr()` 關閉 `ICANON \| ECHO`，儲存原始 termios 供恢復 |
+| **按鍵佇列機制** | `ReadConsoleInputW()` 阻塞等待 → 解析後推入 `s_read_queue` | `select()` + 10ms timeout → drain 所有可用位元組（256 byte buffer）→ 逐字節解析並推入佇列 |
 | **貼上功能** | ✅ 完整實作（`OpenClipboard` / `GetClipboardData`） | ❌ 留空函式，回傳空字串 |
+| **Alt+Enter** | `VK_RETURN + Alt` → `K_ALT_ENTER` | `ESC + '\r'` → `K_ALT_ENTER` |
 
 ### Windows 按鍵解析細節
 
@@ -286,31 +296,42 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb);
 ReadConsoleInputW()
   → KEY_EVENT + bKeyDown
     → wVirtualKeyCode == 27          → K_ESC
-    → wVirtualKeyCode == 'V' + Ctrl  → K_CTRL_V
-    → VK_RETURN + Alt                → K_ALT_ENTER
-    → VK_RETURN + Ctrl               → K_CTRL_ENTER
-    → VK_RETURN + Shift              → K_SHIFT_ENTER
-    → VK_RETURN                      → K_ENTER
-    → VK_CONTROL + C                 → K_CTRL_C
-    → 方向鍵                         → K_UP/DOWN/LEFT/RIGHT
-    → UnicodeChar (含代理對)          → UTF-8 編碼的 Key
+    → 'V' + Ctrl                      → K_CTRL_V
+    → VK_RETURN + Alt                 → K_ALT_ENTER
+    → VK_RETURN + Ctrl                → K_CTRL_ENTER
+    → VK_RETURN + Shift               → K_SHIFT_ENTER
+    → 'C' + Ctrl                      → K_CTRL_C
+    → VK_UP/DOWN/LEFT/RIGHT           → K_UP/DOWN/LEFT/RIGHT
+    → VK_TAB                          → K_TAB
+    → VK_RETURN                       → K_ENTER
+    → VK_BACK                         → K_BACKSPACE
+    → VK_DELETE (AsciiChar == 0)      → K_DELETE
+    → VK_PRIOR                        → K_PGUP
+    → VK_NEXT                         → K_PGDOWN
+    → VK_HOME                         → K_HOME
+    → VK_END                          → K_END
+    → UnicodeChar (含代理對處理)       → UTF-8 編碼的 Key (from_codepoint)
 ```
 
 ### POSIX 按鍵解析細節
 
 ```
-read(STDIN_FILENO) — raw mode
-  → buf[0] == ESC
+read(STDIN_FILENO) — raw mode, drain all available bytes
+  → buf[0] == ESC (27)
     → '[' + key                        → K_UP/DOWN/LEFT/RIGHT/HOME/END/PgUP/PgDOWN
     → 'O' + key                         → K_END/HOME/PgUP/PgDOWN (xterm 相容)
-    → '\r'                              → K_ENTER / K_CTRL_ENTER
+    → '\r'                              → K_ALT_ENTER
+    → other                             → K_ESC
   → buf[0] == TAB                       → K_TAB
   → buf[0] == 127/8                     → K_BACKSPACE
   → buf[0] == 22                        → K_CTRL_V
   → buf[0] == 3                         → K_CTRL_C
+  → buf[0] == '\r'                      → K_ENTER (Ctrl+Enter 無法區分)
   → buf[0] >= 0x20 && < 0x7F            → ASCII Key (size=1)
-  → UTF-8 序列                           → 多位元組 Key
+  → UTF-8 多位元組序列                    → 多位元組 Key
 ```
+
+> **注意：** POSIX 上 `Ctrl+Enter` 與普通 `Enter` 都產生 `\r`，無法區分，統一視為 `K_ENTER`。
 
 ---
 
@@ -325,44 +346,43 @@ read(STDIN_FILENO) — raw mode
 | `prompt` | `std::string` | 固定的提示字串（無法刪除） |
 | `text` | `std::vector<Key>` | 使用者輸入的字元（每個 `Key` 是一個 UTF-8 字元） |
 | `pos` | `size_t` | 游標位置（字元級偏移，0 ~ text.size()） |
-| `row` | `int` | 游標的顯示行座標（**1-based**） |
+| `row` | `int` | 游標的顯示行座標（**1-based**，相對於 prompt_row） |
 | `col` | `int` | 游標的顯示欄位座標（**1-based**） |
 | `hint` | `std::string` | 補完提示文字（灰色渲染） |
-| `hint_candidates` | `std::string` | 完整自動完成文字（可能比 hint 長） |
-| `prompt_len` | `size_t` | 無法刪除的提示前綴長度（位元組數） |
+| `hint_candidates` | `std::string` | 完整自動完成文字（可能比 hint 長，用於 `apply_hint()`） |
+| `prompt_len` | `size_t` | 提示字串的位元組長度 |
+| `cached_prompt_col` | `int` | 提示字串的顯示寬度（含 CJK 計算） |
 | `is_completion_active` | `bool` | 是否正在使用自動完成選單 |
 | `candidates` | `std::vector<std::string>` | 目前候選清單 |
-| `selected` | `int` | 選單游標位置 |
-| `page_offset` | `size_t` | 每頁顯示的候選項目數（分頁偏移量） |
+| `selected` | `int` | 選單游標位置（0-based，相對於 page_offset） |
+| `page_offset` | `size_t` | 分頁偏移量（當前頁面起始索引） |
 | `input_col` | `int` | 進入自動完成模式時的游標欄位（用於恢復位置） |
-| `prompt_row` | `int` | 提示列起始行座標（用於計算滾動和清除範圍） |
+| `prompt_row` | `int` | 提示列起始行座標（絕對值，用於計算滾動和清除範圍） |
+| `is_display_dirty` | `bool` | 顯示是否髒污（true = 需要完整重繪；false = 僅移動游標） |
 
 ### LineBuffer 主要方法一覽
 
 | 方法 | 說明 |
 |------|------|
-| `recompute()` | 根據目前游標位置重新計算 row/col |
-| `insert_char(const Key& k)` | 在游標處插入一個字元 |
-| `insert(const std::vector<Key>& keys)` | 批量插入多個字元 |
-| `insert(const std::string& string)` | 從字串插入（自動轉為 Keys） |
-| `backspace()` | 刪除游標前的字元（不會刪到 prompt） |
+| `set_prompt(const std::string& p)` | 設定提示字串並計算顯示寬度 |
+| `recompute()` | 根據目前游標位置重新計算 row/col（考慮 CJK 寬度和換行） |
+| `insert_char(const Key& k)` | 在游標處插入一個字元，pos++ |
+| `backspace()` | 刪除游標前的字元（不會刪到 prompt），回傳是否成功 |
 | `move_left()` / `move_right()` | 左右移動一列 |
-| `move_up(int term_width)` / `move_down(int term_width)` | 上下移動一行（跨行） |
-| `input()` | 回傳使用者輸入的字串（不含 prompt） |
-| `get_prefix()` | 回傳游標前的字串（不含 hint） |
-| `suffix()` | 回傳游標後的字串 |
-| `display_text()` | 回傳完整顯示內容（prompt + text） |
-| `resize(size_t n)` | 調整 text 大小並修正 pos |
-| `total_len() const` | 回傳可顯示的總長度（text up to cursor + hint） |
+| `move_up(int term_width)` / `move_down(int term_width)` | 上下移動一行（跨行，考慮終端寬度換行） |
+| `input() const` | 回傳使用者輸入的字串（不含 prompt，將 Key 轉為 UTF-8） |
+| `get_prefix() const` | 回傳游標前的字串（從 prefix_start 到 pos） |
+| `suffix() const` | 回傳游標後的字串 |
+| `print_hint()` | 以灰色渲染 hint 文字（ANSI dim） |
+| `clear_hint()` | 清除 hint 和 hint_candidates |
+| `apply_hint()` | 將 hint_candidates 套用到 text 中（替換 prefix_start 之後的內容） |
+| `set_text(const std::string& _text)` | 設定文字內容（UTF-8 → Keys），游標移至末尾 |
 | `prefix_start() const` | 從游標往回找單詞邊界（遇到空白或 `@` 停止） |
-| `apply_hint()` | 將 hint 文字套用到 text 中 |
-| `print_hint()` / `clear_hint()` | 顯示/清除灰色提示文字 |
-| `show_completion_menu(_candidates)` | 顯示自動完成選單，回傳可見行數 |
-| `hide_completion_menu(current_input_row)` | 隱藏選單並恢復游標 |
-| `insert_completion(completion)` | 插入選中的自動完成到緩衝區 |
-| `draw_completion_menu(current_input_row)` | 繪製（或重繪）選單於螢幕上 |
-| `clear_completion_menu(current_input_row)` | 從螢幕清除選單 |
-| `clear_prompt()` | 清除提示列並恢復游標到起始位置 |
+| `show_completion_menu(_candidates)` | 顯示自動完成選單，處理終端滾動，回傳輸入列的 row |
+| `hide_completion_menu(current_input_row)` | 隱藏選單（設定旗標，不清除螢幕內容） |
+| `insert_completion(completion)` | 插入選中的自動完成到緩衝區（替換 prefix_start 之後的內容） |
+| `draw_completion_menu(current_input_row)` | 繪製（或重繪）選單於螢幕上（最多 MAX_DISPLAYED=9 項，含分頁資訊） |
+| `clear_prompt()` | 從 prompt_row 開始清除所有行並恢復游標到起始位置 |
 
 ---
 
@@ -371,6 +391,7 @@ read(STDIN_FILENO) — raw mode
 - **貼上速度慢**：POSIX 端的貼上功能尚未實作（v1 回傳空字串）。
 - **自動完成大小寫**：候選排序使用不區分大小寫比較，但填入時會使用候選的原始大小寫。
 - **歷史紀錄未持久化**：程式重啟後歷史紀錄會消失。
+- **POSIX Ctrl+Enter 無法區分**：`Ctrl+Enter` 與普通 `Enter` 都產生 `\r`，統一視為 `K_ENTER`。
 
 ---
 
@@ -386,7 +407,7 @@ read(STDIN_FILENO) — raw mode
 
 ### Phase 2 — 歷史紀錄 ✅
 
-- [x] 2.1 建立歷史紀錄資料結構（vector，**newest first**，上限可設）
+- [x] 2.1 建立歷史紀錄資料結構（vector，**newest first**，上限 500）
 - [x] 2.2 實作 `↑↓` 翻查：往上游標停行末、往下游標停緩衝區末端
 - [x] 2.3 新增時移除所有同內容舊項（去重）
 
@@ -413,32 +434,36 @@ read(STDIN_FILENO) — raw mode
 ## 程式碼結構一覽
 
 ```
-src/key_watcher.cpp          (1430 行)
-├── Key static members       (L18-37)        ← K_ZERO ~ K_SPACE 靜態實例
-├── init_keyboard / close_keyboard   (L52-91) → Windows: SetConsoleMode / POSIX: tcsetattr
-├── kbhit / getch              (L91-106)     → Windows: _kbhit/_getch / POSIX: select/getchar
-├── send_enter                 (L126-139)    → 注入 Enter 中斷輪詢
-├── on_key / start / stop      (L141-179)    → 背景監控執行緒
-├── utf8 helpers               (L188-244)    → UTF-8 編解碼、顯示寬度計算
-├── LineBuffer methods         (L250-516)    → 緩衝區操作（插入、刪除、游標移動）
-├── History class              (L522-560)    → 歷史紀錄（新增、翻閱、去重）
-└── readline()                 (L1078-1430)  → 主循環：渲染 → 讀取按鍵 → 處理特殊鍵/輸入/自動完成
+src/key_watcher.cpp          (1376 行)
+├── Key static members       ← K_ZERO ~ K_SPACE 靜態實例
+├── init_keyboard / close_keyboard   → Windows: SetConsoleMode / POSIX: tcsetattr
+├── kbhit / getch              → Windows: _kbhit/_getch / POSIX: select/getchar (POSIX only)
+├── send_enter                 → 注入 Enter 中斷輪詢
+├── on_key / start / stop      → 背景監控執行緒
+├── utf8 helpers               → utf8_char_width() / Key::from_codepoint() / utf8_to_keys()
+├── compute_prompt_width       → 提示字串寬度計算（含 CJK）
+├── LineBuffer methods         → 緩衝區操作（插入、刪除、游標移動）
+│   ├── basic operations       → insert_char / backspace / move_left/right/up/down
+│   ├── text queries           → input() / get_prefix() / suffix() / prefix_start()
+│   ├── hint management        → print_hint() / apply_hint() / clear_hint()
+│   └── completion operations  → insert_completion / draw/clear/show/hide menu / clear_prompt
+├── History class              → 歷史紀錄（新增、翻閱、去重，上限 500）
+├── Completion helpers         → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
+├── get_clipboard_text         → Windows: GetClipboardData(CF_UNICODETEXT) / POSIX: 空字串
+├── read_key / push_key_queue  → readline 按鍵佇列機制（非同步寫入，mutex 保護）
+├── read_key_thread            → readline 背景執行緒（Windows/POSIX 按鍵讀取與解析）
+└── readline()                 → 主循環：渲染 → 讀取按鍵 → 處理特殊鍵/輸入/自動完成
 
 include/key_watcher.h          (280 行)
-├── Key struct                 (L16-56)      ← 按鍵結構體 + 靜態成員宣告
-│   ├── from_codepoint()     (L26-28)       → 從 Unicode code point 建立 Key
-│   └── K_ZERO ~ K_SPACE     (L18-37)       → 所有支援的按鍵代碼
-├── KeyWatcher class           (L61-279)     ← 主要類別介面
-│   ├── Original API         (L68-80)       → on_key / start / stop / clear_callback
-│   ├── readline API         (L81-99)       → read_key() / readline() / init_keyboard() / close_keyboard()
-│   ├── Completion API       (L100-101)     → add_keywords()
-│   ├── History              (L102-123)     → 歷史紀錄巢狀結構（newest first）
-│   └── LineBuffer           (L124-261)     → 輸入緩衝區巢狀結構 + 選單方法
-├── Private static members   (L112-120)    → s_thread / s_running / s_callback / history / s_keywords
-└── Completion helpers       (L262-279)    → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
-```
-│   ├── History              (L102-122)     → 歷史紀錄巢狀結構（newest first）
-│   └── LineBuffer           (L124-228)     → 輸入緩衝區巢狀結構 + 選單方法
-├── Private static members   (L230-244)    → s_thread / s_running / s_callback / history / s_keywords
-└── Completion helpers       (L246-261)    → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
+├── Key struct                 ← 按鍵結構體 + 靜態成員宣告
+│   ├── from_codepoint()     → 從 Unicode code point 建立 Key（UTF-8 編碼）
+│   └── K_ZERO ~ K_SPACE     → 所有支援的按鍵代碼
+├── KeyWatcher class           ← 主要類別介面
+│   ├── Original API         → on_key / start / stop
+│   ├── readline API         → read_key() / readline() / init_keyboard() / close_keyboard()
+│   ├── Completion API       → add_keywords()
+│   ├── History              → 歷史紀錄巢狀結構（newest first, max 500）
+│   └── LineBuffer           → 輸入緩衝區巢狀結構 + 選單方法
+├── Private static members   → s_running / s_callback / history / s_keywords / s_read_thread / s_read_mutex / s_read_queue
+└── Completion helpers       → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
 ```
