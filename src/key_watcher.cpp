@@ -52,11 +52,12 @@ static DWORD s_console_mode = 0;
 void KeyWatcher::init_keyboard() {
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (GetConsoleMode(hIn, &s_console_mode)) {
+        DWORD console_mode;
         // Disable ENABLE_PROCESSED_INPUT so Ctrl+C is delivered as a normal
         // KEY_EVENT instead of throwing an SEH exception (0x40010005).
-        // s_console_mode &= ~(ENABLE_PROCESSED_INPUT);
+        console_mode = s_console_mode &= ~(ENABLE_PROCESSED_INPUT);
         // s_console_mode &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_EXTENDED_FLAGS);
-        DWORD console_mode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
+        // DWORD console_mode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
         SetConsoleMode(hIn, console_mode);
     }
 }
@@ -1017,6 +1018,7 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     // Build a single string with all newlines instead of N printf calls
     if (scroll_amount > 0) {
+        prompt_row -= scroll_amount;
         std::string cmd(scroll_amount, '\n');
         printf("%s", cmd.c_str());
     }
@@ -1033,7 +1035,29 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
 void KeyWatcher::LineBuffer::hide_completion_menu(int current_input_row)
 {
     is_completion_active = false;
-    clear_completion_menu(current_input_row);
+    //clear_completion_menu(current_input_row);
+}
+
+void KeyWatcher::LineBuffer::clear_prompt()
+{
+    // Build a single ANSI string: position → erase each line and move down → restore cursor.
+    int line_clear = TUI::getTerminalHeight() - prompt_row + 1;
+    std::string cmd;
+    cmd += "\x1b[";                          // position to first menu line
+    cmd += std::to_string(prompt_row);
+    cmd += ";1H";
+    for (size_t i = 0; i < line_clear; ++i) {
+        cmd += "\x1b[2K";                    // erase entire line
+        if (i + 1 < line_clear)
+            cmd += "\x1b[B";                 // move down one row
+    }
+    cmd += "\x1b[0m";
+    cmd += "\x1b[";                          // restore cursor to input line
+    cmd += std::to_string(prompt_row);
+    cmd += ";";
+    cmd += std::to_string(1);
+    cmd += "H";
+    printf("%s", cmd.c_str());
 }
 
 // ============================================================================
@@ -1070,17 +1094,20 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     bool was_browsing = false;
     // Get cursor position before printing (prompt's starting row)
     auto cursor_pos = TUI::getCursorPos();
+    buf.prompt_row = cursor_pos.row;
 
     while (true) {
         // ── Render the current line(s) ────────────────────────
         // Clear all lines occupied by prompt + text to avoid stale content
-        int total_lines = buf.get_input_lines();
-        for (int r = 0; r < total_lines; ++r) {
-            TUI::setCursorPos(cursor_pos.row + r, 1);
-            TUI::clearLine();
-        }
-        // Restore to start of prompt
-        TUI::setCursorPos(cursor_pos.row, 1);
+        //int total_lines = buf.get_input_lines();
+        //for (int r = 0; r < total_lines; ++r) {
+        //    TUI::setCursorPos(buf.prompt_row + r, 1);
+        //    TUI::clearLine();
+        //}
+        //// Restore to start of prompt
+        //TUI::setCursorPos(buf.prompt_row, 1);
+        buf.clear_prompt();
+        //TUI::setCursorPos(buf.prompt_row, 1);
         std::cout << buf.display_text();
 
         // Print hint in dim color
@@ -1089,20 +1116,16 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         }
 
         TUI::setAnsiCode(0); // reset color
-        TUI::flush();
         buf.recompute();
         // Add offset: prompt starts at start_row, not row 1
-        int final_row = buf.row + cursor_pos.row - 1;
-        TUI::setCursorPos(final_row, buf.col);
+        int final_row = buf.row + buf.prompt_row - 1;
 
         // ── Completion menu rendering ────────────────────────
         if (buf.is_completion_active) {
-            buf.clear_completion_menu(final_row);
             buf.draw_completion_menu(final_row);
-            //TUI::setCursorPos(final_row, buf.input_col);
-            TUI::setCursorPos(final_row, buf.col);
-            TUI::flush();
         }
+        TUI::setCursorPos(final_row, buf.col);
+        TUI::flush();
 
         // ── Read a key ────────────────────────────────────────
         Key k = read_key();
@@ -1124,7 +1147,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                     // Fill chosen candidate
                     buf.insert_completion(buf.candidates[choice - 1]);
                     // Clear menu
-                    buf.clear_completion_menu(final_row);
+                    // buf.clear_completion_menu(final_row);
                     handled = true;
                 }
             }
@@ -1244,6 +1267,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         if (k == Key::K_ALT_ENTER || k == Key::K_CTRL_ENTER || k == Key::K_SHIFT_ENTER) {
             Key knl{}; knl.code[0] = '\n'; knl.size = 1;
             buf.insert_char(knl);
+            int exceed_line = buf.prompt_row + buf.row - TUI::getTerminalHeight();
+            if (exceed_line > 1) {
+                buf.prompt_row--;
+                printf("\n");
+            }
             continue;
         }
 
@@ -1381,7 +1409,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                     buf.hint_candidates = candidates[0];
                 }
                 if (buf.is_completion_active) {
-                    buf.clear_completion_menu(cursor_pos.row);
+                    //buf.clear_completion_menu(cursor_pos.row);
                     buf.candidates = std::move(candidates);
                     buf.page_offset = 0;
                 }

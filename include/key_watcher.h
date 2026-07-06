@@ -143,6 +143,8 @@ public:
 		/// Cursor column when entering completion mode (used for restoring position).
 		int input_col = 0;
 
+		int prompt_row;
+
 		LineBuffer() : pos(0), row(1), col(1) {}
 
 		/// Recompute the cursor's display position from character offset.
@@ -213,6 +215,9 @@ public:
 
 		/// Clear both hint and full completion text.
 		void clear_hint();
+
+		/// Erase the prompt from screen.
+		void clear_prompt();
 
 		/// Show the completion menu with the given candidates. Returns the number of visible rows.
 		int show_completion_menu(std::vector<std::string>& _candidates);
