@@ -10,6 +10,7 @@
 #include "tui.h"
 #include "user_reply.h"
 #include "file_utils.h"
+#include "key_watcher.h"
 
 namespace agent {
 using json = nlohmann::json;
@@ -80,31 +81,22 @@ UserReplyResult prompt_user_reply(
     }
 
     // Action descriptions differ slightly depending on whether this is an error or a pre-check.
-    if (is_error) {
-        std::cout << "\n"
-                  << "    What would you like to do?\n"
-                  << "    y/yes   - Retry with same arguments\n"
-                  << "    n/no    - Skip this tool call\n";
-    } else {
-        std::cout << "\n"
-                  << "    What would you like to do?\n"
-                  << "    y/yes   - Continue (default)\n"
-                  << "    n/no    - Skip this tool call\n";
-    }
+    std::cout << "\n"
+              << "    What would you like to do?\n"
+              << "    y/yes   - Retry with same arguments\n"
+              << "    n/no    - Skip this tool call\n";
 
     std::cout << "\n    Reply: ";
-    std::string input;
-    if (!std::getline(std::cin, input)) {
-        // EOF — treat as abort.
-        result.action = ReplyAction::No;
-        return result;
-    }
 
-    auto lower_input = to_lower(input);
+    auto k = KeyWatcher::read_key();
+    char ch = 0;
+    if (k.size > 0) ch = static_cast<char>(k.code[0]);
 
-    if (lower_input == "y" || lower_input == "yes") {
+    std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
+
+    if (lower == "y") {
         result.action = ReplyAction::Yes;
-    } else if (lower_input == "n" || lower_input == "no" || lower_input == "skip") {
+    } else {
         result.action = ReplyAction::No;
     }
 

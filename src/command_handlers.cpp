@@ -194,8 +194,9 @@ void register_command_handlers(
         }
         LOG_INFO("Command", "\nEnter model number to switch, or press Enter to keep current (" + current_model + "): ");
 
-        std::string input;
-        if (!std::getline(std::cin, input)) return;
+        std::string input = KeyWatcher::readline("Select Model>", nullptr);
+        if (input.empty())
+            return;
 
         // Trim.
         while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());

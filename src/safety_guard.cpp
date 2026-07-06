@@ -2,6 +2,7 @@
 
 #include "safety_guard.h"
 #include "logger.h"
+#include "key_watcher.h"
 #include <cstring>
 #include <regex>
 
@@ -54,19 +55,12 @@ bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
     LOG_WARN("Safety", "Dangerous operation detected: " + operation);
     TUI::out("   Type 'y' to confirm, anything else to cancel: ");
 
-    std::string response;
-    if (!std::getline(std::cin, response)) return false;
+    auto k = KeyWatcher::read_key();
+    char ch = 0;
+    if (k.size > 0) ch = static_cast<char>(k.code[0]);
 
-    // Trim whitespace.
-    auto trim = [](std::string& s) {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
-    };
-    trim(response);
-
-    std::string lower = response;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    return (lower == "y" || lower == "yes");
+    std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
+    return (lower == "y");
 }
 
 // ============================================================================
@@ -144,21 +138,13 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
     TUI::out("   [Safety] Path outside working directory/whitelist: %s\n", path.c_str());
     TUI::out("   Type 'y' to confirm, anything else to cancel: ");
 
-    std::string response;
-    if (!std::getline(std::cin, response))
-        return PathCheckResult::Denied;
+    auto k = KeyWatcher::read_key();
+    char ch = 0;
+    if (k.size > 0) ch = static_cast<char>(k.code[0]);
 
-    // Trim whitespace.
-    auto trim = [](std::string& s) {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
-    };
-    trim(response);
+    std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
 
-    std::string lower = response;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-    if (lower == "y" || lower == "yes") {
+    if (lower == "y") {
         // Remember this path so we don't ask again.
         // Add the parent directory to the whitelist rather than the file itself,
         // so that sibling files under the same directory are also allowed.
