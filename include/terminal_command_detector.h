@@ -4,6 +4,8 @@
 #include <set>
 #include <vector>
 
+#include "key_watcher.h"
+
 namespace agent {
 
 /**
@@ -35,6 +37,12 @@ public:
      * Detect whether input is a terminal command and return confidence level.
      */
     CommandConfidence detect(const std::string& input) const;
+
+    /**
+     * Detect and execute with user confirmation for low-confidence commands.
+     * Returns true if executed (high confidence or confirmed), false otherwise.
+     */
+    bool detect_and_execute(const std::string& input, std::string& response);
 
     /**
      * Return a human-readable explanation of the detection result for logging/display.

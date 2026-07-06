@@ -2,6 +2,7 @@
 
 #include "terminal_command_detector.h"
 #include "logger.h"
+#include <iostream>
 
 namespace agent {
 
@@ -246,6 +247,37 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
     }
 
     return true;
+}
+
+bool TerminalCommandDetector::detect_and_execute(const std::string& input, std::string& response) {
+    switch (detect(input)) {
+    case CommandConfidence::High:
+        // High confidence — execute immediately.
+        return execute_directly(input, response);
+
+    case CommandConfidence::Low: {
+        // Low confidence — ask user to confirm.
+        std::cout << u8"\u26A0 Detected possible terminal command: "
+            << input << "\n"
+            << u8"   Execute directly? [y/N]: ";
+
+        auto k = KeyWatcher::read_key();
+        char ch = 0;
+        if (k.size > 0) ch = static_cast<char>(k.code[0]);
+
+        std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
+        if (lower == "y") {
+            return execute_directly(input, response);
+        }
+        // User declined — fall through to LLM.
+        break;
+    }
+
+    case CommandConfidence::NotACommand:
+        break;
+    }
+
+    return false;
 }
 
 } // namespace agent

@@ -19,8 +19,19 @@ void register_command_handlers(
     RAGManager* rag_manager,
     LongTermMemory* long_term_memory) {
 
+    KeyWatcher::add_keywords({
+        "/h", "/help", "/status", "/config",
+        "/skills", "/tools", "/tool",
+        "/model",
+        "/facts", "/sessions", "/summary", "/new", "/save",
+        "/search-kb", "/add-doc",
+        "/view",
+        "/reply",
+        "/quit", "/exit"
+    });
+
     // ── /help ────────────────────────────────────────
-    dispatcher.register_command("help", [](const std::vector<std::string>&, std::string&) {
+    auto show_help = [](const std::vector<std::string>&, std::string&) {
         LOG_INFO("Command", std::string{"\nAvailable commands:\n"
             "  /help              Show this help message\n"
             "  /status            Show agent status (tools, skills, memory)\n"
@@ -31,7 +42,6 @@ void register_command_handlers(
             "  /view <path>       Overview project directory and generate code summary\n"
             "\nModel commands:\n"
             "  /model             List available models and switch interactively\n"
-            "  /model-info        Show current LLM model info\n"
             "\nMemory commands:\n"
             "  /facts [prefix]    Query semantic facts (optional prefix filter)\n"
             "  /sessions [n]      List recent session summaries (default: 5)\n"
@@ -53,7 +63,9 @@ void register_command_handlers(
             "  Configure via [terminal_commands] in zlagent.ini.\n"
             "\nSession control:\n"
             "  /quit, /exit       Exit (same as typing 'quit')\n"});
-    });
+    };
+    dispatcher.register_command("h", show_help);
+    dispatcher.register_command("help", show_help);
 
     // ── /status ────────────────────────────────────────
     dispatcher.register_command("status", [ag](const std::vector<std::string>&, std::string&) {
@@ -173,6 +185,11 @@ void register_command_handlers(
             return;
         }
 
+        // Sort models alphabetically by id.
+        std::sort(models.begin(), models.end(), [](const auto& a, const auto& b) {
+            return a.id < b.id;
+        });
+
         // Helper: format context length for display.
         auto fmt_ctx = [](int ctx) -> std::string {
             if (ctx == 0) return "?";
@@ -235,39 +252,6 @@ void register_command_handlers(
         LOG_INFO("Command", "  Model switched to: " + selected.id + "\n" +
             "  Context length:    " + fmt_ctx(selected.context_length) + " tokens\n" +
             "  max_tokens set to: " + std::to_string(new_max_tokens) + " (auto-adjusted)");
-    });
-
-    // ── /model-info ────────────────────────────────
-    dispatcher.register_command("model-info", [ag](const std::vector<std::string>&, std::string&) {
-        if (!ag) return;
-
-        // Helper: format context length for display.
-        auto fmt_ctx = [](int ctx) -> std::string {
-            if (ctx == 0) return "?";
-            if (ctx >= 1000000)
-                return std::to_string(ctx / 1000) + "K";
-            if (ctx >= 1000)
-                return std::to_string(ctx / 1000) + "K";
-            return std::to_string(ctx);
-        };
-
-        LOG_INFO("Command", std::string{"\n--- LLM Model Info ---\n"
-                  "  Current model: "} + ag->get_llm().get_model());
-
-        // Also show available models from API.
-        auto models = ag->get_llm().list_models();
-        if (!models.empty()) {
-            LOG_INFO("Command", "  Available on server: " + std::to_string(models.size()) + " model(s)");
-            for (const auto& m : models) {
-                std::string marker = (m.id == ag->get_llm().get_model()) ? " <-- CURRENT" : "";
-                LOG_INFO("Command", "    - " + m.id +
-                          " (ctx: " + fmt_ctx(m.context_length) +
-                          ", owned_by: " + m.owned_by + ")"
-                          + marker);
-            }
-        } else {
-            LOG_INFO("Command", "  Unable to query /v1/models API.");
-        }
     });
 
     // ── /facts [prefix] ────────────────────────────────

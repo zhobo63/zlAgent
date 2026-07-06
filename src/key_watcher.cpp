@@ -601,7 +601,15 @@ void KeyWatcher::build_candidates(const std::string& prefix, std::vector<std::st
 	std::string norm = normalize_path(prefix);
 	size_t last_sep = norm.rfind('/');
 
-	if (last_sep != std::string::npos) {
+	if (last_sep == 0 && prefix.size() > 0) {
+		// Command completion: starts with / and no path separator after it
+		// e.g., "/h", "/help", "/status" -> match against keywords only
+		for (const auto& kw : s_keywords) {
+			if (ci_starts_with(kw, prefix)) {
+				candidates.push_back(kw);
+			}
+		}
+	} else if (last_sep != std::string::npos) {
 		// Path-aware: scan the directory before the separator
 		std::filesystem::path dir_path(norm.substr(0, last_sep));
 		if (!dir_path.is_absolute()) {
@@ -613,9 +621,9 @@ void KeyWatcher::build_candidates(const std::string& prefix, std::vector<std::st
 
 		if (!after_sep.empty()) {
 			auto it = std::remove_if(candidates.begin(), candidates.end(),
-				[&after_sep](const std::string& e) {
-					return !ci_starts_with(e, after_sep);
-				});
+			[&after_sep](const std::string& e) {
+				return !ci_starts_with(e, after_sep);
+			});
 			candidates.erase(it, candidates.end());
 		}
 	} else {
@@ -916,8 +924,10 @@ static constexpr size_t MAX_DISPLAYED = 9;
 void KeyWatcher::LineBuffer::insert_completion(const std::string& completion) {
     int start = prefix_start();
 	std::string prefix = get_prefix();
-	std::string path = KeyWatcher::get_path(prefix);
-    resize(start + path.length());
+	// Determine if this is command mode (starts with / and no second /)
+    bool is_command = (prefix.size() > 0 && prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
+	int path_len = is_command ? 0 : KeyWatcher::get_path(prefix).length();
+    resize(start + path_len);
 	auto keys = utf8_to_keys(completion);
 	for (const auto& k : keys) insert_char(k);
     clear_hint();
@@ -1398,8 +1408,19 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             KeyWatcher::build_candidates(prefix, candidates);
 
             if (!candidates.empty()) {
+                // Determine if this is command mode (starts with / and no second /)
+                bool is_command = (prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
+                
+                std::string filename;
+                if (is_command) {
+                    // Command mode: entire string is the "filename"
+                    filename = prefix;
+                } else {
+                    // Path mode: extract portion after last / or from start
+                    filename = prefix.substr(path.length());
+                }
+                
                 // Always show hint (first candidate) — menu only on Tab
-                std::string filename = prefix.substr(path.length());
                 if (!filename.empty()) {
                     buf.hint = candidates[0].substr(filename.size());
                     buf.hint_candidates = candidates[0];

@@ -119,39 +119,8 @@ bool run_interactive(
 
     // Detect and execute terminal commands directly, bypassing the LLM.
     if (terminal_detector) {
-        switch (terminal_detector->detect(input)) {
-        case agent::CommandConfidence::High:
-            // High confidence — execute immediately.
-            agent::TerminalCommandDetector::execute_directly(input, response);
+        if (terminal_detector->detect_and_execute(input, response))
             return true;
-
-        case agent::CommandConfidence::Low:
-            // Low confidence — ask user to confirm.
-            std::cout << u8"\u26A0 Detected possible terminal command: "
-                << input << "\n"
-                << u8"   Execute directly? [y/N]: ";
-            {
-                std::string resp;
-                if (std::getline(std::cin, resp)) {
-                    auto trim = [](std::string& s) {
-                        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c) { return !std::isspace(c); }));
-                        s.erase(std::find_if(s.rbegin(), s.rend(), [](char c) { return !std::isspace(c); }).base(), s.end());
-                        };
-                    trim(resp);
-                    std::string lower = resp;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    if (lower == "y" || lower == "yes") {
-                        agent::TerminalCommandDetector::execute_directly(input, response);
-                        return true;
-                    }
-                }
-            }
-            // User declined — fall through to LLM.
-            break;
-
-        case agent::CommandConfidence::NotACommand:
-            break;  // Not a command, send to LLM as usual.
-        }
     }
 
     // Safety: input filter - detect prompt injection attempts.
@@ -575,7 +544,7 @@ int main(int argc, char* argv[]) {
 
 
     // Print initial status bar
-    TUI::out(u8"\nReady. Type your request (or '/help' for commands):\n");
+    TUI::out(u8"\nReady. Type your request (or '/help' '/h' for commands):\n");
     if (cfg.terminal_commands.enabled) {
         TUI::out(u8"  💡 Shell commands are auto-detected and executed directly.\n");
     }
