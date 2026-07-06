@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <algorithm>
+#include <unordered_set>
 
 #include "tool.h"
 #include "agent.h"
@@ -91,47 +92,49 @@ private:
     static bool is_build_path(const std::string& path) {
         namespace fs = std::filesystem;
         auto p = fs::path(path);
-        const auto ext = p.extension().string();
+        
         // Filter out build artifacts and third-party library files.
-        if (ext == ".obj" || ext == ".tlog" || ext == ".pdb" ||
-            ext == ".lib" || ext == ".exp" || ext == ".ilk" ||
-            ext == ".pch" || ext == ".ipch" || ext == ".sdf" ||
-            ext == ".suo" || ext == ".user" || ext == ".vslist" ||
-            ext == ".tlog" || ext == ".lastbuildstate") return true;
+        static const std::unordered_set<std::string> build_exts = {
+            ".obj", ".tlog", ".pdb", ".lib", ".exp", ".ilk",
+            ".pch", ".ipch", ".sdf", ".suo", ".user", ".vslist", ".lastbuildstate"
+        };
+        if (build_exts.find(p.extension().string()) != build_exts.end()) return true;
+        
         // Filter out third-party library paths.
+        static const std::vector<std::string> excluded_paths = {
+            "_deps/", "__cmake_systeminformation", "/build/_deps/",
+            "/examples/", "/tests/ExtraTests", "/fuzzing/"
+        };
         const auto& s = p.string();
-        if (s.find("_deps/") != std::string::npos) return true;
-        if (s.find("__cmake_systeminformation") != std::string::npos) return true;
-        if (s.find("/build/_deps/") != std::string::npos) return true;
-        // Filter out example and test files from third-party libs.
-        if (s.find("/examples/") != std::string::npos) return true;
-        if (s.find("/tests/ExtraTests") != std::string::npos) return true;
-        // Filter out fuzzing paths.
-        if (s.find("/fuzzing/") != std::string::npos) return true;
+        for (const auto& excluded : excluded_paths) {
+            if (s.find(excluded) != std::string::npos) return true;
+        }
         return false;
     }
 
     static bool is_project_source(const std::string& path) {
         namespace fs = std::filesystem;
         auto p = fs::path(path);
-        const auto ext = p.extension().string();
+        
         // Only keep source and header files.
-        if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" &&
-            ext != ".c" && ext != ".h" && ext != ".hpp" &&
-            ext != ".hh" && ext != ".hxx" && ext != ".in") return false;
+        static const std::unordered_set<std::string> valid_exts = {
+            ".cpp", ".cc", ".cxx", ".c", 
+            ".h", ".hpp", ".hh", ".hxx", ".in"
+        };
+        if (valid_exts.find(p.extension().string()) == valid_exts.end()) return false;
+        
         // Filter out build artifacts and third-party library files.
         if (is_build_path(path)) return false;
+        
         // Check path components for unwanted directories.
+        static const std::vector<std::string> excluded_paths = {
+            "/build/", "/_deps/", "__cmake_systeminformation",
+            "/examples/", "/tests/ExtraTests", "/fuzzing/"
+        };
         std::string pstr = p.string();
-        if (pstr.find("/build/") != std::string::npos) return false;
-        if (pstr.find("/_deps/") != std::string::npos) return false;
-        if (pstr.find("__cmake_systeminformation") != std::string::npos) return false;
-        // Filter out example and test files from third-party libs.
-        if (pstr.find("/examples/") != std::string::npos) return false;
-        if (pstr.find("/tests/ExtraTests") != std::string::npos) return false;
-        if (pstr.find("/fuzzing/") != std::string::npos) return false;
-        // Filter out fuzzing and test files.
-        if (pstr.find("/fuzzing/") != std::string::npos) return false;
+        for (const auto& excluded : excluded_paths) {
+            if (pstr.find(excluded) != std::string::npos) return false;
+        }
         return true;
     }
 
@@ -162,7 +165,7 @@ private:
                     if (!entry.is_directory()) continue;
                     const auto& dname = entry.path().filename().string();
                     // Skip hidden, build, and dependency dirs.
-                    if (dname.substr(0, 1) == "." || dname == "build" || dname == ".git") continue;
+                    if (dname.substr(0, 1) == "." || dname == "build" || dname == "node_modules") continue;
                     count_files(entry.path().string(), max_depth, current_depth + 1,
                                 file_counts, line_estimates);
                 }
