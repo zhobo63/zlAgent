@@ -28,6 +28,11 @@ ToolPtr create_git_status_tool();
 ToolPtr create_git_diff_tool();
 ToolPtr create_fetch_url_tool();
 
+// Batch file tools (read/delete/write multiple files)
+ToolPtr create_read_files_tool();
+ToolPtr create_delete_files_tool();
+ToolPtr create_write_files_tool();
+
 // Project overview tool
 ToolPtr create_project_overview_tool();
 

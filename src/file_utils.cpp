@@ -634,4 +634,82 @@ std::string GenerateFileOutline(const std::string& path) {
     return oss.str();
 }
 
+// -----------------------------------------------------------------------
+// Glob pattern matching helpers
+// -----------------------------------------------------------------------
+
+bool match_glob(const std::string& filename, const std::string& pattern) {
+    if (pattern.empty()) return true;
+
+    // Handle wildcard at start: *.ext
+    size_t star = pattern.find('*');
+    if (star == 0 && star + 1 < pattern.size()) {
+        std::string suffix = pattern.substr(star + 1);
+        size_t fpos = filename.rfind(suffix);
+        return fpos != std::string::npos && fpos + suffix.size() == filename.size();
+    }
+
+    // Handle wildcard at end: file.*
+    if (star != std::string::npos && star + 1 == pattern.size()) {
+        std::string prefix = pattern.substr(0, star);
+        return filename.rfind(prefix) == 0;
+    }
+
+    // Handle wildcard in middle: *.txt.bak
+    if (star != std::string::npos && star + 1 < pattern.size()) {
+        std::string before_star = pattern.substr(0, star);
+        std::string after_star = pattern.substr(star + 1);
+        size_t pos_before = filename.rfind(before_star);
+        if (pos_before == std::string::npos) return false;
+        size_t pos_after = filename.find(after_star, pos_before + before_star.size());
+        return pos_after != std::string::npos && pos_after == pos_before + before_star.size();
+    }
+
+    // No wildcard: exact match
+    return filename == pattern;
+}
+
+// -----------------------------------------------------------------------
+// Base64 helpers
+// -----------------------------------------------------------------------
+
+std::string Base64Decode(const std::string& input) {
+    static const unsigned char decode_table[] = {
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,62,0,0,0,63,
+        52,53,54,55,56,57,58,59,60,61,0,0,0,0,0,0,
+        0,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,
+        15,16,17,18,19,20,21,22,23,24,25,0,0,0,0,0,
+        0,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+        41,42,43,44,45,46,47,48,49,50,51,0,0,0,0,0,
+    };
+
+    std::string output;
+    if (input.empty()) return output;
+
+    size_t i = 0;
+    while (i < input.size()) {
+        // Skip whitespace and padding characters
+        if (input[i] == '=' || input[i] <= ' ') { ++i; continue; }
+
+        unsigned char a = (i + 3 < input.size() && decode_table[static_cast<unsigned char>(input[i])] != 0) ? decode_table[static_cast<unsigned char>(input[i])] : 0;
+        unsigned char b = (i + 1 < input.size() && decode_table[static_cast<unsigned char>(input[i+1])] != 0) ? decode_table[static_cast<unsigned char>(input[i+1])] : 0;
+        unsigned char c = (i + 2 < input.size() && decode_table[static_cast<unsigned char>(input[i+2])] != 0) ? decode_table[static_cast<unsigned char>(input[i+2])] : 0;
+        unsigned char d = (i + 3 < input.size() && decode_table[static_cast<unsigned char>(input[i+3])] != 0) ? decode_table[static_cast<unsigned char>(input[i+3])] : 0;
+
+        output += static_cast<char>((a << 2) | (b >> 4));
+        if (i + 2 < input.size() && input[i + 2] != '=') {
+            output += static_cast<char>(((b & 0xF) << 4) | (c >> 2));
+        }
+        if (i + 3 < input.size() && input[i + 3] != '=') {
+            output += static_cast<char>(((c & 0x3) << 6) | d);
+        }
+
+        i += 4;
+    }
+
+    return output;
+}
+
 } // namespace agent

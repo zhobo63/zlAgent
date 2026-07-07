@@ -434,7 +434,7 @@ read(STDIN_FILENO) — raw mode, drain all available bytes
 ## 程式碼結構一覽
 
 ```
-src/key_watcher.cpp          (1376 行)
+src/key_watcher.cpp          
 ├── Key static members       ← K_ZERO ~ K_SPACE 靜態實例
 ├── init_keyboard / close_keyboard   → Windows: SetConsoleMode / POSIX: tcsetattr
 ├── kbhit / getch              → Windows: _kbhit/_getch / POSIX: select/getchar (POSIX only)
@@ -454,16 +454,16 @@ src/key_watcher.cpp          (1376 行)
 ├── read_key_thread            → readline 背景執行緒（Windows/POSIX 按鍵讀取與解析）
 └── readline()                 → 主循環：渲染 → 讀取按鍵 → 處理特殊鍵/輸入/自動完成
 
-include/key_watcher.h          (280 行)
+include/key_watcher.h          
 ├── Key struct                 ← 按鍵結構體 + 靜態成員宣告
-│   ├── from_codepoint()     → 從 Unicode code point 建立 Key（UTF-8 編碼）
-│   └── K_ZERO ~ K_SPACE     → 所有支援的按鍵代碼
+│   ├── from_codepoint()       → 從 Unicode code point 建立 Key（UTF-8 編碼）
+│   └── K_ZERO ~ K_SPACE       → 所有支援的按鍵代碼
 ├── KeyWatcher class           ← 主要類別介面
-│   ├── Original API         → on_key / start / stop
-│   ├── readline API         → read_key() / readline() / init_keyboard() / close_keyboard()
-│   ├── Completion API       → add_keywords()
-│   ├── History              → 歷史紀錄巢狀結構（newest first, max 500）
-│   └── LineBuffer           → 輸入緩衝區巢狀結構 + 選單方法
-├── Private static members   → s_running / s_callback / history / s_keywords / s_read_thread / s_read_mutex / s_read_queue
-└── Completion helpers       → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
+│   ├── Original API           → on_key / start / stop
+│   ├── readline API           → read_key() / readline() / init_keyboard() / close_keyboard()
+│   ├── Completion API         → add_keywords()
+│   ├── History                → 歷史紀錄巢狀結構（newest first, max 500）
+│   └── LineBuffer             → 輸入緩衝區巢狀結構 + 選單方法
+├── Private static members     → s_running / s_callback / history / s_keywords / s_read_thread / s_read_mutex / s_read_queue
+└── Completion helpers         → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
 ```

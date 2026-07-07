@@ -275,6 +275,15 @@ void KeyWatcher::LineBuffer::recompute() {
             col = 1;
         }
     }
+    int term_height = TUI::getTerminalHeight();
+    int new_line = (prompt_row + row - 1) - term_height;
+
+    if (new_line>0) {
+        prompt_row -= new_line;
+        for (int i = 0; i < new_line; i++) {
+            printf("\n");
+        }
+    }
 }
 
 void KeyWatcher::LineBuffer::insert_char(const Key& k) {
@@ -418,10 +427,37 @@ int KeyWatcher::LineBuffer::prefix_start() const {
     int prefix_start = pos;
     for (int i = static_cast<int>(pos) - 1; i >= 0; i--) {
         auto& k = text[i];
-        if (k.ch == ' ' || k.ch == '@') break;
+        if (k.ch == ' ' || k.ch == '@' || k.ch == '\n') break;
         prefix_start = i;
     }
     return prefix_start;
+}
+
+void KeyWatcher::LineBuffer::show_hint()
+{
+    std::string prefix = get_prefix();
+    // Determine if this is command mode (starts with / and no second /)
+    bool is_command = (prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
+
+    std::string filename;
+    if (is_command) {
+        // Command mode: entire string is the "filename"
+        filename = prefix;
+    }
+    else {
+        // Path mode: extract portion after last / or from start
+        std::string path = KeyWatcher::get_path(prefix);
+        filename = prefix.substr(path.length());
+    }
+    if (!filename.empty()) {
+        if (selected >= candidates.size()) {
+            selected = 0;
+        }
+        hint = candidates[selected].substr(filename.size());
+        hint_candidates = candidates[selected];
+        is_display_dirty = true;
+    }
+
 }
 
 void KeyWatcher::LineBuffer::apply_hint() {
@@ -999,7 +1035,8 @@ void KeyWatcher::LineBuffer::clear_prompt()
     cmd += ";";
     cmd += std::to_string(1);
     cmd += "H";
-    printf("%s", cmd.c_str());
+    //printf("%s", cmd.c_str());
+    std::cout << cmd;
 }
 
 void KeyWatcher::LineBuffer::set_text(const std::string& _text)
@@ -1103,11 +1140,10 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             }
 
             if (!handled && (k == Key::K_DOWN)) {
-                buf.selected++;
                 // Current page may have fewer items than max_displayed (last page)
                 int items_on_page = std::min(static_cast<int>(max_displayed),
                                             static_cast<int>(buf.candidates.size()) - (int)buf.page_offset);
-                if (buf.selected >= items_on_page) {
+                if (buf.selected >= items_on_page - 1) {
                     if (buf.page_offset + max_displayed < buf.candidates.size()) {
                         // Advance to next page
                         buf.page_offset += max_displayed;
@@ -1117,11 +1153,17 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                         buf.selected = items_on_page - 1;
                     }
                 }
+                else {
+                    buf.selected++;
+                }
+                buf.show_hint();
                 handled = true;
             }
             else if (!handled && (k == Key::K_UP)) {
-                buf.selected--;
-                if (buf.selected < 0) {
+                if (buf.selected > 0) {
+                    buf.selected--;
+                }
+                else {
                     if (buf.page_offset >= max_displayed) {
                         // Go to previous page, set selected to last item
                         buf.page_offset -= max_displayed;
@@ -1131,6 +1173,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                         buf.selected = 0;
                     }
                 }
+                buf.show_hint();
                 handled = true;
             }
 
@@ -1330,36 +1373,20 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
 
             // Auto-complete: check candidates after inserting a character
             std::string prefix = buf.get_prefix();
-            std::string path = KeyWatcher::get_path(prefix);
             std::vector<std::string> candidates;
             KeyWatcher::build_candidates(prefix, candidates);
 
             if (!candidates.empty()) {
-                // Determine if this is command mode (starts with / and no second /)
-                bool is_command = (prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
-
-                std::string filename;
-                if (is_command) {
-                    // Command mode: entire string is the "filename"
-                    filename = prefix;
-                } else {
-                    // Path mode: extract portion after last / or from start
-                    filename = prefix.substr(path.length());
-                }
-
-                // Always show hint (first candidate) — menu only on Tab
-                if (!filename.empty()) {
-                    buf.hint = candidates[0].substr(filename.size());
-                    buf.hint_candidates = candidates[0];
-                    buf.is_display_dirty = true;
-                }
+                buf.candidates = std::move(candidates);
                 if (buf.is_completion_active) {
                     //buf.clear_completion_menu(cursor_pos.row);
-                    buf.candidates = std::move(candidates);
                     buf.page_offset = 0;
                 }
+                else {
+                    buf.selected = 0;
+                }
+                buf.show_hint();
             }
-
             continue;
         }
 

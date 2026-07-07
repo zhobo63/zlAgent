@@ -4,6 +4,7 @@
 #include "safety_guard.h"
 #include "safety_guard.h"
 #include "httplib.h"
+#include "file_utils.h"
 #include <iomanip>
 #include <regex>
 
@@ -394,21 +395,6 @@ private:
         } catch (const fs::filesystem_error& e) {
             return; // Silently skip inaccessible directories
         }
-    }
-
-    static bool match_glob(const std::string& filename, const std::string& pattern) {
-        if (pattern.empty()) return true;
-
-        // Handle wildcard at start: *.ext
-        size_t star = pattern.find('*');
-        if (star == 0 && star + 1 < pattern.size()) {
-            std::string suffix = pattern.substr(star + 1);
-            size_t fpos = filename.rfind(suffix);
-            return fpos != std::string::npos && fpos + suffix.size() == filename.size();
-        }
-
-        // Exact match fallback
-        return filename == pattern;
     }
 };
 

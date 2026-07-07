@@ -37,4 +37,19 @@ struct OutlineSymbol {
 /// Returns empty string on failure or if the file has no recognizable symbols.
 std::string GenerateFileOutline(const std::string& path);
 
+// -----------------------------------------------------------------------
+// Glob pattern matching helpers
+// -----------------------------------------------------------------------
+
+/// Match a filename against a glob pattern (supports *.ext wildcard at start).
+/// Returns true if the filename matches the pattern, or if pattern is empty.
+bool match_glob(const std::string& filename, const std::string& pattern);
+
+// -----------------------------------------------------------------------
+// Base64 helpers
+// -----------------------------------------------------------------------
+
+/// Decode a base64-encoded string to raw bytes. Returns empty string on failure.
+std::string Base64Decode(const std::string& input);
+
 } // namespace agent

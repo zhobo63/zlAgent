@@ -90,6 +90,183 @@ public:
     }
 };
 
+// -----------------------------------------------------------------------
+// ReadFilesTool - Batch read multiple files (paths or directory+glob)
+// -----------------------------------------------------------------------
+class ReadFilesTool : public Tool {
+public:
+    std::string name() const override { return "read_files"; }
+    std::string description() const override {
+        return "Read the contents of multiple files. Supports three modes: (1) string array paths, e.g. {\"paths\":[\"file1.cpp\",\"file2.h\"]}, or with outline mode {\"paths\":[...], \"outline\":true} to read file outlines; (2) object array with per-file options, e.g. {\"paths\":[{\"path\":\"file1.cpp\",\"start_line\":10,\"end_line\":100},{\"path\":\"file2.h\",\"outline\":true}]}; or (3) directory + glob pattern, e.g. {\"directory\":\"src\",\"glob\":\"*.cpp\"} with optional \"outline\":true.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+
+        // paths - can be string[] or object[]
+        schema["properties"]["paths"]["type"] = "array";
+        schema["properties"]["paths"]["description"] = "List of file paths to read (mutually exclusive with directory+glob). Can be a string array [\"file1.cpp\", \"file2.h\"] or an object array [{\"path\": \"file1.cpp\", \"start_line\": 10, \"end_line\": 100}].";
+
+        // directory + glob
+        schema["properties"]["directory"]["type"] = "string";
+        schema["properties"]["directory"]["description"] = "Directory to search in (default: current directory)";
+        schema["properties"]["glob"]["type"] = "string";
+        schema["properties"]["glob"]["description"] = "File pattern to match (mutually exclusive with paths, default: '*')";
+
+        // outline - for string array mode and directory+glob mode
+        schema["properties"]["outline"]["type"] = "boolean";
+        schema["properties"]["outline"]["description"] = "Read file outlines instead of content. Cannot be used with start_line/end_line in object mode.";
+
+        return schema.dump();
+    }
+
+    bool needs_user_reply(UserReplyMode mode) const override {
+        return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
+    }
+
+private:
+    // Process a single file: read content or outline, append to result
+    void process_file(const std::string& path, bool want_outline,
+                      int start_line, int end_line,
+                      json& files_array, json& errors_array,
+                      int& total_size, int& success_count) {
+        // Safety check
+        auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+        if (check_result == PathCheckResult::Denied) {
+            errors_array.push_back({{"path", path}, {"error", "Path is outside allowed directories. Operation denied."}});
+            return;
+        }
+
+        // Outline mode
+        if (want_outline) {
+            std::string outline = agent::GenerateFileOutline(path);
+            if (!outline.empty()) {
+                files_array.push_back({{"path", path}, {"outline", outline}});
+                success_count++;
+            } else {
+                errors_array.push_back({{"path", path}, {"error", "Failed to generate outline"}});
+            }
+            return;
+        }
+
+        // Line range mode (object mode only)
+        if (start_line > 0 && end_line >= start_line) {
+            std::string content = agent::ReadFileLinesAsString(path, start_line, end_line);
+            if (!content.empty()) {
+                total_size += static_cast<int>(content.size());
+                files_array.push_back({{"path", path}, {"content", content}});
+                success_count++;
+            } else {
+                errors_array.push_back({{"path", path}, {"error", "Line range out of bounds or cannot read file"}});
+            }
+            return;
+        }
+
+        // Full content mode
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            errors_array.push_back({{"path", path}, {"error", "Cannot open file"}});
+            return;
+        }
+
+        std::stringstream ss;
+        ss << file.rdbuf();
+        std::string content = ss.str();
+        file.close();
+
+        total_size += static_cast<int>(content.size());
+        files_array.push_back({{"path", path}, {"content", content}, {"size_bytes", static_cast<int>(content.size())}});
+        success_count++;
+    }
+
+public:
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+            auto args = json::parse(json_args);
+
+            // Build file list with per-file options
+            struct FileTask { std::string path; bool outline; int start_line; int end_line; };
+            std::vector<FileTask> tasks;
+
+            if (args.contains("paths")) {
+                auto paths = args["paths"];
+                bool use_outline = args.value("outline", false);
+
+                // String array mode: ["file1.cpp", "file2.h"]
+                if (!paths.empty() && paths[0].is_string()) {
+                    for (const auto& p : paths) {
+                        tasks.push_back({p.get<std::string>(), use_outline, 0, 0});
+                    }
+                }
+                // Object array mode: [{"path": "file1.cpp", "start_line": 10, "end_line": 100}]
+                else if (!paths.empty() && paths[0].is_object()) {
+                    for (const auto& obj : paths) {
+                        FileTask task;
+                        task.path = obj.value("path", "");
+                        task.outline = obj.value("outline", false);
+                        task.start_line = obj.value("start_line", 0);
+                        task.end_line   = obj.value("end_line", 0);
+                        tasks.push_back(task);
+                    }
+                } else {
+                    return "Error: 'paths' must be a string array or an object array.";
+                }
+            } else if (args.contains("directory") && args.contains("glob")) {
+                // Directory + glob mode
+                auto directory = args.value("directory", "");
+                auto glob_pattern = args.value("glob", "*");
+                bool use_outline = args.value("outline", false);
+
+                namespace fs = std::filesystem;
+                for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+                    if (!entry.is_regular_file()) continue;
+                    std::string filename = entry.path().filename().string();
+                    if (match_glob(filename, glob_pattern)) {
+                        tasks.push_back({entry.path().string(), use_outline, 0, 0});
+                    }
+                }
+            } else {
+                return "Error: Must provide either 'paths' or both 'directory' and 'glob'.";
+            }
+
+            if (tasks.empty()) {
+                return "No files found matching the criteria.";
+            }
+
+            // Process each file
+            json files_array = json::array();
+            json errors_array = json::array();
+            int total_size = 0;
+            int success_count = 0;
+
+            for (const auto& task : tasks) {
+                process_file(task.path, task.outline, task.start_line, task.end_line,
+                             files_array, errors_array, total_size, success_count);
+            }
+
+            // Build response
+            json result;
+            result["files"] = files_array;
+            result["total_files"] = static_cast<int>(tasks.size());
+            if (total_size > 0) {
+                result["total_size_bytes"] = total_size;
+            }
+            result["summary"] = {
+                {"success_count", success_count},
+                {"error_count", static_cast<int>(errors_array.size())}
+            };
+            if (!errors_array.empty()) {
+                result["summary"]["errors"] = errors_array;
+            }
+
+            return result.dump(2);
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        }
+    }
+};
+
 class WriteFileTool : public Tool {
 public:
     std::string name() const override { return "write_file"; }
@@ -147,7 +324,7 @@ public:
             }
             std::ofstream file(path, std::ios::trunc);
             if (!file.is_open()) {
-                return "Error: Cannot create/open file '" + path + "'";            
+                return "Error: Cannot create/open file '" + path + "'";
             }
             file << content;
             file.close();
@@ -161,9 +338,221 @@ public:
     }
 };
 
-ToolPtr create_read_file_tool() {
-    return std::make_shared<ReadFileTool>();
+
+// -----------------------------------------------------------------------
+// DeleteFilesTool - Batch delete multiple files (paths or directory+glob)
+// -----------------------------------------------------------------------
+
+namespace fs = std::filesystem;
+
+static std::time_t to_time_t(fs::file_time_type ftime) {
+    using namespace std::chrono;
+
+    // Calculate the difference between the file time and the current file clock time,
+    // then apply that duration offset to the current system clock time.
+    auto system_time = time_point_cast<system_clock::duration>(
+        ftime - fs::file_time_type::clock::now() + system_clock::now()
+    );
+
+    return system_clock::to_time_t(system_time);
 }
+
+class DeleteFilesTool : public Tool {
+public:
+    std::string name() const override { return "delete_files"; }
+    std::string description() const override {
+        return "Delete multiple files. Supports two modes: (1) specify paths list, or (2) directory + glob pattern.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+        schema["properties"]["paths"]["type"] = "array";
+        schema["properties"]["paths"]["items"]["type"] = "string";
+        schema["properties"]["paths"]["description"] = "List of file paths to delete (mutually exclusive with directory+glob)";
+        schema["properties"]["directory"]["type"] = "string";
+        schema["properties"]["directory"]["description"] = "Directory to search in (default: current directory)";
+        schema["properties"]["glob"]["type"] = "string";
+        schema["properties"]["glob"]["description"] = "File pattern to match (mutually exclusive with paths, default: '*')";
+        schema["properties"]["dry_run"]["type"] = "boolean";
+        schema["properties"]["dry_run"]["description"] = "Preview mode: only show files that would be deleted without actually deleting them (default: false)";
+        schema["properties"]["recursive"]["type"] = "boolean";
+        schema["properties"]["recursive"]["description"] = "Whether to search subdirectories recursively (only valid in glob mode, default: true)";
+        return schema.dump();
+    }
+
+    void show_preview(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            bool dry_run = args.value("dry_run", false);
+            if (!dry_run) return; // Only preview in dry_run mode
+
+            namespace fs = std::filesystem;
+
+            if (args.contains("paths")) {
+                auto paths = args["paths"].get<std::vector<std::string>>();
+                for (const auto& path : paths) {
+                    int size_bytes = 0;
+                    try {
+                        std::ifstream file(path);
+                        if (file.is_open()) {
+                            file.seekg(0, std::ios::end);
+                            size_bytes = static_cast<int>(file.tellg());
+                            file.close();
+                        }
+                    } catch (...) {}
+                    LOG_DEBUG("DeleteFilesTool", "preview path:" + path + " size:" + std::to_string(size_bytes) + "bytes");
+                }
+            } else if (args.contains("directory") && args.contains("glob")) {
+                auto directory = args.value("directory", "");
+                auto glob_pattern = args.value("glob", "*");
+                bool recursive = args.value("recursive", true);
+
+                for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+                    if (!entry.is_regular_file()) continue;
+                    std::string ext = entry.path().extension().string();
+                    if (ext == glob_pattern) {
+                        int size_bytes = static_cast<int>(entry.file_size());
+                        LOG_DEBUG("DeleteFilesTool", "preview path:" + entry.path().string() + " size:" + std::to_string(size_bytes) + "bytes");
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    bool needs_user_reply(UserReplyMode mode) const override {
+        return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
+    }
+
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+            auto args = json::parse(json_args);
+
+            bool dry_run = args.value("dry_run", false);
+            bool recursive = args.value("recursive", true);
+
+            // Determine mode: paths or directory+glob
+            std::vector<std::string> file_paths;
+
+            if (args.contains("paths")) {
+                auto paths = args["paths"].get<std::vector<std::string>>();
+                for (const auto& path : paths) {
+                    auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+                    if (check_result == PathCheckResult::Denied) {
+                        return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
+                    }
+                    file_paths.push_back(path);
+                }
+            } else if (args.contains("directory") && args.contains("glob")) {
+                auto directory = args.value("directory", "");
+                auto glob_pattern = args.value("glob", "*");
+
+                namespace fs = std::filesystem;
+
+                for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+                    if (!entry.is_regular_file()) continue;
+                    std::string filename = entry.path().filename().string();
+                    if (match_glob(filename, glob_pattern)) {
+                        auto check_result = SafetyGuard::get_instance().is_path_ok(entry.path().string());
+                        if (check_result != PathCheckResult::Denied) {
+                            file_paths.push_back(entry.path().string());
+                        }
+                    }
+                }
+            } else {
+                return "Error: Must provide either 'paths' or both 'directory' and 'glob'.";
+            }
+
+            if (file_paths.empty()) {
+                return "No files found matching the criteria.";
+            }
+
+            // Build JSON response
+            json result;
+            result["success"] = true;
+            result["dry_run"] = dry_run;
+            result["deleted_files"] = json::array();
+            int total_size = 0;
+            int success_count = 0;
+            int error_count = 0;
+
+            for (const auto& path : file_paths) {
+                // Get file info before deletion
+                int size_bytes = 0;
+                std::string modified_time;
+                try {
+                    namespace fs = std::filesystem;
+                    if (fs::exists(path)) {
+                        size_bytes = static_cast<int>(fs::file_size(path));
+                        auto time_point = fs::last_write_time(path);
+                        // Convert to string format
+                        std::time_t t = to_time_t(time_point);
+                        char buf[64];
+                        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&t));
+                        modified_time = buf;
+                    }
+                } catch (...) {}
+
+                if (dry_run) {
+                    // Only record without deleting
+                    json file_entry;
+                    file_entry["path"] = path;
+                    file_entry["size_bytes"] = size_bytes;
+                    file_entry["modified_time"] = modified_time.empty() ? "" : modified_time;
+                    result["deleted_files"].push_back(file_entry);
+                } else {
+                    // Actually delete the file
+                    namespace fs = std::filesystem;
+                    if (fs::exists(path)) {
+                        auto ec = fs::remove(path);
+                        if (!ec) {
+                            total_size += size_bytes;
+                            success_count++;
+
+                            json file_entry;
+                            file_entry["path"] = path;
+                            file_entry["status"] = "success";
+                            file_entry["size_bytes"] = size_bytes;
+                            file_entry["modified_time"] = modified_time.empty() ? "" : modified_time;
+                            result["deleted_files"].push_back(file_entry);
+                        } else {
+                            error_count++;
+
+                            json err_entry;
+                            err_entry["path"] = path;
+                            err_entry["status"] = "error";
+                            err_entry["error"] = std::to_string(ec);
+                            result["deleted_files"].push_back(err_entry);
+                        }
+                    } else {
+                        error_count++;
+
+                        json err_entry;
+                        err_entry["path"] = path;
+                        err_entry["status"] = "error";
+                        err_entry["error"] = "File not found";
+                        result["deleted_files"].push_back(err_entry);
+                    }
+                }
+            }
+
+            result["total_files"] = static_cast<int>(file_paths.size());
+            if (!dry_run) {
+                result["deleted_count"] = success_count;
+                result["summary"] = {
+                    {"success_count", success_count},
+                    {"error_count", error_count}
+                };
+            } else {
+                result["message"] = "Dry run mode: No files were actually deleted.";
+            }
+
+            return result.dump();
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        }
+    }
+};
 
 // -----------------------------------------------------------------------
 // EditFileTool - Line-level precise editing (find old_text, replace with new_text)
@@ -477,7 +866,7 @@ public:
             if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-            
+
             std::ofstream file(path, std::ios::app);
             if (!file.is_open()) {
                 return "Error: Cannot open file '" + path + "' for appending";
@@ -650,6 +1039,10 @@ public:
     }
 };
 
+ToolPtr create_read_file_tool() {
+    return std::make_shared<ReadFileTool>();
+}
+
 ToolPtr create_write_file_tool() {
     return std::make_shared<WriteFileTool>();
 }
@@ -724,5 +1117,175 @@ ToolPtr create_list_directory_tool() {
 //ToolPtr create_read_file_lines_tool() {
 //    return std::make_shared<ReadFileLinesTool>();
 //}
+
+// -----------------------------------------------------------------------
+// WriteFilesTool - batch write multiple files
+// -----------------------------------------------------------------------
+class WriteFilesTool : public Tool {
+public:
+    std::string name() const override { return "write_files"; }
+    std::string description() const override {
+        return "Write content to one or more files. Creates the files or overwrites them. Supports text and base64-encoded binary content.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+        schema["properties"]["files"]["type"] = "array";
+        schema["properties"]["files"]["items"]["type"] = "object";
+        schema["properties"]["files"]["items"]["properties"]["path"]["type"] = "string";
+        schema["properties"]["files"]["items"]["properties"]["path"]["description"] = "The file path to write (relative to project root)";
+        schema["properties"]["files"]["items"]["properties"]["content"]["type"] = "string";
+        schema["properties"]["files"]["items"]["properties"]["content"]["description"] = "The content to write. If encoding is 'base64', this should be a base64-encoded string; otherwise it's raw text.";
+        schema["properties"]["files"]["items"]["properties"]["encoding"]["type"] = "string";
+        schema["properties"]["files"]["items"]["properties"]["encoding"]["description"] = "Encoding of the content. Default is 'text'. Options: 'text', 'base64'. When 'base64', the tool will decode and write in binary mode.";
+        schema["required"] = {"files"};
+        return schema.dump();
+    }
+
+    void show_preview(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (!args.contains("files") || !args["files"].is_array()) return;
+            for (const auto& file_entry : args["files"]) {
+                std::string path = file_entry.value("path", "");
+                std::string new_content = file_entry.value("content", "");
+                if (!path.empty()) {
+                    std::ifstream existing(path);
+                    if (existing.is_open()) {
+                        std::stringstream ss;
+                        ss << existing.rdbuf();
+                        std::string old_content = ss.str();
+                        existing.close();
+                        std::string diff = DiffEdit(old_content, new_content);
+                        std::cout << std::endl << path << std::endl << diff << std::endl;
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    bool needs_user_reply(UserReplyMode mode) const override {
+        return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
+    }
+
+private:
+    // Check if content already has UTF-8 BOM (EF BB BF)
+    static bool has_utf8_bom(const std::string& content) {
+        const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+        return content.size() >= 3 &&
+               static_cast<unsigned char>(content[0]) == bom[0] &&
+               static_cast<unsigned char>(content[1]) == bom[1] &&
+               static_cast<unsigned char>(content[2]) == bom[2];
+    }
+
+    // Check if the file extension requires UTF-8 BOM
+    static bool needs_bom(const std::string& path) {
+        namespace fs = std::filesystem;
+        auto ext = fs::path(path).extension().string();
+        return ext == ".c" || ext == ".cpp" || ext == ".h" || ext == ".hpp";
+    }
+
+public:
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+            auto args = json::parse(json_args);
+
+            if (!args.contains("files") || !args["files"].is_array()) {
+                return "Error: 'files' array is required.";
+            }
+
+            json result_written = json::array();
+            json result_failed  = json::array();
+
+            for (const auto& file_entry : args["files"]) {
+                std::string path      = file_entry.value("path", "");
+                std::string content   = file_entry.value("content", "");
+                std::string encoding  = file_entry.value("encoding", "text");
+
+                if (path.empty()) {
+                    result_failed.push_back({{"error", "No file path provided."}});
+                    continue;
+                }
+
+                // Safety: integrated path check (working dir + whitelist + strict mode).
+                auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+                if (check_result == PathCheckResult::Denied) {
+                    result_failed.push_back({{"path", path}, {"error", "Path is outside allowed directories. Operation denied."}});
+                    continue;
+                }
+
+                // Decode base64 if needed
+                bool binary_mode = false;
+                if (encoding == "base64") {
+                    content = Base64Decode(content);
+                    binary_mode = true;
+                }
+
+                // Auto-add UTF-8 BOM for C/C++ source files (text mode only)
+                if (!binary_mode && needs_bom(path) && !has_utf8_bom(content)) {
+                    const char bom[] = {0xEF, 0xBB, 0xBF};
+                    content.insert(0, bom, 3);
+                }
+
+                // Ensure parent directory exists
+                namespace fs = std::filesystem;
+                auto parent_dir = fs::path(path).parent_path();
+                if (!parent_dir.empty()) {
+                    std::error_code ec;
+                    fs::create_directories(parent_dir, ec);
+                    if (ec) {
+                        result_failed.push_back({{"path", path}, {"error", "Failed to create directory: " + ec.message()}});
+                        continue;
+                    }
+                }
+
+                // Write the file
+                std::ofstream file(path, binary_mode ? std::ios::binary : std::ios::trunc);
+                if (!file.is_open()) {
+                    result_failed.push_back({{"path", path}, {"error", "Cannot create/open file"}});
+                    continue;
+                }
+
+                if (binary_mode) {
+                    file.write(content.data(), content.size());
+                } else {
+                    file << content;
+                }
+                file.close();
+
+                result_written.push_back({{"path", path}, {"bytes", static_cast<int>(content.size())}});
+            }
+
+            // Build response JSON
+            json response;
+            bool all_success = result_failed.empty();
+            response["success"] = all_success;
+            response["written_files"] = result_written;
+            if (!result_failed.empty()) {
+                response["failed_files"] = result_failed;
+            }
+
+            return response.dump(2);
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        }
+    }
+};
+
+// -----------------------------------------------------------------------
+// Batch file tools - ReadFilesTool, DeleteFilesTool, WriteFilesTool
+// -----------------------------------------------------------------------
+ToolPtr create_read_files_tool() {
+    return std::make_shared<ReadFilesTool>();
+}
+
+ToolPtr create_delete_files_tool() {
+    return std::make_shared<DeleteFilesTool>();
+}
+
+ToolPtr create_write_files_tool() {
+    return std::make_shared<WriteFilesTool>();
+}
 
 } // namespace agent

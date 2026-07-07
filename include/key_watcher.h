@@ -213,6 +213,8 @@ public:
 		/// Find the start of the current word (backwards from cursor, delimited by space or '@').
 		int prefix_start() const;
 
+		void show_hint();
+
 		/// Replace the hint with the full completion text, inserting it at the cursor.
 		void apply_hint();
 
