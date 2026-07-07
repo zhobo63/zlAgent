@@ -97,7 +97,7 @@ class ReadFilesTool : public Tool {
 public:
     std::string name() const override { return "read_files"; }
     std::string description() const override {
-        return "Read the contents of multiple files. Supports three modes: (1) string array paths, e.g. {\"paths\":[\"file1.cpp\",\"file2.h\"]}, or with outline mode {\"paths\":[...], \"outline\":true} to read file outlines; (2) object array with per-file options, e.g. {\"paths\":[{\"path\":\"file1.cpp\",\"start_line\":10,\"end_line\":100},{\"path\":\"file2.h\",\"outline\":true}]}; or (3) directory + glob pattern, e.g. {\"directory\":\"src\",\"glob\":\"*.cpp\"} with optional \"outline\":true.";
+        return "Read the contents of multiple files. Modes: (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"]}; (2) object array with per-file options like start_line/end_line/outline; (3) directory + glob pattern. Add \"outline\":true to read file outlines instead of content.";
     }
     std::string parameters_schema() const override {
         json schema;

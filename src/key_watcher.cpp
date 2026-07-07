@@ -691,7 +691,7 @@ void KeyWatcher::read_key_thread() {
 
         if (rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown) {
             if (s_callback) {
-                s_callback(rec.Event.KeyEvent.wVirtualKeyCode);
+                s_callback(rec.Event.KeyEvent.uChar.AsciiChar);
             }
             // ESC detection
             if (rec.Event.KeyEvent.wVirtualKeyCode == 27) {
