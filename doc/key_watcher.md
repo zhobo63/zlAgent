@@ -413,32 +413,27 @@ read(STDIN_FILENO) — raw mode
 ## 程式碼結構一覽
 
 ```
-src/key_watcher.cpp          (1430 行)
-├── Key static members       (L18-37)        ← K_ZERO ~ K_SPACE 靜態實例
-├── init_keyboard / close_keyboard   (L52-91) → Windows: SetConsoleMode / POSIX: tcsetattr
-├── kbhit / getch              (L91-106)     → Windows: _kbhit/_getch / POSIX: select/getchar
-├── send_enter                 (L126-139)    → 注入 Enter 中斷輪詢
-├── on_key / start / stop      (L141-179)    → 背景監控執行緒
-├── utf8 helpers               (L188-244)    → UTF-8 編解碼、顯示寬度計算
-├── LineBuffer methods         (L250-516)    → 緩衝區操作（插入、刪除、游標移動）
-├── History class              (L522-560)    → 歷史紀錄（新增、翻閱、去重）
-└── readline()                 (L1078-1430)  → 主循環：渲染 → 讀取按鍵 → 處理特殊鍵/輸入/自動完成
+src/key_watcher.cpp
+├── Key static members        ← K_ZERO ~ K_SPACE 靜態實例
+├── init_keyboard / close_keyboard   → Windows: SetConsoleMode / POSIX: tcsetattr
+├── kbhit / getch              → Windows: _kbhit/_getch / POSIX: select/getchar
+├── send_enter                 → 注入 Enter 中斷輪詢
+├── on_key / start / stop      → 背景監控執行緒
+├── utf8 helpers               → UTF-8 編解碼、顯示寬度計算
+├── LineBuffer methods         → 緩衝區操作（插入、刪除、游標移動）
+├── History class              → 歷史紀錄（新增、翻閱、去重）
+└── readline()                 → 主循環：渲染 → 讀取按鍵 → 處理特殊鍵/輸入/自動完成
 
-include/key_watcher.h          (280 行)
-├── Key struct                 (L16-56)      ← 按鍵結構體 + 靜態成員宣告
-│   ├── from_codepoint()     (L26-28)       → 從 Unicode code point 建立 Key
-│   └── K_ZERO ~ K_SPACE     (L18-37)       → 所有支援的按鍵代碼
-├── KeyWatcher class           (L61-279)     ← 主要類別介面
-│   ├── Original API         (L68-80)       → on_key / start / stop / clear_callback
-│   ├── readline API         (L81-99)       → read_key() / readline() / init_keyboard() / close_keyboard()
-│   ├── Completion API       (L100-101)     → add_keywords()
-│   ├── History              (L102-123)     → 歷史紀錄巢狀結構（newest first）
-│   └── LineBuffer           (L124-261)     → 輸入緩衝區巢狀結構 + 選單方法
-├── Private static members   (L112-120)    → s_thread / s_running / s_callback / history / s_keywords
-└── Completion helpers       (L262-279)    → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
-```
-│   ├── History              (L102-122)     → 歷史紀錄巢狀結構（newest first）
-│   └── LineBuffer           (L124-228)     → 輸入緩衝區巢狀結構 + 選單方法
-├── Private static members   (L230-244)    → s_thread / s_running / s_callback / history / s_keywords
-└── Completion helpers       (L246-261)    → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
+include/key_watcher.h
+├── Key struct                 ← 按鍵結構體 + 靜態成員宣告
+│   ├── from_codepoint()       → 從 Unicode code point 建立 Key
+│   └── K_ZERO ~ K_SPACE       → 所有支援的按鍵代碼
+├── KeyWatcher class           ← 主要類別介面
+│   ├── Original API           → on_key / start / stop / clear_callback
+│   ├── readline API           → read_key() / readline() / init_keyboard() / close_keyboard()
+│   ├── Completion API         → add_keywords()
+│   ├── History                → 歷史紀錄巢狀結構（newest first）
+│   └── LineBuffer             → 輸入緩衝區巢狀結構 + 選單方法
+├── Private static members    → s_thread / s_running / s_callback / history / s_keywords
+└── Completion helpers         → ci_starts_with() / normalize_path() / get_path() / scan_directory() / build_candidates()
 ```
