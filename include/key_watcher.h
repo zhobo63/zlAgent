@@ -19,8 +19,9 @@ struct Key {
 		uint32_t ch;           // Unicode code point on Windows
 	};
 	int size;                 // >0 = valid byte count in code[], <0 = special key (size == -1 means ESC)
+	uint8_t char_width;       // display width: 0=control, 1=narrow, 2=wide
 
-	constexpr Key(uint32_t c = 0, int s = 0) : ch(c), size(s) {}
+	constexpr Key(uint32_t c = 0, int s = 0, int cw = 0) : ch(c), size(s), char_width(cw) {}
 
 	/// Construct a Key from a Unicode code point (UTF-8 encoded).
 	static Key from_codepoint(ucs4_t cp);
@@ -133,6 +134,7 @@ public:
 		std::string hint_candidates;
 		size_t prompt_len = 0;  // byte length of the prompt prefix that cannot be deleted
 		bool is_completion_active = false; // whether a completion menu is currently active
+		bool is_display_dirty = false;     // true when screen content changed and needs full redraw
 
 		// Completion menu state (only valid when is_completion_active)
 		std::vector<std::string> candidates;
@@ -145,10 +147,17 @@ public:
 
 		int prompt_row;
 
+		// Cached display width of the prompt (computed once, invalidated on prompt change)
+		mutable int cached_prompt_col = 0;
+
 		LineBuffer() : pos(0), row(1), col(1) {}
 
 		/// Recompute the cursor's display position from character offset.
 		void recompute();
+
+		void set_prompt(const std::string& p);
+
+		void set_text(const std::string& text);
 
 		/// Insert a UTF-8 character at the cursor position.
 		void insert_char(const Key& k);
@@ -184,9 +193,6 @@ public:
 
 		/// Get the text after the cursor as UTF-8 string.
 		std::string suffix() const;
-
-		/// Return the total number of display lines occupied by prompt + full text (including wrap).
-		int get_input_lines() const;
 
 		std::string display_text() const {
 			std::string s = prompt;

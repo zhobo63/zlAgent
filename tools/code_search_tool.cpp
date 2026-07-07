@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "tool.h"
-#include "encoding.h"
+#include <regex>
 #include <regex>
 #include <cstring>
 #include <set>

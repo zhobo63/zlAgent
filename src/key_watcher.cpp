@@ -34,7 +34,7 @@ Key Key::K_ALT_ENTER(13, -15);   // Alt+Enter (insert newline)
 Key Key::K_CTRL_C(3, -16);   // Ctrl+C (interrupt)
 Key Key::K_CTRL_ENTER(13, -17);    // Ctrl+Enter (insert \n + enable line display)
 Key Key::K_SHIFT_ENTER(13, -18);    // Shift+Enter (insert \n + enable line display)
-Key Key::K_SPACE(32, 1);
+Key Key::K_SPACE(32, 1, 1);
 
 // ============================================================================
 // Cross-platform keyboard helpers (unchanged from original)
@@ -153,7 +153,7 @@ void KeyWatcher::start() {
     s_running.store(true);
 
     s_read_thread = new std::thread([] {
-        read_key_thread();        
+        read_key_thread();
     });
 }
 
@@ -196,6 +196,7 @@ Key Key::from_codepoint(ucs4_t cp) {
 	// Cast to uint32_t so shifts work correctly even when ucs4_t is 16-bit (Windows wchar_t)
 	uint32_t c = static_cast<uint32_t>(cp);
 	Key k{};
+	k.char_width = utf8_char_width(c);
 	if (c < 0x80) { k.code[0] = static_cast<unsigned char>(c); k.size = 1; }
 	else if (c < 0x800) {
 		k.code[0] = static_cast<unsigned char>(0xC0 | ((c >> 6) & 0x1F));
@@ -237,40 +238,38 @@ std::vector<Key> KeyWatcher::utf8_to_keys(const std::string& s) {
 // Multi-line buffer — stores the input text and manages cursor position
 // ============================================================================
 
+static int compute_prompt_width(const std::string& prompt) {
+    int col = 1;
+    const unsigned char* bp = reinterpret_cast<const unsigned char*>(prompt.data());
+    size_t len = prompt.size();
+    while (len > 0 && *bp) {
+        if (*bp >= 0x80 && *bp <= 0xBF) { bp++; len--; continue; }
+        ucs4_t cp;
+        int n = utf8_mbtowc(&cp, bp, static_cast<int>(len));
+        if (n <= 0) { col++; bp++; len--; continue; }
+        col += utf8_char_width(cp);
+        bp += n;
+        len -= n;
+    }
+    return col;
+}
+
+void KeyWatcher::LineBuffer::set_prompt(const std::string& p) {
+    prompt = p;
+    cached_prompt_col = compute_prompt_width(p);
+}
+
 void KeyWatcher::LineBuffer::recompute() {
     int term_width = TUI::getTerminalWidth();
 
     // Prompt is single-line; input starts right after it on the same line.
     row = 1;
-    col = 1;
-    int size = prompt.length();
-    unsigned char* bp = (unsigned char*)prompt.c_str();
-    while (bp && bp[0] && size > 0) {
-        unsigned char b = bp[0];
-        if (b >= 0x80 && b <= 0xBF) {
-            bp++;
-            size--;
-            continue; // continuation byte, skip
-        }
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, bp, size);
-        if (n <= 0) { 
-            col++; 
-            bp++;
-            size--;
-            continue;
-        }
-        col += utf8_char_width(cp);
-        bp += n;
-        size -= n;
-    }
+    col = cached_prompt_col;
 
     // Count display columns from user input up to cursor
     for (size_t i = 0; i < pos && i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') { row++; col = 1; continue; }
-        col += utf8_char_width(cp);
+        if (text[i].char_width == 0 || text[i].ch == '\n') { row++; col = 1; continue; }
+        col += text[i].char_width;
         if (col > term_width) {
             row++;
             col = 1;
@@ -278,55 +277,10 @@ void KeyWatcher::LineBuffer::recompute() {
     }
 }
 
-int KeyWatcher::LineBuffer::get_input_lines() const {
-    int term_width = TUI::getTerminalWidth();
-    // Line 1 is occupied by prompt + possibly some input.
-    int lines = 1;
-
-    // Compute display width of the single-line prompt (col starts at 1, same as recompute)
-    int cur_col = 1;
-    int size = prompt.length();
-    unsigned char* bp = (unsigned char*)prompt.c_str();
-    while (bp && bp[0] && size > 0) {
-        unsigned char b = bp[0];
-
-        if (b >= 0x80 && b <= 0xBF) {
-            bp++;
-            size--;
-            continue; // continuation byte, skip
-        }
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, bp, size);
-        if (n <= 0) { 
-            cur_col++; 
-            bp++;
-            size--;
-            continue; 
-        }
-        cur_col += utf8_char_width(cp);
-        bp += n;
-        size -= n;
-    }
-
-    // Count full text lines (all characters, not just up to cursor)
-    for (size_t i = 0; i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') { lines++; cur_col = 1; continue; }
-        cur_col += utf8_char_width(cp);
-        if (cur_col > term_width) {
-            lines++;
-            cur_col = 1;
-        }
-    }
-
-    return lines;
-}
-
 void KeyWatcher::LineBuffer::insert_char(const Key& k) {
     text.insert(text.begin() + static_cast<long>(pos), k);
     pos++;
-    recompute();
+    is_display_dirty = true;
 }
 
 bool KeyWatcher::LineBuffer::backspace() {
@@ -335,7 +289,7 @@ bool KeyWatcher::LineBuffer::backspace() {
     // Delete the character before cursor
     text.erase(text.begin() + static_cast<long>(pos - 1));
     pos--;
-    recompute();
+    is_display_dirty = true;
     return true;
 }
 
@@ -349,18 +303,12 @@ void KeyWatcher::LineBuffer::move_right() {
 
 void KeyWatcher::LineBuffer::move_up(int term_width) {
     // Find the row above and go to the corresponding column
-    int current_row = 1, current_col = 1;
-    for (size_t i = 0; i < prompt.size(); ++i) {
-        if (prompt[i] == '\n') { current_row++; current_col = 1; }
-        else { current_col += utf8_char_width(static_cast<unsigned char>(prompt[i])); }
-    }
+    int current_row = 1, current_col = cached_prompt_col;
 
     // Count columns up to cursor position
     for (size_t i = 0; i < pos && i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') { current_row++; current_col = 1; continue; }
-        current_col += utf8_char_width(cp);
+        if (text[i].char_width == 0 || text[i].ch == '\n') { current_row++; current_col = 1; continue; }
+        current_col += text[i].char_width;
         if (current_col > term_width) {
             current_row++;
             current_col = 1;
@@ -370,18 +318,14 @@ void KeyWatcher::LineBuffer::move_up(int term_width) {
     // Walk backwards to find the start of previous display line
     size_t prev_line_start = pos;
     for (size_t i = pos; i > 0; --i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i - 1].code, text[i - 1].size);
-        if (n <= 0 || cp == '\n') break;
+        if (text[i - 1].char_width == 0 || text[i - 1].ch == '\n') break;
         prev_line_start = i - 1;
     }
 
     // Walk backwards to find the start of previous display line
     size_t prev_prev_line_start = prev_line_start;
     for (size_t i = prev_line_start; i > 0; --i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i - 1].code, text[i - 1].size);
-        if (n <= 0 || cp == '\n') break;
+        if (text[i - 1].char_width == 0 || text[i - 1].ch == '\n') break;
         prev_prev_line_start = i - 1;
     }
 
@@ -395,18 +339,12 @@ void KeyWatcher::LineBuffer::move_up(int term_width) {
 
 void KeyWatcher::LineBuffer::move_down(int term_width) {
     // Find the row below and go to the corresponding column
-    int current_row = 1, current_col = 1;
-    for (size_t i = 0; i < prompt.size(); ++i) {
-        if (prompt[i] == '\n') { current_row++; current_col = 1; }
-        else { current_col += utf8_char_width(static_cast<unsigned char>(prompt[i])); }
-    }
+    int current_row = 1, current_col = cached_prompt_col;
 
     // Count columns up to cursor position
     for (size_t i = 0; i < pos && i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') { current_row++; current_col = 1; continue; }
-        current_col += utf8_char_width(cp);
+        if (text[i].char_width == 0 || text[i].ch == '\n') { current_row++; current_col = 1; continue; }
+        current_col += text[i].char_width;
         if (current_col > term_width) {
             current_row++;
             current_col = 1;
@@ -416,18 +354,14 @@ void KeyWatcher::LineBuffer::move_down(int term_width) {
     // Walk forward to find the end of next display line
     size_t next_line_end = pos;
     for (size_t i = pos; i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') break;
+        if (text[i].char_width == 0 || text[i].ch == '\n') break;
         next_line_end = i + 1;
     }
 
     // Walk forward to find the end of current display line
     size_t line_end = pos;
     for (size_t i = pos; i < text.size(); ++i) {
-        ucs4_t cp;
-        int n = utf8_mbtowc(&cp, text[i].code, text[i].size);
-        if (n <= 0 || cp == '\n') break;
+        if (text[i].char_width == 0 || text[i].ch == '\n') break;
         line_end = i + 1;
     }
 
@@ -1013,6 +947,7 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     selected = 0;
     page_offset = 0;
     is_completion_active = true;
+    is_display_dirty = true; // menu opened, need redraw
 
     int H = TUI::getTerminalHeight();
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
@@ -1041,6 +976,7 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
 void KeyWatcher::LineBuffer::hide_completion_menu(int current_input_row)
 {
     is_completion_active = false;
+    is_display_dirty = true; // menu closed, need redraw
     //clear_completion_menu(current_input_row);
 }
 
@@ -1064,6 +1000,13 @@ void KeyWatcher::LineBuffer::clear_prompt()
     cmd += std::to_string(1);
     cmd += "H";
     printf("%s", cmd.c_str());
+}
+
+void KeyWatcher::LineBuffer::set_text(const std::string& _text)
+{
+    text = utf8_to_keys(_text);
+    pos = text.size();
+    is_display_dirty = true;
 }
 
 // ============================================================================
@@ -1090,7 +1033,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     LineBuffer buf;
 
     // Store prompt as string; user input uses vector<Key>
-    buf.prompt = prompt_text;
+    buf.set_prompt(prompt_text);
     buf.prompt_len = static_cast<size_t>(prompt_len);
     buf.pos = 0;
     history.reset();
@@ -1101,36 +1044,37 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     // Get cursor position before printing (prompt's starting row)
     auto cursor_pos = TUI::getCursorPos();
     buf.prompt_row = cursor_pos.row;
+    buf.is_display_dirty = true;
 
     while (true) {
         // ── Render the current line(s) ────────────────────────
-        // Clear all lines occupied by prompt + text to avoid stale content
-        //int total_lines = buf.get_input_lines();
-        //for (int r = 0; r < total_lines; ++r) {
-        //    TUI::setCursorPos(buf.prompt_row + r, 1);
-        //    TUI::clearLine();
-        //}
-        //// Restore to start of prompt
-        //TUI::setCursorPos(buf.prompt_row, 1);
-        buf.clear_prompt();
-        //TUI::setCursorPos(buf.prompt_row, 1);
-        std::cout << buf.display_text();
-
-        // Print hint in dim color
-        if (!buf.hint.empty()) {
-            buf.print_hint();
-        }
-
-        TUI::setAnsiCode(0); // reset color
-        buf.recompute();
-        // Add offset: prompt starts at start_row, not row 1
         int final_row = buf.row + buf.prompt_row - 1;
 
-        // ── Completion menu rendering ────────────────────────
-        if (buf.is_completion_active) {
-            buf.draw_completion_menu(final_row);
+        if (buf.is_display_dirty) {
+            buf.recompute();
+            buf.clear_prompt();
+            std::cout << buf.display_text();
+
+            // Print hint in dim color
+            if (!buf.hint.empty()) {
+                buf.print_hint();
+            }
+
+            TUI::setAnsiCode(0); // reset color
+            final_row = buf.row + buf.prompt_row - 1;
+
+            // ── Completion menu rendering ────────────────────────
+            if (buf.is_completion_active) {
+                buf.draw_completion_menu(final_row);
+            }
+            TUI::setCursorPos(final_row, buf.col);
+        } else {
+            // Only cursor moved — recompute position and move cursor
+            buf.recompute();
+            final_row = buf.row + buf.prompt_row - 1;
+            TUI::setCursorPos(final_row, buf.col);
         }
-        TUI::setCursorPos(final_row, buf.col);
+        buf.is_display_dirty = false;
         TUI::flush();
 
         // ── Read a key ────────────────────────────────────────
@@ -1235,7 +1179,8 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 // fall through to normal key handling below
             }
             else if (handled) {
-                continue; // menu handled the key, re-render next iteration
+                buf.is_display_dirty = true; // menu selection changed, need redraw
+                continue;
             }
         }
 
@@ -1265,7 +1210,6 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                     Key ks = Key::from_codepoint(ws);
                     buf.insert_char(ks);
                 }
-                buf.recompute();
             }
             continue;
         }
@@ -1301,9 +1245,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (history.prev()) {
                 const std::string* entry = history.get_current();
                 if (entry) {
-                    buf.text = utf8_to_keys(*entry);
-                    buf.pos = buf.text.size(); // cursor at end of line
-                    buf.recompute();
+                    buf.set_text(*entry);
                 }
             }
             continue;
@@ -1313,15 +1255,11 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 if (history.next()) {
                     const std::string* entry = history.get_current();
                     if (entry) {
-                        buf.text = utf8_to_keys(*entry);
-                        buf.pos = buf.text.size();
-                        buf.recompute();
+                        buf.set_text(*entry);
                     }
                     else {
                         // Back to original text
-                        buf.text = utf8_to_keys(original_text);
-                        buf.pos = buf.text.size();
-                        buf.recompute();
+                        buf.set_text(original_text);
                     }
                 }
             }
@@ -1358,20 +1296,18 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         if (k == Key::K_DELETE) {
             if (buf.pos < buf.text.size()) {
                 buf.text.erase(buf.text.begin() + static_cast<long>(buf.pos));
-                buf.recompute();
+                buf.is_display_dirty = true;
             }
             continue;
         }
 
         if (k == Key::K_HOME) {
             buf.pos = 0;
-            buf.recompute();
             continue;
         }
 
         if (k == Key::K_END) {
             buf.pos = buf.text.size();
-            buf.recompute();
             continue;
         }
 
@@ -1381,24 +1317,15 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
 
             // If there's a hint and the typed character matches, consume from hint
             if (!buf.hint.empty() && buf.hint[0] == c) {
-                Key k{};
-                k.code[0] = static_cast<unsigned char>(c);
-                k.size = 1;
-                buf.text.insert(buf.text.begin() + static_cast<long>(buf.pos), k);
-                buf.pos++;
-                buf.col++;
+                buf.insert_char(Key::from_codepoint(c));
                 buf.hint.erase(buf.hint.begin());
-                buf.recompute();
             }
             else {
                 // No hint or no match — insert normally and clear hint
                 if (!buf.hint.empty()) {
                     buf.clear_hint();
                 }
-                Key k{};
-                k.code[0] = static_cast<unsigned char>(c);
-                k.size = 1;
-                buf.insert_char(k);
+                buf.insert_char(Key::from_codepoint(c));
             }
 
             // Auto-complete: check candidates after inserting a character
@@ -1410,7 +1337,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (!candidates.empty()) {
                 // Determine if this is command mode (starts with / and no second /)
                 bool is_command = (prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
-                
+
                 std::string filename;
                 if (is_command) {
                     // Command mode: entire string is the "filename"
@@ -1419,11 +1346,12 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                     // Path mode: extract portion after last / or from start
                     filename = prefix.substr(path.length());
                 }
-                
+
                 // Always show hint (first candidate) — menu only on Tab
                 if (!filename.empty()) {
                     buf.hint = candidates[0].substr(filename.size());
                     buf.hint_candidates = candidates[0];
+                    buf.is_display_dirty = true;
                 }
                 if (buf.is_completion_active) {
                     //buf.clear_completion_menu(cursor_pos.row);

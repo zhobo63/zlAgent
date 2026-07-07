@@ -19,7 +19,7 @@ public:
     static constexpr int  DEFAULT_MAX_MESSAGES = 50;     // trigger summarization at this count
     static constexpr int  MIN_RECENT_KEEP      = 10;     // always keep at least N recent messages
     static constexpr size_t MAX_SUMMARY_INPUT   = 2048;  // truncate individual messages for summary
-    static constexpr size_t MAX_TOKENS_BEFORE_SUMMARIZE = 65536; // trigger summarization when total tokens exceed this
+
 
     explicit Memory(int max_messages = DEFAULT_MAX_MESSAGES);
 
@@ -44,6 +44,10 @@ public:
     size_t get_cached_token_count() const { return cached_tokens_; }
 
 private:
+    /// Calculate the token threshold for summarization based on model context length.
+    static constexpr double SUMMARY_THRESHOLD_RATIO = 0.7; // trigger at 70% of context
+    size_t summarize_threshold(LLMClient& llm) const;
+
     /// Recalculate cached_tokens_ from scratch by iterating over history_.
     void recalculate();
     std::vector<ChatMessage> history_;

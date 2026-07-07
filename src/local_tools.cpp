@@ -2,7 +2,7 @@
 
 #include "logger.h"
 #include "local_tools.h"
-#include "encoding.h"
+#include "wide_string.h"
 #include "wide_string.h"
 
 #include <set>
