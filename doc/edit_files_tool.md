@@ -106,78 +106,26 @@
 
 **行為：** 刪除指定範圍的行。
 
-### 5. replace_text - 替換文字（類似現有 edit_file）
+### 5. replace_text - 替換文字（精確比對）
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
 | `type` | string | ✅ | 固定值 `"replace_text"` |
-| `old_text` | string | ✅ | 要替換的文字（會替換檔案中所有出現的該文字） |
+| `old_text` | string | ✅ | 要替換的文字（精確比對） |
 | `new_text` | string | ✅ | 替換後的文字 |
 
-**行為：** 將檔案中所有出現的 `old_text` 替換為 `new_text`。
+**行為：** 使用**精確字串比對**，在檔案中尋找所有出現的 `old_text`。
+
+- **1 處相符**：直接替換，無需確認。
+- **多處相符**：顯示 diff 並列出順序編號，由使用者選擇：
+  - `[N]` — 不替換（取消操作）
+  - `[num]` — 只替換指定編號的那一處
+  - `[A]` — 全部替換
 
 **使用時機：**
 - **不需要知道行號**，只要文字存在就會替換
 - 適合「替換所有出現的文字」這種需求（例如：將所有 `printf` 改為 `std::cout`）
 - 即使檔案結構改變也能正常工作
-
-**注意事項：**
-- 如果 `old_text` 在檔案中出現多次，會全部被替換
-- 建議使用足夠獨特的文字來避免意外匹配
-
-#### ⚠️ 誤改風險與解決方案
-
-由於 `replace_text` 會替換所有出現的文字，可能會誤改不該修改的地方：
-
-| 風險類型 | 範例 | 說明 |
-|----------|------|------|
-| **註解中的文字** | `// int x = 0;` 和 `int x = 0;` | 兩行都會被替換 |
-| **不同變數但相同值** | `int x = 0;` 和 `int y = 0;` | 如果只替換 `= 0;`，會誤改 |
-| **字串中的文字** | `"The value is: %d"` 和實際程式碼 | 可能誤改字串內容 |
-
-**解決方案：**
-
-1. **限制替換次數**（推薦）：新增 `max_replacements` 參數，只替換前 N 次出現
-   ```json
-   {
-     "type": "replace_text",
-     "old_text": "int x = 0;",
-     "new_text": "int x = 1;",
-     "max_replacements": 1
-   }
-   ```
-
-2. **精確匹配模式**：支援正則表達式來確保唯一性
-   ```json
-   {
-     "type": "replace_text",
-     "pattern": "^\\s*int x = 0;",
-     "replacement": "    int x = 1;"
-   }
-   ```
-
-3. **預覽功能**：先顯示會修改哪些行，讓使用者確認
-   ```json
-   {
-     "type": "replace_text",
-     "old_text": "int x = 0;",
-     "new_text": "int x = 1;",
-     "dry_run": true
-   }
-   ```
-
-4. **排除特定區域**：支援跳過註解和字串
-   ```json
-   {
-     "type": "replace_text",
-     "old_text": "printf(",
-     "new_text": "std::cout <<",
-     "exclude_comments": true,
-     "exclude_strings": true
-   }
-   ```
-
-**建議：** 在實作時，優先支援 **方案 1（限制替換次數）** 和 **方案 3（預覽功能）**，因為這兩者最容易實作且能有效降低誤改風險。
 
 ---
 
@@ -185,10 +133,13 @@
 
 **核心原則：所有行號都是基於原始檔案的行號。**
 
-工具在內部會按以下順序處理編輯：
-1. **先計算總體變化**：統計所有插入和刪除操作的總行數變化。
-2. **依序應用變更**：從檔案結尾向開頭處理（避免行號偏移問題）。
-3. **一次性寫入結果**。
+工具在內部會按以下步驟處理編輯：
+1. **讀取檔案到記憶體**：將整個檔案載入記憶體，記錄每一行的內容。
+2. **驗證所有操作**：檢查行號範圍是否有效、行號操作是否有重疊。如果任何一個操作無效或重疊，該檔案修改失敗並回滾。
+3. **同時計算所有變更**：基於原始行號，對所有操作（含行號操作與 `replace_text`）同時做偏移計算，確保每個操作的目標位置都正確。
+4. **一次性寫入結果**：將記憶體中的最終內容寫回檔案。
+
+> 這種做法確保了原子性 — 檔案要麼完全不改，要麼一次性寫入所有變更的結果。
 
 **範例：**
 ```
@@ -214,11 +165,10 @@
 
 ## 回應格式
 
-成功：
+成功（部分檔案可能失敗，每個檔案獨立）：
 
 ```json
 {
-  "success": true,
   "edited_files": [
     {
       "path": "src/main.cpp",
@@ -228,25 +178,22 @@
         {"type": "replace_line_range", "start_line": 10, "end_line": 15},
         {"type": "insert_before_line", "line_number": 42}
       ]
-    },
-    {
-      "path": "include/game.h",
-      "original_lines": 50,
-      "new_lines": 50,
-      "operations_applied": [
-        {"type": "replace_text", "old_text": "#include <stdio.h>", "matches_found": 1}
-      ]
     }
   ],
-  "failed_files": []
+  "failed_files": [
+    {
+      "path": "include/game.h",
+      "error": "Overlapping line operations detected: replace_line_range(5-10) overlaps with insert_before_line(7)",
+      "operations_applied": []
+    }
+  ]
 }
 ```
 
-如果失敗：
+全部失敗：
 
 ```json
 {
-  "success": false,
   "edited_files": [],
   "failed_files": [
     {
@@ -254,8 +201,7 @@
       "error": "Line number out of range: insert_before_line at line 150 (file has only 100 lines)",
       "operations_applied": []
     }
-  ],
-  "rollback_status": "No changes made - atomic operation"
+  ]
 }
 ```
 
@@ -266,7 +212,7 @@
 | **文字不存在** | `old_text not found in file: "printf("` | 檔案中找不到要替換的文字 |
 | **空文字** | `old_text cannot be empty string` | `old_text` 不能為空 |
 
-> **注意**：如果 `old_text` 在檔案中出現多次，會全部被替換（這是預設行為）。如果需要限制替換次數，請使用 `max_replacements` 參數。
+> **注意**：如果 `old_text` 在檔案中出現多次，會顯示 diff 並由使用者選擇替換哪些位置。
 
 ---
 
@@ -419,12 +365,9 @@
 ## 注意事項與限制
 
 1. **行號範圍**：所有行號必須在檔案的有效範圍內。
-2. **文字替換衝突**：如果多個 `replace_text` 操作修改同一個位置，可能會產生衝突（工具應檢測並報告）。
-3. **原子性保證**：任何一個編輯失敗，整個操作應該回滾。
-4. **`replace_text` 誤改風險**：使用 `replace_text` 時，如果 `old_text` 在檔案中出現多次，會全部被替換。建議：
-   - 使用足夠獨特的文字來避免意外匹配
-   - 考慮使用 `max_replacements` 參數限制替換次數
-   - 優先使用行號編輯（如 `replace_line_range`）來確保精確性
+2. **行號操作重疊**：同一個檔案內的行號操作如果範圍重疊，該檔案修改失敗並回滾（例如 `replace_line_range(5-10)` 與 `insert_before_line(7)` 重疊）。
+3. **原子性保證**：每個檔案獨立。單一檔案內任何操作失敗，該檔案全部回滾；其他檔案不受影響。
+4. **`replace_text` 精確比對**：使用精確字串比對，不會模糊匹配。如果 `old_text` 在檔案中出現多次，會顯示 diff 並由使用者選擇替換哪些位置。
 5. **路徑安全**：使用 `SafetyGuard::is_path_ok()` 檢查路徑是否允許。
 6. **路徑正規化**：所有路徑會經過 `normalize_path()` 處理，確保反斜線轉換為正斜線、移除結尾斜線。
 
@@ -432,20 +375,9 @@
 
 ## 與現有工具的比較
 
-| 特性 | edit_files | edit_file (已淘汰) |
-|------|------------|--------------------|
+| 特性 | edit_files | edit_file |
+|------|------------|-----------|
 | 同時處理多個檔案 | ✅ | ❌（需多次呼叫） |
 | 自動處理行號偏移 | ✅ | ❌（需手動計算） |
-| 原子性操作 | ✅ | ❌ |
+| 原子性操作 | ✅（每檔獨立） | ❌ |
 | Token 效率 | ✅（一次請求） | ❌（多次請求） |
-
----
-
-## 未來擴展可能性
-
-1. **conditional_edits** - 支援條件式編輯（如果某行存在則替換，否則插入）
-2. **replace_text 改進**：
-   - `max_replacements` - 限制替換次數
-   - `dry_run` - 預覽功能，顯示會修改哪些行
-   - `exclude_comments/strings` - 排除註解和字串中的匹配
-   - `pattern/replacement` - 支援正則表達式模式

@@ -32,6 +32,7 @@ ToolPtr create_fetch_url_tool();
 ToolPtr create_read_files_tool();
 ToolPtr create_delete_files_tool();
 ToolPtr create_write_files_tool();
+ToolPtr create_edit_files_tool();
 
 // Project overview tool
 ToolPtr create_project_overview_tool();

@@ -59,7 +59,16 @@
 | `files` | array | ✅ | 檔案列表，每個檔案包含 `path`、`content` 和可選的 `encoding` |
 | `files[].path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
 | `files[].content` | string | ✅ | 檔案內容。若 `encoding` 為 `base64`，則為 base64 編碼字串；否則為原始文字 |
-| `files[].encoding` | string | ❌ | 編碼方式。預設為 `text`（純文字）。可選值：`text`、`base64`。使用 `base64` 時，工具會自動解碼後以二進位模式寫入檔案 |
+| `files[].encoding` | string | ❌ | 編碼方式。預設為 `text`（純文字）。可選值：`text`、`base64`。使用 `base64` 時，工具會自動解碼後以二進位模式寫入檔案。**此模式下不干預 BOM** |
+
+---
+
+## 回應格式欄位說明
+
+| 參數 | 類型 | 說明 |
+|------|------|------|
+| `written_files` | array | 成功寫入的檔案列表，每個元素包含 `path`（string）和 `status`（固定為 `"ok"`） |
+| `failed_files` | array | 寫入失敗的檔案列表，每個元素包含 `path`（string）、`status`（固定為 `"error"`）和 `error`（錯誤訊息字串） |
 
 ---
 
@@ -67,8 +76,8 @@
 
 1. **部分成功**：允許部分寫入成功。能寫的檔案就寫，回傳 `written_files`（成功列表）和 `failed_files`（失敗列表）。不進行回滾。
 2. **自動建立目錄**：如果檔案所在的目錄不存在，自動建立（類似 `mkdir -p`）。
-3. **覆寫模式**：如果檔案已存在，直接覆寫（不詢問）。
-4. **UTF8 BOM**：副檔名為 `.c`、`.cpp`、`.h`、`.hpp` 的檔案，工具會自動加上 UTF8 BOM（`\xEF\xBB\xBF`）。寫入前會先檢查內容是否已有 BOM，若已存在則不重複添加。
+3. **覆寫模式**：如果檔案已存在，直接覆寫（不詢問）。若檔案為唯讀，直接回報失敗，不嘗試修改權限。
+4. **UTF8 BOM**：副檔名為 `.c`、`.cpp`、`.h`、`.hpp` 的檔案，工具會自動加上 UTF8 BOM（`\xEF\xBB\xBF`）。寫入前會先檢查內容是否已有 BOM，若已存在則不重複添加。**僅適用於 `text` 編碼模式**；`base64` 模式下不干預 BOM，由使用者自行控制二進位內容。
 
 ---
 
@@ -92,29 +101,39 @@
 
 ## 回應格式
 
-成功：
+成功（全部寫入成功）：
 
 ```json
 {
-  "success": true,
   "written_files": [
-    {"path": "src/main.cpp"},
-    {"path": "include/game.h"}
+    {"path": "src/main.cpp", "status": "ok"},
+    {"path": "include/game.h", "status": "ok"}
   ],
   "failed_files": []
 }
 ```
 
-如果失敗：
+部分成功（有些寫入失敗）：
 
 ```json
 {
-  "success": false,
   "written_files": [
-    {"path": "src/main.cpp"}
+    {"path": "src/main.cpp", "status": "ok"}
   ],
   "failed_files": [
-    {"path": "include/game.h", "error": "Permission denied"}
+    {"path": "include/game.h", "status": "error", "error": "Permission denied"}
+  ]
+}
+```
+
+全部失敗：
+
+```json
+{
+  "written_files": [],
+  "failed_files": [
+    {"path": "src/main.cpp", "status": "error", "error": "No such file or directory"},
+    {"path": "include/game.h", "status": "error", "error": "Permission denied"}
   ]
 }
 ```
@@ -197,11 +216,12 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path);
 
 ## 與現有工具的比較
 
-| 特性 | write_files | write_file (已淘汰) |
-|------|-------------|---------------------|
-| 同時處理多個檔案 | ✅ | ❌（需多次呼叫） |
-| 部分成功支援 | ✅ | ❌ |
-| Token 效率 | ✅（一次請求） | ❌（多次請求） |
-| 二進位檔支援（base64） | ✅ | ❌ |
+| 特性 | write_files |
+|------|-------------|
+| 同時處理多個檔案 | ✅ |
+| 部分成功支援 | ✅（回傳 `written_files` + `failed_files`） |
+| Token 效率 | ✅（一次請求寫入多個檔案） |
+| 二進位檔支援（base64） | ✅ |
+| BOM 自動添加 | ✅（僅 text 模式，`.c`/`.cpp`/`.h`/`.hpp`） |
 
 ---
