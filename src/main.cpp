@@ -306,7 +306,8 @@ int main(int argc, char* argv[]) {
 
     // Register built-in tools
     LOG_INFO("Main", "Registering built-in tools...");
-    ag.add_tool(agent::create_read_file_tool());
+    //ag.add_tool(agent::create_read_file_tool());
+    ag.add_tool(agent::create_read_files_tool());
     //ag.add_tool(agent::create_read_file_lines_tool());
     ag.add_tool(agent::create_write_file_tool());
     ag.add_tool(agent::create_write_files_tool());
@@ -318,6 +319,7 @@ int main(int argc, char* argv[]) {
     ag.add_tool(agent::create_code_search_tool());
     ag.add_tool(agent::create_create_directory_tool());
     ag.add_tool(agent::create_delete_path_tool());
+    ag.add_tool(agent::create_delete_files_tool());
     ag.add_tool(agent::create_copy_path_tool());
     ag.add_tool(agent::create_move_path_tool());
     ag.add_tool(agent::create_find_files_tool());
@@ -325,8 +327,6 @@ int main(int argc, char* argv[]) {
     ag.add_tool(agent::create_grep_with_context_tool());
     ag.add_tool(agent::create_run_build_tool());
     // Batch file tools (read/delete multiple files)
-    ag.add_tool(agent::create_read_files_tool());
-    ag.add_tool(agent::create_delete_files_tool());
     //ag.add_tool(agent::create_git_status_tool());
     //ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
