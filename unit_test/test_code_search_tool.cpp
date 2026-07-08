@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "unit_test.h"
 
+using namespace agent;
+namespace fs = std::filesystem;
+using json = nlohmann::json;
+
 
 // ── Entry point ────────────────────────────────────────────────
 

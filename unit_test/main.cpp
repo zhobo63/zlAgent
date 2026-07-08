@@ -13,6 +13,7 @@ void test_example(UnitReport &parent) {
     parent.report.push_back(unit);
 }
 
+void test_code_search_tools(UnitReport& parent);
 void test_file_tools(UnitReport& parent);
 
 void main() {
@@ -20,6 +21,7 @@ void main() {
 
     try {
         //test_example(main);
+        test_code_search_tools(main);
         test_file_tools(main);
     }
     catch (const std::exception& e) {

@@ -79,15 +79,22 @@ if(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
     set(OPENSSL_SSL_LIBRARY "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native/libssl.lib" CACHE FILEPATH "OpenSSL ssl lib")
 endif()
 
-# Main executable
-add_executable(zlagent
+# Shared core static library
+add_library(zlagent_core STATIC
     ${CORE_SOURCES}
     ${TOOL_SOURCES}
+)
+target_include_directories(zlagent_core PRIVATE include)
+target_precompile_headers(zlagent_core PRIVATE include/pch.h)
+if(MSVC)
+    target_compile_options(zlagent_core PRIVATE /utf-8 /wd4566)
+endif()
+
+# Main executable (links against shared core library)
+add_executable(zlagent
     src/main.cpp
 )
-
-# Precompiled header
-target_precompile_headers(zlagent PRIVATE include/pch.h)
+target_link_libraries(zlagent PRIVATE zlagent_core)
 
 # Enable OpenSSL support for HTTPS
 find_package(OpenSSL QUIET)
@@ -106,12 +113,12 @@ if(OPENSSL_FOUND)
 
     # Link OpenSSL libraries (static on MSVC, dynamic elsewhere)
     if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
-        target_link_libraries(zlagent PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(zlagent_core PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     elseif(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
         # Static link OpenSSL from NuGet package
         set(OPENSSL_STATIC_DIR "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
-        target_include_directories(zlagent PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
-        target_link_libraries(zlagent PRIVATE
+        target_include_directories(zlagent_core PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
+        target_link_libraries(zlagent_core PRIVATE
             "${OPENSSL_STATIC_DIR}/libssl_static_v143.lib"
             "${OPENSSL_STATIC_DIR}/libcrypto_static_v143.lib"
             # Windows system libraries required by static OpenSSL
@@ -123,10 +130,10 @@ endif()
 # Platform-specific settings
 if(MSVC)
     add_compile_options(/utf-8 /wd4566)
-    target_link_libraries(zlagent PRIVATE ws2_32)
+    target_link_libraries(zlagent_core PRIVATE ws2_32)
 elseif(UNIX AND NOT APPLE)
     # Linux: link dl for dlopen/dlsym, pthread for threading
-    target_link_libraries(zlagent PRIVATE dl pthread)
+    target_link_libraries(zlagent_core PRIVATE dl pthread)
 elseif(APPLE)
     # macOS: dlopen is in libSystem, no extra linking needed
 endif()
@@ -135,10 +142,10 @@ endif()
 
 
 
-# Tests (optional - enable with -DBUILD_TESTING=ON)
+# Unit tests (enable with -DBUILD_TESTING=ON)
 option(BUILD_TESTING "Build unit tests" OFF)
 if(BUILD_TESTING)
-    add_subdirectory(tests)
+    add_subdirectory(unit_test)
 endif()
 
 # Install target

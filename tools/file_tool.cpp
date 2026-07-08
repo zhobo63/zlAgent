@@ -102,12 +102,12 @@ public:
     std::string name() const override { return "read_files"; }
     std::string description() const override {
         return
-        "Read the contents of multiple files. "
-        "Default is outline mode (symbol names and line numbers). Set \"outline\":false to read full file content. "
-        "Modes:"
-        " (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"],\"outline\":false};"
-        " (2) object array with per-file options like start_line/end_line/outline;"
-        " (3) directory + glob pattern.";
+            "Read the contents of multiple files. "
+            "The 'outline' parameter is required — set true for outline mode (symbol names and line numbers), false to read full file content. "
+            "Modes:"
+            " (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"],\"outline\":false};"
+            " (2) object array with per-file options like start_line/end_line; outline is inherited from top-level;"
+            " (3) directory + glob pattern.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -123,9 +123,12 @@ public:
         schema["properties"]["glob"]["type"] = "string";
         schema["properties"]["glob"]["description"] = "File pattern to match (mutually exclusive with paths, default: '*')";
 
-        // outline - for string array mode and directory+glob mode
+        // outline - required for string array mode and directory+glob mode
         schema["properties"]["outline"]["type"] = "boolean";
-        schema["properties"]["outline"]["description"] = "Read file outlines (symbol names and line numbers) instead of full content. Default: true (outline only). Set to false to read the complete file content.";
+        schema["properties"]["outline"]["description"] = "Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content.";
+
+        // required fields
+        schema["required"] = json::array({"outline"});
 
         return schema.dump();
     }
@@ -204,9 +207,10 @@ public:
 
             if (args.contains("paths")) {
                 auto paths = args["paths"];
-                bool use_outline = args.value("outline", true);
-
-                // String array mode: ["file1.cpp", "file2.h"]
+                if (!args.contains("outline")) {
+                    return "Error: 'outline' is required when using 'paths'.";
+                }
+                bool use_outline = args["outline"];
                 if (!paths.empty() && paths[0].is_string()) {
                     for (const auto& p : paths) {
                         tasks.push_back({p.get<std::string>(), use_outline, 0, 0});
@@ -217,7 +221,7 @@ public:
                     for (const auto& obj : paths) {
                         FileTask task;
                         task.path = obj.value("path", "");
-                        task.outline = obj.value("outline", true);
+                        task.outline = args["outline"];  // inherit from top-level
                         task.start_line = obj.value("start_line", 0);
                         task.end_line   = obj.value("end_line", 0);
                         tasks.push_back(task);
@@ -227,9 +231,12 @@ public:
                 }
             } else if (args.contains("directory") && args.contains("glob")) {
                 // Directory + glob mode
+                if (!args.contains("outline")) {
+                    return "Error: 'outline' is required when using 'directory' and 'glob'.";
+                }
                 auto directory = args.value("directory", "");
                 auto glob_pattern = args.value("glob", "*");
-                bool use_outline = args.value("outline", true);
+                bool use_outline = args["outline"];
 
                 namespace fs = std::filesystem;
                 for (const auto& entry : fs::recursive_directory_iterator(directory)) {

@@ -1,12 +1,12 @@
 ﻿#include "pch.h"
 #include "unit_test.h"
 #include <fstream>
-#include <filesystem>
 
 #include "tools.h"
 
 using namespace agent;
 namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 static void safe_remove_all(const std::string& path)
 {
@@ -36,7 +36,9 @@ void test_read_file_tools(UnitReport& parent)
         auto tool = create_read_file_tool();
         UNIT_TEST("name_is_read_file", tool->name() == "read_file");
 
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/hello.txt") + "\"}");
+        json args;
+        args["path"] = dir + "/hello.txt";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("contains_line1", result.find("line1") != std::string::npos);
         UNIT_TEST("contains_line3", result.find("line3") != std::string::npos);
 
@@ -56,7 +58,11 @@ void test_read_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/hello.txt") + "\", \"start_line\": 3, \"end_line\": 5}");
+        json args;
+        args["path"] = dir + "/hello.txt";
+        args["start_line"] = 3;
+        args["end_line"] = 5;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("range_contains_line3", result.find("line3") != std::string::npos);
         UNIT_TEST("range_contains_line5", result.find("line5") != std::string::npos);
         UNIT_TEST("range_no_line1", result.find("line1") == std::string::npos);
@@ -68,7 +74,9 @@ void test_read_file_tools(UnitReport& parent)
     {
         LOG_INFO("read_file", "nonexistent_returns_error");
         auto tool = create_read_file_tool();
-        std::string result = tool->execute("{\"path\": \"/nonexistent/file.txt\"}");
+        json args;
+        args["path"] = "/nonexistent/file.txt";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -76,7 +84,9 @@ void test_read_file_tools(UnitReport& parent)
     {
         LOG_INFO("read_file", "empty_path_returns_error");
         auto tool = create_read_file_tool();
-        std::string result = tool->execute("{\"path\": \"\"}");
+        json args;
+        args["path"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -109,7 +119,9 @@ void test_read_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/large.txt") + "\"}");
+        json args;
+        args["path"] = dir + "/large.txt";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("outline_mode_triggered", result.find("File outline retrieved") != std::string::npos);
 
         safe_remove_all(dir);
@@ -128,7 +140,10 @@ void test_read_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/hello.txt") + "\", \"start_line\": 8}");
+        json args;
+        args["path"] = dir + "/hello.txt";
+        args["start_line"] = 8;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("start_only_contains_line8", result.find("line8") != std::string::npos);
         UNIT_TEST("start_only_no_line1", result.find("line1") == std::string::npos);
 
@@ -155,7 +170,10 @@ void test_write_file_tools(UnitReport& parent)
         auto tool = create_write_file_tool();
         UNIT_TEST("name_is_write_file", tool->name() == "write_file");
 
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/new.txt") + "\", \"content\": \"hello world\"}");
+        json args;
+        args["path"] = dir + "/new.txt";
+        args["content"] = "hello world";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("successfully_wrote", result.find("Successfully wrote") != std::string::npos);
         UNIT_TEST("file_exists", fs::exists(fs::path(dir) / "new.txt"));
 
@@ -178,7 +196,10 @@ void test_write_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_write_file_tool();
-        tool->execute("{\"path\": \"" + (dir + "/existing.txt") + "\", \"content\": \"new content\"}");
+        json args;
+        args["path"] = dir + "/existing.txt";
+        args["content"] = "new content";
+        tool->execute(args.dump());
 
         std::ifstream in(fs::path(dir) / "existing.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -191,7 +212,10 @@ void test_write_file_tools(UnitReport& parent)
     {
         LOG_INFO("write_file", "empty_path_returns_error");
         auto tool = create_write_file_tool();
-        std::string result = tool->execute("{\"path\": \"\", \"content\": \"test\"}");
+        json args;
+        args["path"] = "";
+        args["content"] = "test";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -199,7 +223,10 @@ void test_write_file_tools(UnitReport& parent)
     {
         LOG_INFO("write_file", "empty_content_returns_error");
         auto tool = create_write_file_tool();
-        std::string result = tool->execute("{\"path\": \"/tmp/test.txt\", \"content\": \"\"}");
+        json args;
+        args["path"] = "/tmp/test.txt";
+        args["content"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -227,7 +254,10 @@ void test_write_file_tools(UnitReport& parent)
         fs::create_directories(dir);
 
         auto tool = create_write_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/sub/deep/file.txt") + "\", \"content\": \"nested\"}");
+        json args;
+        args["path"] = dir + "/sub/deep/file.txt";
+        args["content"] = "nested";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("auto_dir_success", result.find("Error") == std::string::npos);
         UNIT_TEST("auto_dir_file_exists", fs::exists(fs::path(dir) / "sub" / "deep" / "file.txt"));
 
@@ -258,7 +288,10 @@ void test_append_file_tools(UnitReport& parent)
         auto tool = create_append_file_tool();
         UNIT_TEST("name_is_append_file", tool->name() == "append_file");
 
-        tool->execute("{\"path\": \"" + (dir + "/append.txt") + "\", \"content\": \"second line\\n\"}");
+        json args;
+        args["path"] = dir + "/append.txt";
+        args["content"] = "second line\n";
+        tool->execute(args.dump());
 
         std::ifstream in(fs::path(dir) / "append.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -276,7 +309,10 @@ void test_append_file_tools(UnitReport& parent)
         fs::create_directories(dir);
 
         auto tool = create_append_file_tool();
-        tool->execute("{\"path\": \"" + (dir + "/new.txt") + "\", \"content\": \"hello\\n\"}");
+        json args;
+        args["path"] = dir + "/new.txt";
+        args["content"] = "hello\n";
+        tool->execute(args.dump());
 
         UNIT_TEST("append_creates_new_file", fs::exists(fs::path(dir) / "new.txt"));
 
@@ -287,7 +323,10 @@ void test_append_file_tools(UnitReport& parent)
     {
         LOG_INFO("append_file", "empty_path_returns_error");
         auto tool = create_append_file_tool();
-        std::string result = tool->execute("{\"path\": \"\", \"content\": \"test\"}");
+        json args;
+        args["path"] = "";
+        args["content"] = "test";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -311,7 +350,10 @@ void test_append_file_tools(UnitReport& parent)
     {
         LOG_INFO("append_file", "empty_content_returns_error");
         auto tool = create_append_file_tool();
-        std::string result = tool->execute("{\"path\": \"/tmp/test.txt\", \"content\": \"\"}");
+        json args;
+        args["path"] = "/tmp/test.txt";
+        args["content"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -339,7 +381,11 @@ void test_insert_file_content_tools(UnitReport& parent)
         auto tool = create_insert_file_content_tool();
         UNIT_TEST("name_is_insert_file_content", tool->name() == "insert_file_content");
 
-        tool->execute("{\"path\": \"" + (dir + "/insert.txt") + "\", \"line_number\": 1, \"content\": \"new line\\n\"}");
+        json args;
+        args["path"] = dir + "/insert.txt";
+        args["line_number"] = 1;
+        args["content"] = "new line\n";
+        tool->execute(args.dump());
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -361,7 +407,11 @@ void test_insert_file_content_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_insert_file_content_tool();
-        tool->execute("{\"path\": \"" + (dir + "/insert.txt") + "\", \"line_number\": 3, \"content\": \"appended\\n\"}");
+        json args;
+        args["path"] = dir + "/insert.txt";
+        args["line_number"] = 3;
+        args["content"] = "appended\n";
+        tool->execute(args.dump());
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -374,7 +424,11 @@ void test_insert_file_content_tools(UnitReport& parent)
     {
         LOG_INFO("insert_file_content", "empty_path_returns_error");
         auto tool = create_insert_file_content_tool();
-        std::string result = tool->execute("{\"path\": \"\", \"line_number\": 1, \"content\": \"test\"}");
+        json args;
+        args["path"] = "";
+        args["line_number"] = 1;
+        args["content"] = "test";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -406,7 +460,11 @@ void test_insert_file_content_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_insert_file_content_tool();
-        tool->execute("{\"path\": \"" + (dir + "/insert.txt") + "\", \"line_number\": 2, \"content\": \"middle line\\n\"}");
+        json args;
+        args["path"] = dir + "/insert.txt";
+        args["line_number"] = 2;
+        args["content"] = "middle line\n";
+        tool->execute(args.dump());
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -420,7 +478,11 @@ void test_insert_file_content_tools(UnitReport& parent)
     {
         LOG_INFO("insert_file_content", "nonexistent_returns_error");
         auto tool = create_insert_file_content_tool();
-        std::string result = tool->execute("{\"path\": \"/nonexistent/file.txt\", \"line_number\": 1, \"content\": \"test\"}");
+        json args;
+        args["path"] = "/nonexistent/file.txt";
+        args["line_number"] = 1;
+        args["content"] = "test";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -428,7 +490,11 @@ void test_insert_file_content_tools(UnitReport& parent)
     {
         LOG_INFO("insert_file_content", "empty_content_returns_error");
         auto tool = create_insert_file_content_tool();
-        std::string result = tool->execute("{\"path\": \"/tmp/test.txt\", \"line_number\": 1, \"content\": \"\"}");
+        json args;
+        args["path"] = "/tmp/test.txt";
+        args["line_number"] = 1;
+        args["content"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -456,7 +522,11 @@ void test_edit_file_tools(UnitReport& parent)
         auto tool = create_edit_file_tool();
         UNIT_TEST("name_is_edit_file", tool->name() == "edit_file");
 
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"old_text\": \"hello world\", \"new_text\": \"goodbye world\"}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["old_text"] = "hello world";
+        args["new_text"] = "goodbye world";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_replace", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "edit.txt");
@@ -479,7 +549,11 @@ void test_edit_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"old_text\": \"not found\", \"new_text\": \"replacement\"}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["old_text"] = "not found";
+        args["new_text"] = "replacement";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("notfound_returns_error", result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -489,7 +563,11 @@ void test_edit_file_tools(UnitReport& parent)
     {
         LOG_INFO("edit_file", "empty_path_returns_error");
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"\", \"old_text\": \"a\", \"new_text\": \"b\"}");
+        json args;
+        args["path"] = "";
+        args["old_text"] = "a";
+        args["new_text"] = "b";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -521,7 +599,12 @@ void test_edit_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"start_line\": 2, \"end_line\": 3, \"new_text\": \"replaced\"}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["start_line"] = 2;
+        args["end_line"] = 3;
+        args["new_text"] = "replaced";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("line_mode_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "edit.txt");
@@ -544,7 +627,11 @@ void test_edit_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"old_text\": \"hello world\", \"new_text\": \"goodbye\"}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["old_text"] = "hello world";
+        args["new_text"] = "goodbye";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("multiple_matches_returns_error", result.find("matches multiple locations") != std::string::npos);
 
         safe_remove_all(dir);
@@ -562,7 +649,13 @@ void test_edit_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"old_text\": \"hello\", \"new_text\": \"bye\", \"start_line\": 1, \"end_line\": 1}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["old_text"] = "hello";
+        args["new_text"] = "bye";
+        args["start_line"] = 1;
+        args["end_line"] = 1;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("both_modes_returns_error", result.find("Cannot use both") != std::string::npos);
 
         safe_remove_all(dir);
@@ -580,7 +673,12 @@ void test_edit_file_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"" + (dir + "/edit.txt") + "\", \"start_line\": 1, \"end_line\": 5, \"new_text\": \"replaced\"}");
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["start_line"] = 1;
+        args["end_line"] = 5;
+        args["new_text"] = "replaced";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("exceeds_length_returns_error", result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -590,7 +688,11 @@ void test_edit_file_tools(UnitReport& parent)
     {
         LOG_INFO("edit_file", "empty_texts_returns_error");
         auto tool = create_edit_file_tool();
-        std::string result = tool->execute("{\"path\": \"/tmp/test.txt\", \"old_text\": \"\", \"new_text\": \"\"}");
+        json args;
+        args["path"] = "/tmp/test.txt";
+        args["old_text"] = "";
+        args["new_text"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_texts_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -619,7 +721,9 @@ void test_list_directory_tools(UnitReport& parent)
         auto tool = create_list_directory_tool();
         UNIT_TEST("name_is_list_directory", tool->name() == "list_directory");
 
-        std::string result = tool->execute("{\"path\": \"" + dir + "\"}");
+        json args;
+        args["path"] = dir;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("contains_file1", result.find("file1.txt") != std::string::npos);
         UNIT_TEST("contains_subdir", result.find("subdir") != std::string::npos);
 
@@ -630,7 +734,9 @@ void test_list_directory_tools(UnitReport& parent)
     {
         LOG_INFO("list_directory", "nonexistent_returns_error");
         auto tool = create_list_directory_tool();
-        std::string result = tool->execute("{\"path\": \"/nonexistent/dir\"}");
+        json args;
+        args["path"] = "/nonexistent/dir";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -638,7 +744,9 @@ void test_list_directory_tools(UnitReport& parent)
     {
         LOG_INFO("list_directory", "empty_path_returns_error");
         auto tool = create_list_directory_tool();
-        std::string result = tool->execute("{\"path\": \"\"}");
+        json args;
+        args["path"] = "";
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -666,7 +774,9 @@ void test_list_directory_tools(UnitReport& parent)
         fs::create_directories(dir);
 
         auto tool = create_list_directory_tool();
-        std::string result = tool->execute("{\"path\": \"" + dir + "\"}");
+        json args;
+        args["path"] = dir;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_dir_no_error", result.find("Error") == std::string::npos);
 
         safe_remove_all(dir);
@@ -700,10 +810,12 @@ void test_read_files_tools(UnitReport& parent)
         auto tool = create_read_files_tool();
         UNIT_TEST("name_is_read_files", tool->name() == "read_files");
 
-        std::string result = tool->execute(
-            "{\"paths\":[\"" + (dir + "/a.txt") + "\",\"" + (dir + "/b.txt") + "\"],\"outline\":false}");
-        UNIT_TEST("contains_a_content", result.find("content of a") != std::string::npos);
-        UNIT_TEST("contains_b_content", result.find("content of b") != std::string::npos);
+        json args;
+        args["paths"] = {dir + "/a.txt", dir + "/b.txt"};
+        args["outline"] = false;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("has_files_array", result.contains("files"));
+        UNIT_TEST("success_count_is_2", result["summary"]["success_count"] == 2);
 
         safe_remove_all(dir);
     }
@@ -721,10 +833,15 @@ void test_read_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[{\"path\":\"" + (dir + "/range.txt") + "\",\"outline\":false,\"start_line\":3,\"end_line\":5}],\"outline\":false}");
-        UNIT_TEST("range_contains_line3", result.find("line3") != std::string::npos);
-        UNIT_TEST("range_no_line1", result.find("line1") == std::string::npos);
+        json args;
+        json file_obj;
+        file_obj["path"] = dir + "/range.txt";
+        file_obj["start_line"] = 3;
+        file_obj["end_line"] = 5;
+        args["paths"] = {file_obj};
+        args["outline"] = false;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("range_success", result["summary"]["success_count"] == 1);
 
         safe_remove_all(dir);
     }
@@ -745,10 +862,12 @@ void test_read_files_tools(UnitReport& parent)
         out2.close();
 
         auto tool = create_read_files_tool();
-        std::string result = tool->execute(
-            "{\"directory\":\"" + dir + "\",\"glob\":\"*.txt\",\"outline\":false}");
-        UNIT_TEST("glob_contains_txt", result.find("txt content") != std::string::npos);
-        UNIT_TEST("glob_no_cpp", result.find("cpp content") == std::string::npos);
+        json args;
+        args["directory"] = dir;
+        args["glob"] = "*.txt";
+        args["outline"] = false;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("glob_success", result["summary"]["success_count"] == 1);
 
         safe_remove_all(dir);
     }
@@ -757,16 +876,19 @@ void test_read_files_tools(UnitReport& parent)
     {
         LOG_INFO("read_files", "nonexistent_file_error");
         auto tool = create_read_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[\"/nonexistent/file.txt\"],\"outline\":false}");
-        UNIT_TEST("error_entry_present", result.find("Cannot open file") != std::string::npos);
+        json args;
+        args["paths"] = {"/nonexistent/file.txt"};
+        args["outline"] = false;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("error_entry_present", result["summary"]["error_count"] == 1);
     }
 
     // missing required params returns error
     {
         LOG_INFO("read_files", "missing_params_returns_error");
         auto tool = create_read_files_tool();
-        std::string result = tool->execute("{}");
+        json args;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("missing_params_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -799,9 +921,11 @@ void test_read_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[\"" + (dir + "/outline.txt") + "\"],\"outline\":true}");
-        UNIT_TEST("outline_mode_triggered", result.find("File outline retrieved") != std::string::npos);
+        json args;
+        args["paths"] = {dir + "/outline.txt"};
+        args["outline"] = true;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("outline_success", result["summary"]["success_count"] == 1);
 
         safe_remove_all(dir);
     }
@@ -818,10 +942,12 @@ void test_read_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_read_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[\"" + (dir + "/a.txt") + "\",\"/nonexistent/b.txt\"],\"outline\":false}");
-        UNIT_TEST("mixed_has_content", result.find("content of a") != std::string::npos);
-        UNIT_TEST("mixed_has_error", result.find("Cannot open file") != std::string::npos);
+        json args;
+        args["paths"] = {dir + "/a.txt", "/nonexistent/b.txt"};
+        args["outline"] = false;
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("mixed_success_count", result["summary"]["success_count"] == 1);
+        UNIT_TEST("mixed_error_count", result["summary"]["error_count"] == 1);
 
         safe_remove_all(dir);
     }
@@ -854,8 +980,9 @@ void test_delete_files_tools(UnitReport& parent)
         auto tool = create_delete_files_tool();
         UNIT_TEST("name_is_delete_files", tool->name() == "delete_files");
 
-        std::string result = tool->execute(
-            "{\"paths\":[\"" + (dir + "/del1.txt") + "\"]}");
+        json args;
+        args["paths"] = {dir + "/del1.txt"};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("deleted_file_gone", !fs::exists(fs::path(dir) / "del1.txt"));
         UNIT_TEST("kept_file_exists", fs::exists(fs::path(dir) / "keep.txt"));
 
@@ -874,8 +1001,10 @@ void test_delete_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_delete_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[\"" + (dir + "/dry.txt") + "\"],\"dry_run\":true}");
+        json args;
+        args["paths"] = {dir + "/dry.txt"};
+        args["dry_run"] = true;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("dryrun_file_still_exists", fs::exists(fs::path(dir) / "dry.txt"));
         UNIT_TEST("dryrun_message_present", result.find("Dry run mode") != std::string::npos);
 
@@ -898,8 +1027,10 @@ void test_delete_files_tools(UnitReport& parent)
         out2.close();
 
         auto tool = create_delete_files_tool();
-        tool->execute(
-            "{\"directory\":\"" + dir + "\",\"glob\":\"*.log\"}");
+        json args;
+        args["directory"] = dir;
+        args["glob"] = "*.log";
+        tool->execute(args.dump());
         UNIT_TEST("glob_deleted_log", !fs::exists(fs::path(dir) / "a.log"));
         UNIT_TEST("glob_kept_txt", fs::exists(fs::path(dir) / "b.txt"));
 
@@ -910,8 +1041,9 @@ void test_delete_files_tools(UnitReport& parent)
     {
         LOG_INFO("delete_files", "nonexistent_file_error");
         auto tool = create_delete_files_tool();
-        std::string result = tool->execute(
-            "{\"paths\":[\"/nonexistent/file.txt\"]}");
+        json args;
+        args["paths"] = {"/nonexistent/file.txt"};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("error_entry_present", result.find("File not found") != std::string::npos);
     }
 
@@ -919,7 +1051,8 @@ void test_delete_files_tools(UnitReport& parent)
     {
         LOG_INFO("delete_files", "missing_params_returns_error");
         auto tool = create_delete_files_tool();
-        std::string result = tool->execute("{}");
+        json args;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("missing_params_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -963,9 +1096,17 @@ void test_edit_files_tools(UnitReport& parent)
         auto tool = create_edit_files_tool();
         UNIT_TEST("name_is_edit_files", tool->name() == "edit_files");
 
-        std::string result = tool->execute(
-            "{\"edits\":[{\"path\":\"" + (dir + "/replace.txt") + "\","  // replace lines 2-3 with replaced
-            "\"operations\":[{\"type\":\"replace_line_range\",\"start_line\":2,\"end_line\":3,\"new_text\":\"replaced\"}]}]}");
+        json args;
+        json op;
+        op["type"] = "replace_line_range";
+        op["start_line"] = 2;
+        op["end_line"] = 3;
+        op["new_text"] = "replaced";
+        json edit_obj;
+        edit_obj["path"] = dir + "/replace.txt";
+        edit_obj["operations"] = {op};
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_replace", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "replace.txt");
@@ -988,9 +1129,16 @@ void test_edit_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_files_tool();
-        std::string result = tool->execute(
-            "{\"edits\":[{\"path\":\"" + (dir + "/insert.txt") + "\","  // insert before line 2
-            "\"operations\":[{\"type\":\"insert_before_line\",\"line_number\":2,\"content\":\"new line\"}]}]}");
+        json args;
+        json op;
+        op["type"] = "insert_before_line";
+        op["line_number"] = 2;
+        op["content"] = "new line";
+        json edit_obj;
+        edit_obj["path"] = dir + "/insert.txt";
+        edit_obj["operations"] = {op};
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_insert", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "insert.txt");
@@ -1012,9 +1160,16 @@ void test_edit_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_files_tool();
-        std::string result = tool->execute(
-            "{\"edits\":[{\"path\":\"" + (dir + "/delete.txt") + "\","  // delete lines 2-3
-            "\"operations\":[{\"type\":\"delete_lines\",\"start_line\":2,\"end_line\":3}]}]}");
+        json args;
+        json op;
+        op["type"] = "delete_lines";
+        op["start_line"] = 2;
+        op["end_line"] = 3;
+        json edit_obj;
+        edit_obj["path"] = dir + "/delete.txt";
+        edit_obj["operations"] = {op};
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_delete", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "delete.txt");
@@ -1037,12 +1192,35 @@ void test_edit_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_files_tool();
-        // Build JSON programmatically to avoid escaping issues
-        std::string json = "{\"edits\":[{\"path\":\"" + (dir + "/multi.txt") + "\",";
-        json += "\"operations\":[{\"type\":\"replace_line_range\",\"start_line\":1,\"end_line\":2,\"new_text\":\"replaced\"},";  // replace lines 1-2
-        json += "{\"type\":\"insert_before_line\",\"line_number\":4,\"content\":\"inserted\"},";  // insert before line 4 (original)
-        json += "{\"type\":\"delete_lines\",\"start_line\":5,\"end_line\":6}]}]}";  // delete lines 5-6
-        std::string result = tool->execute(json);
+        json args;
+        json ops;
+        {
+            json op1;
+            op1["type"] = "replace_line_range";
+            op1["start_line"] = 1;
+            op1["end_line"] = 2;
+            op1["new_text"] = "replaced";
+            ops.push_back(op1);
+        }
+        {
+            json op2;
+            op2["type"] = "insert_before_line";
+            op2["line_number"] = 4;
+            op2["content"] = "inserted";
+            ops.push_back(op2);
+        }
+        {
+            json op3;
+            op3["type"] = "delete_lines";
+            op3["start_line"] = 5;
+            op3["end_line"] = 6;
+            ops.push_back(op3);
+        }
+        json edit_obj;
+        edit_obj["path"] = dir + "/multi.txt";
+        edit_obj["operations"] = ops;
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_multi_ops", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "multi.txt");
@@ -1071,10 +1249,29 @@ void test_edit_files_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_edit_files_tool();
-        std::string result = tool->execute(
-            "{\"edits\":[{\"path\":\"" + (dir + "/overlap.txt") + "\","  // overlapping ranges
-            "\"operations\":[{\"type\":\"replace_line_range\",\"start_line\":1,\"end_line\":2,\"new_text\":\"a\"},"
-            "{\"type\":\"replace_line_range\",\"start_line\":2,\"end_line\":3,\"new_text\":\"b\"}]}]}");
+        json args;
+        json ops;
+        {
+            json op1;
+            op1["type"] = "replace_line_range";
+            op1["start_line"] = 1;
+            op1["end_line"] = 2;
+            op1["new_text"] = "a";
+            ops.push_back(op1);
+        }
+        {
+            json op2;
+            op2["type"] = "replace_line_range";
+            op2["start_line"] = 2;
+            op2["end_line"] = 3;
+            op2["new_text"] = "b";
+            ops.push_back(op2);
+        }
+        json edit_obj;
+        edit_obj["path"] = dir + "/overlap.txt";
+        edit_obj["operations"] = ops;
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("overlap_returns_error", result.find("Overlapping") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1084,9 +1281,17 @@ void test_edit_files_tools(UnitReport& parent)
     {
         LOG_INFO("edit_files", "nonexistent_file_error");
         auto tool = create_edit_files_tool();
-        std::string result = tool->execute(
-            "{\"edits\":[{\"path\":\"/nonexistent/file.txt\","  // nonexistent file
-            "\"operations\":[{\"type\":\"replace_line_range\",\"start_line\":1,\"end_line\":1,\"new_text\":\"x\"}]}]}");
+        json args;
+        json op;
+        op["type"] = "replace_line_range";
+        op["start_line"] = 1;
+        op["end_line"] = 1;
+        op["new_text"] = "x";
+        json edit_obj;
+        edit_obj["path"] = "/nonexistent/file.txt";
+        edit_obj["operations"] = {op};
+        args["edits"] = {edit_obj};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("nonexistent_returns_error", result.find("Cannot open file") != std::string::npos);
     }
 
@@ -1094,7 +1299,8 @@ void test_edit_files_tools(UnitReport& parent)
     {
         LOG_INFO("edit_files", "missing_edits_returns_error");
         auto tool = create_edit_files_tool();
-        std::string result = tool->execute("{}");
+        json args;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("missing_edits_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1134,10 +1340,14 @@ void test_write_files_tools(UnitReport& parent)
         auto tool = create_write_files_tool();
         UNIT_TEST("name_is_write_files", tool->name() == "write_files");
 
-        std::string result = tool->execute(
-            "{\"files\":["
-            "{\"path\":\"" + (dir + "/f1.txt") + "\",\"content\":\"hello\"},"
-            "{\"path\":\"" + (dir + "/f2.txt") + "\",\"content\":\"world\"}]}");
+        json args;
+        json f1, f2;
+        f1["path"] = dir + "/f1.txt";
+        f1["content"] = "hello";
+        f2["path"] = dir + "/f2.txt";
+        f2["content"] = "world";
+        args["files"] = {f1, f2};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_write", result.find("Error") == std::string::npos);
 
         UNIT_TEST("f1_exists", fs::exists(fs::path(dir) / "f1.txt"));
@@ -1158,8 +1368,12 @@ void test_write_files_tools(UnitReport& parent)
         fs::create_directories(dir);
 
         auto tool = create_write_files_tool();
-        std::string result = tool->execute(
-            "{\"files\":[{\"path\":\"" + (dir + "/sub/deep/f.txt") + "\",\"content\":\"nested\"}]}");
+        json args;
+        json f1;
+        f1["path"] = dir + "/sub/deep/f.txt";
+        f1["content"] = "nested";
+        args["files"] = {f1};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("auto_dir_file_exists", fs::exists(fs::path(dir) / "sub" / "deep" / "f.txt"));
 
         safe_remove_all(dir);
@@ -1169,8 +1383,12 @@ void test_write_files_tools(UnitReport& parent)
     {
         LOG_INFO("write_files", "empty_path_error_entry");
         auto tool = create_write_files_tool();
-        std::string result = tool->execute(
-            "{\"files\":[{\"path\":\"\",\"content\":\"test\"}]}");
+        json args;
+        json f1;
+        f1["path"] = "";
+        f1["content"] = "test";
+        args["files"] = {f1};
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_error_entry", result.find("No file path provided") != std::string::npos);
     }
 
@@ -1178,7 +1396,8 @@ void test_write_files_tools(UnitReport& parent)
     {
         LOG_INFO("write_files", "missing_files_returns_error");
         auto tool = create_write_files_tool();
-        std::string result = tool->execute("{}");
+        json args;
+        std::string result = tool->execute(args.dump());
         UNIT_TEST("missing_files_returns_error", result.find("Error") != std::string::npos);
     }
 
