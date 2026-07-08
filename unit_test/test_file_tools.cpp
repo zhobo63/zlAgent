@@ -820,7 +820,7 @@ void test_read_files_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // read with object array (line range)
+    // read with object array (per-file options via 'files')
     {
         LOG_INFO("read_files", "test_read_files_object_array_temp");
         std::string dir = "test_read_files_object_array_temp";
@@ -836,10 +836,10 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         json file_obj;
         file_obj["path"] = dir + "/range.txt";
+        file_obj["outline"] = false;
         file_obj["start_line"] = 3;
         file_obj["end_line"] = 5;
-        args["paths"] = {file_obj};
-        args["outline"] = false;
+        args["files"] = json::array({file_obj});
         json result = json::parse(tool->execute(args.dump()));
         UNIT_TEST("range_success", result["summary"]["success_count"] == 1);
 
@@ -890,6 +890,16 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         std::string result = tool->execute(args.dump());
         UNIT_TEST("missing_params_returns_error", result.find("Error") != std::string::npos);
+    }
+
+    // missing outline returns error (outline is required)
+    {
+        LOG_INFO("read_files", "missing_outline_returns_error");
+        auto tool = create_read_files_tool();
+        json args;
+        args["paths"] = {"/some/file.txt"};
+        std::string result = tool->execute(args.dump());
+        UNIT_TEST("missing_outline_returns_error", result.find("Error") != std::string::npos);
     }
 
     // invalid JSON returns error
@@ -948,6 +958,53 @@ void test_read_files_tools(UnitReport& parent)
         json result = json::parse(tool->execute(args.dump()));
         UNIT_TEST("mixed_success_count", result["summary"]["success_count"] == 1);
         UNIT_TEST("mixed_error_count", result["summary"]["error_count"] == 1);
+
+        safe_remove_all(dir);
+    }
+
+    // combined modes: paths + files + directory/glob in one call
+    {
+        LOG_INFO("read_files", "test_read_files_combined_temp");
+        std::string dir = "test_read_files_combined_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(fs::path(dir) / "subdir");
+
+        // file for paths mode
+        std::ofstream out1(fs::path(dir) / "p.txt");
+        out1 << "paths content\n";
+        out1.close();
+
+        // file for files mode (line range)
+        std::ofstream out2(fs::path(dir) / "f.txt");
+        for (int i = 1; i <= 5; ++i)
+            out2 << "line" << i << "\n";
+        out2.close();
+
+        // file for directory+glob mode
+        std::ofstream out3(fs::path(dir) / "subdir" / "g.txt");
+        out3 << "glob content\n";
+        out3.close();
+
+        auto tool = create_read_files_tool();
+        json args;
+        // Mode 1: paths
+        args["paths"] = {dir + "/p.txt"};
+        args["outline"] = false;
+        // Mode 2: files (per-file options)
+        {
+            json file_obj;
+            file_obj["path"] = dir + "/f.txt";
+            file_obj["start_line"] = 3;
+            file_obj["end_line"] = 4;
+            args["files"] = json::array({file_obj});
+        }
+        // Mode 3: directory+glob
+        args["directory"] = dir + "/subdir";
+        args["glob"] = "*.txt";
+
+        json result = json::parse(tool->execute(args.dump()));
+        UNIT_TEST("combined_success_count", result["summary"]["success_count"] == 3);
+        UNIT_TEST("combined_total_files", result["total_files"] == 3);
 
         safe_remove_all(dir);
     }

@@ -103,19 +103,23 @@ public:
     std::string description() const override {
         return
             "Read the contents of multiple files. "
-            "The 'outline' parameter is required — set true for outline mode (symbol names and line numbers), false to read full file content. "
-            "Modes:"
+            "The 'outline' parameter is required at top-level when using 'paths' or 'directory'+glob — set true for outline mode (symbol names and line numbers), false to read full file content. "
+            "Modes can be combined in a single call:"
             " (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"],\"outline\":false};"
-            " (2) object array with per-file options like start_line/end_line; outline is inherited from top-level;"
+            " (2) object array with per-file options, each file can have its own outline/start_line/end_line, e.g. {\"files\":[{\"path\":\"a.cpp\",\"start_line\":1,\"end_line\":100,\"outline\":false}]};"
             " (3) directory + glob pattern.";
     }
     std::string parameters_schema() const override {
         json schema;
         schema["type"] = "object";
 
-        // paths - can be string[] or object[]
+        // paths - string[] only
         schema["properties"]["paths"]["type"] = "array";
-        schema["properties"]["paths"]["description"] = "List of file paths to read (mutually exclusive with directory+glob). Can be a string array [\"file1.cpp\", \"file2.h\"] or an object array [{\"path\": \"file1.cpp\", \"start_line\": 10, \"end_line\": 100}].";
+        schema["properties"]["paths"]["description"] = "List of file paths to read as a string array. E.g. [\"file1.cpp\", \"file2.h\"]. Requires top-level 'outline'. Can be combined with files/directory+glob.";
+
+        // files - object[] for per-file options
+        schema["properties"]["files"]["type"] = "array";
+        schema["properties"]["files"]["description"] = "List of file objects with per-file options. Each object: {\"path\": \"file.cpp\", \"outline\": false, \"start_line\": 1, \"end_line\": 100}. Can be combined with paths/directory+glob.";
 
         // directory + glob
         schema["properties"]["directory"]["type"] = "string";
@@ -125,7 +129,7 @@ public:
 
         // outline - required for string array mode and directory+glob mode
         schema["properties"]["outline"]["type"] = "boolean";
-        schema["properties"]["outline"]["description"] = "Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content.";
+        schema["properties"]["outline"]["description"] = "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content.";
 
         // required fields
         schema["required"] = json::array({"outline"});
@@ -205,49 +209,55 @@ public:
             struct FileTask { std::string path; bool outline; int start_line; int end_line; };
             std::vector<FileTask> tasks;
 
+            // Determine top-level outline default
+            bool has_outline = args.contains("outline");
+            bool top_outline = has_outline ? args["outline"] : true;
+
+            // Mode 1: string array paths — uses top-level outline
             if (args.contains("paths")) {
                 auto paths = args["paths"];
-                if (!args.contains("outline")) {
+                if (!has_outline) {
                     return "Error: 'outline' is required when using 'paths'.";
                 }
-                bool use_outline = args["outline"];
-                if (!paths.empty() && paths[0].is_string()) {
-                    for (const auto& p : paths) {
-                        tasks.push_back({p.get<std::string>(), use_outline, 0, 0});
-                    }
+                for (const auto& p : paths) {
+                    tasks.push_back({p.get<std::string>(), top_outline, 0, 0});
                 }
-                // Object array mode: [{"path": "file1.cpp", "start_line": 10, "end_line": 100}]
-                else if (!paths.empty() && paths[0].is_object()) {
-                    for (const auto& obj : paths) {
-                        FileTask task;
-                        task.path = obj.value("path", "");
-                        task.outline = args["outline"];  // inherit from top-level
-                        task.start_line = obj.value("start_line", 0);
-                        task.end_line   = obj.value("end_line", 0);
-                        tasks.push_back(task);
-                    }
-                } else {
-                    return "Error: 'paths' must be a string array or an object array.";
+            }
+
+            // Mode 2: object array — each file can have its own outline (defaults to top-level)
+            if (args.contains("files")) {
+                auto files = args["files"];
+                for (const auto& obj : files) {
+                    FileTask task;
+                    task.path = obj.value("path", "");
+                    task.outline = obj.value("outline", top_outline);
+                    task.start_line = obj.value("start_line", 0);
+                    task.end_line   = obj.value("end_line", 0);
+                    tasks.push_back(task);
                 }
-            } else if (args.contains("directory") && args.contains("glob")) {
-                // Directory + glob mode
-                if (!args.contains("outline")) {
+            }
+
+            // Mode 3: directory + glob — uses top-level outline
+            if (args.contains("directory") && args.contains("glob")) {
+                if (!has_outline) {
                     return "Error: 'outline' is required when using 'directory' and 'glob'.";
                 }
                 auto directory = args.value("directory", "");
                 auto glob_pattern = args.value("glob", "*");
-                bool use_outline = args["outline"];
 
                 namespace fs = std::filesystem;
                 for (const auto& entry : fs::recursive_directory_iterator(directory)) {
                     if (!entry.is_regular_file()) continue;
                     std::string filename = entry.path().filename().string();
                     if (match_glob(filename, glob_pattern)) {
-                        tasks.push_back({entry.path().string(), use_outline, 0, 0});
+                        tasks.push_back({entry.path().string(), top_outline, 0, 0});
                     }
                 }
-            } else {
-                return "Error: Must provide either 'paths' or both 'directory' and 'glob'.";
+            }
+
+            // At least one mode must be provided
+            if (!args.contains("paths") && !args.contains("files") && !(args.contains("directory") && args.contains("glob"))) {
+                return "Error: Must provide at least one of 'paths', 'files', or both 'directory' and 'glob'.";
             }
 
             if (tasks.empty()) {
