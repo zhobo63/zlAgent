@@ -6,6 +6,8 @@
 #include "safety_guard.h"
 #include "safety_guard.h"
 
+const uint8_t bom[] = { 0xEF, 0xBB, 0xBF };
+
 namespace agent {
 using json = nlohmann::json;
 
@@ -97,7 +99,13 @@ class ReadFilesTool : public Tool {
 public:
     std::string name() const override { return "read_files"; }
     std::string description() const override {
-        return "Read the contents of multiple files. Modes: (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"]}; (2) object array with per-file options like start_line/end_line/outline; (3) directory + glob pattern. Add \"outline\":true to read file outlines instead of content.";
+        return
+        "Read the contents of multiple files. "
+        "Default is outline mode (symbol names and line numbers). Set \"outline\":false to read full file content. "
+        "Modes:"
+        " (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"],\"outline\":false};"
+        " (2) object array with per-file options like start_line/end_line/outline;"
+        " (3) directory + glob pattern.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -115,7 +123,7 @@ public:
 
         // outline - for string array mode and directory+glob mode
         schema["properties"]["outline"]["type"] = "boolean";
-        schema["properties"]["outline"]["description"] = "Read file outlines instead of content. Cannot be used with start_line/end_line in object mode.";
+        schema["properties"]["outline"]["description"] = "Read file outlines (symbol names and line numbers) instead of full content. Default: true (outline only). Set to false to read the complete file content.";
 
         return schema.dump();
     }
@@ -191,7 +199,7 @@ public:
 
             if (args.contains("paths")) {
                 auto paths = args["paths"];
-                bool use_outline = args.value("outline", false);
+                bool use_outline = args.value("outline", true);
 
                 // String array mode: ["file1.cpp", "file2.h"]
                 if (!paths.empty() && paths[0].is_string()) {
@@ -204,7 +212,7 @@ public:
                     for (const auto& obj : paths) {
                         FileTask task;
                         task.path = obj.value("path", "");
-                        task.outline = obj.value("outline", false);
+                        task.outline = obj.value("outline", true);
                         task.start_line = obj.value("start_line", 0);
                         task.end_line   = obj.value("end_line", 0);
                         tasks.push_back(task);
@@ -216,7 +224,7 @@ public:
                 // Directory + glob mode
                 auto directory = args.value("directory", "");
                 auto glob_pattern = args.value("glob", "*");
-                bool use_outline = args.value("outline", false);
+                bool use_outline = args.value("outline", true);
 
                 namespace fs = std::filesystem;
                 for (const auto& entry : fs::recursive_directory_iterator(directory)) {
@@ -747,6 +755,417 @@ public:
 };
 
 // -----------------------------------------------------------------------
+// EditFilesTool - Batch edit multiple files with block-based approach
+// -----------------------------------------------------------------------
+class EditFilesTool : public Tool {
+public:
+    std::string name() const override { return "edit_files"; }
+    std::string description() const override {
+        return "Edit one or more files in a single call. Each file can have multiple operations: replace_line_range, insert_before_line, insert_after_line, delete_lines, replace_text. All line numbers are based on the original file before any edits. Operations within a file are atomic - if any operation fails (e.g., overlapping ranges), that entire file is rolled back. Files are independent of each other.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+        schema["properties"]["edits"]["type"] = "array";
+        schema["properties"]["edits"]["description"] = "List of file edits, each containing a path and operations array.";
+        schema["properties"]["edits"]["items"]["type"] = "object";
+        schema["properties"]["edits"]["items"]["properties"]["path"]["type"] = "string";
+        schema["properties"]["edits"]["items"]["properties"]["path"]["description"] = "File path to edit (relative to project root).";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["type"] = "array";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["description"] = "List of operations for this file.";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["type"] = "object";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["type"] = "string";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["description"] = "Operation type: replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text.";
+        schema["required"] = {"edits"};
+        return schema.dump();
+    }
+
+    bool needs_user_reply(UserReplyMode mode) const override {
+        return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
+    }
+
+private:
+    // A modified block: covers original lines [start, end] (1-based inclusive)
+    struct ModifiedBlock {
+        int start;               // 1-based inclusive
+        int end;                 // 1-based inclusive (-1 means insertion point, no line consumed)
+        std::string new_content;
+        bool is_insertion;       // true for insert_before/after (end == -1)
+    };
+
+    static bool read_file_lines(const std::string& path,
+                                 std::vector<std::string>& out_lines) {
+        std::ifstream infile(path);
+        if (!infile.is_open()) return false;
+        std::string line;
+        while (std::getline(infile, line)) {
+            out_lines.push_back(line);
+        }
+        infile.close();
+        return true;
+    }
+
+    static bool write_file_lines(const std::string& path,
+                                  const std::vector<std::string>& lines) {
+        std::ofstream outfile(path, std::ios::trunc);
+        if (!outfile.is_open()) return false;
+        for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+            outfile << lines[i];
+            if (i < static_cast<int>(lines.size()) - 1)
+                outfile << '\n';
+        }
+        outfile.close();
+        return true;
+    }
+
+    static std::vector<std::string> split_lines(const std::string& text) {
+        std::vector<std::string> result;
+        if (text.empty()) return result;
+        std::istringstream iss(text);
+        std::string line;
+        while (std::getline(iss, line)) {
+            result.push_back(line);
+        }
+        if (!text.empty() && text.back() == '\n' && !result.empty()) {
+            result.pop_back();
+        }
+        return result;
+    }
+
+    static bool blocks_overlap(const ModifiedBlock& a, const ModifiedBlock& b) {
+        if (a.is_insertion && b.is_insertion) return false;
+        ModifiedBlock ta = a, tb = b;
+        if (ta.is_insertion) std::swap(ta, tb);
+        // ta is not insertion
+        int a_start = ta.start, a_end = ta.end;
+        if (!tb.is_insertion) {
+            return !(a_end < tb.start || tb.end < a_start);
+        }
+        // tb is insertion at position tb.start
+        return tb.start >= a_start && tb.start <= a_end + 1;
+    }
+
+    static std::vector<std::pair<int, size_t>> find_all_occurrences(
+            const std::string& content,
+            const std::vector<std::string>& lines,
+            const std::string& old_text) {
+        std::vector<std::pair<int, size_t>> results;
+        if (old_text.empty()) return results;
+
+        size_t pos = 0;
+        for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+            int line_num = i + 1;
+            size_t line_start = pos;
+            if (i > 0) pos += 1; // newline separator
+            pos += lines[i].size();
+
+            size_t search_start = line_start;
+            while (true) {
+                auto found = content.find(old_text, search_start);
+                if (found == std::string::npos || found >= pos) break;
+                results.push_back({line_num, found});
+                search_start = found + 1;
+            }
+        }
+        return results;
+    }
+
+    bool process_file(const json& edit_entry,
+                      std::string& error_out,
+                      int& original_lines_out,
+                      int& new_lines_out) {
+        std::string path = edit_entry.value("path", "");
+        if (path.empty()) {
+            error_out = "No file path provided.";
+            return false;
+        }
+
+        auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+        if (check_result == PathCheckResult::Denied) {
+            error_out = "Path '" + path + "' is outside allowed directories. Operation denied.";
+            return false;
+        }
+
+        std::vector<std::string> lines;
+        if (!read_file_lines(path, lines)) {
+            error_out = "Cannot open file '" + path + "'.";
+            return false;
+        }
+        int total_lines = static_cast<int>(lines.size());
+        original_lines_out = total_lines;
+
+        // Reconstruct full content for replace_text
+        std::string content;
+        for (int i = 0; i < total_lines; ++i) {
+            if (i > 0) content += '\n';
+            content += lines[i];
+        }
+
+        std::vector<ModifiedBlock> blocks;
+
+        auto& operations = edit_entry["operations"];
+        for (const auto& op : operations) {
+            std::string type = op.value("type", "");
+
+            if (type == "replace_line_range") {
+                int start = op.value("start_line", 0);
+                int end   = op.value("end_line", 0);
+                std::string new_text = op.value("new_text", "");
+
+                if (start < 1 || end < start || end > total_lines) {
+                    error_out = "Invalid line range: replace_line_range(start=" +
+                                std::to_string(start) + ", end=" + std::to_string(end) +
+                                ") in file with " + std::to_string(total_lines) + " lines.";
+                    return false;
+                }
+
+                ModifiedBlock block{start, end, new_text, false};
+                for (const auto& existing : blocks) {
+                    if (blocks_overlap(block, existing)) {
+                        error_out = "Overlapping line operations detected: replace_line_range(" +
+                                    std::to_string(start) + "-" + std::to_string(end) + ") overlaps with another operation.";
+                        return false;
+                    }
+                }
+                blocks.push_back(block);
+
+            } else if (type == "insert_before_line") {
+                int line_num = op.value("line_number", 0);
+                std::string content_str = op.value("content", "");
+
+                if (line_num < 1 || line_num > total_lines + 1) {
+                    error_out = "Line number out of range: insert_before_line at line " +
+                                std::to_string(line_num) + " (file has " +
+                                std::to_string(total_lines) + " lines).";
+                    return false;
+                }
+
+                ModifiedBlock block{line_num, -1, content_str, true};
+                for (const auto& existing : blocks) {
+                    if (blocks_overlap(block, existing)) {
+                        error_out = "Overlapping line operations detected: insert_before_line(" +
+                                    std::to_string(line_num) + ") overlaps with another operation.";
+                        return false;
+                    }
+                }
+                blocks.push_back(block);
+
+            } else if (type == "insert_after_line") {
+                int line_num = op.value("line_number", 0);
+                std::string content_str = op.value("content", "");
+
+                if (line_num < 1 || line_num > total_lines) {
+                    error_out = "Line number out of range: insert_after_line at line " +
+                                std::to_string(line_num) + " (file has " +
+                                std::to_string(total_lines) + " lines).";
+                    return false;
+                }
+
+                ModifiedBlock block{line_num + 1, -1, content_str, true};
+                for (const auto& existing : blocks) {
+                    if (blocks_overlap(block, existing)) {
+                        error_out = "Overlapping line operations detected: insert_after_line(" +
+                                    std::to_string(line_num) + ") overlaps with another operation.";
+                        return false;
+                    }
+                }
+                blocks.push_back(block);
+
+            } else if (type == "delete_lines") {
+                int start = op.value("start_line", 0);
+                int end   = op.value("end_line", 0);
+
+                if (start < 1 || end < start || end > total_lines) {
+                    error_out = "Invalid line range: delete_lines(start=" +
+                                std::to_string(start) + ", end=" + std::to_string(end) +
+                                ") in file with " + std::to_string(total_lines) + " lines.";
+                    return false;
+                }
+
+                ModifiedBlock block{start, end, "", false};
+                for (const auto& existing : blocks) {
+                    if (blocks_overlap(block, existing)) {
+                        error_out = "Overlapping line operations detected: delete_lines(" +
+                                    std::to_string(start) + "-" + std::to_string(end) + ") overlaps with another operation.";
+                        return false;
+                    }
+                }
+                blocks.push_back(block);
+
+            } else if (type == "replace_text") {
+                std::string old_text = op.value("old_text", "");
+                std::string new_text = op.value("new_text", "");
+
+                if (old_text.empty()) {
+                    error_out = "old_text cannot be empty string.";
+                    return false;
+                }
+
+                size_t first_pos = content.find(old_text);
+                if (first_pos == std::string::npos) {
+                    error_out = "old_text not found in file: \"" + old_text + "\".";
+                    return false;
+                }
+
+                auto occurrences = find_all_occurrences(content, lines, old_text);
+
+                if (occurrences.size() == 1) {
+                    content.replace(occurrences[0].second, old_text.size(), new_text);
+                } else {
+                    std::ostringstream prompt;
+                    prompt << "\n" << path << ": \"" << old_text << "\" found in "
+                           << occurrences.size() << " locations:\n";
+                    for (size_t i = 0; i < occurrences.size(); ++i) {
+                        int line_num = occurrences[i].first;
+                        prompt << "  [" << (i + 1) << "] Line " << line_num
+                               << ": \"" << lines[line_num - 1] << "\"\n";
+                    }
+                    prompt << "\nChoose: [N] skip / [num] replace that one / [A] all: ";
+                    std::cout << prompt.str();
+
+                    std::string choice;
+                    std::cin >> choice;
+
+                    if (choice == "N" || choice == "n") {
+                        // Skip this operation
+                    } else if (choice == "A" || choice == "a") {
+                        size_t search_pos = 0;
+                        while (true) {
+                            auto found = content.find(old_text, search_pos);
+                            if (found == std::string::npos) break;
+                            content.replace(found, old_text.size(), new_text);
+                            search_pos = found + new_text.size();
+                        }
+                    } else {
+                        int idx = 0;
+                        try { idx = std::stoi(choice); } catch (...) {}
+                        if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
+                            auto [line_num, pos] = occurrences[idx - 1];
+                            content.replace(pos, old_text.size(), new_text);
+                        }
+                    }
+                }
+
+            } else {
+                error_out = "Unknown operation type: \"" + type + "\".";
+                return false;
+            }
+        }
+
+        // If no line-based blocks and content unchanged, nothing to do
+        if (blocks.empty()) {
+            std::string old_content_str;
+            for (int i = 0; i < total_lines; ++i) {
+                if (i > 0) old_content_str += '\n';
+                old_content_str += lines[i];
+            }
+            if (content == old_content_str) {
+                new_lines_out = total_lines;
+                return true;
+            }
+            std::vector<std::string> new_lines = split_lines(content);
+            if (!write_file_lines(path, new_lines)) {
+                error_out = "Cannot write to file '" + path + "'.";
+                return false;
+            }
+            new_lines_out = static_cast<int>(new_lines.size());
+            return true;
+        }
+
+        // Sort blocks by start position (ascending)
+        std::sort(blocks.begin(), blocks.end(), [](const ModifiedBlock& a, const ModifiedBlock& b) {
+            if (a.start != b.start) return a.start < b.start;
+            if (a.is_insertion && !b.is_insertion) return true;
+            return false;
+        });
+
+        // Apply all blocks to produce new lines
+        std::vector<std::string> result_lines;
+        int current_line = 1;
+
+        for (const auto& block : blocks) {
+            if (block.is_insertion) {
+                while (current_line < block.start) {
+                    result_lines.push_back(lines[current_line - 1]);
+                    current_line++;
+                }
+                auto insert_lines = split_lines(block.new_content);
+                for (const auto& il : insert_lines) {
+                    result_lines.push_back(il);
+                }
+            } else {
+                while (current_line < block.start) {
+                    result_lines.push_back(lines[current_line - 1]);
+                    current_line++;
+                }
+                auto replace_lines = split_lines(block.new_content);
+                for (const auto& rl : replace_lines) {
+                    result_lines.push_back(rl);
+                }
+                current_line = block.end + 1;
+            }
+        }
+
+        while (current_line <= total_lines) {
+            result_lines.push_back(lines[current_line - 1]);
+            current_line++;
+        }
+
+        if (!write_file_lines(path, result_lines)) {
+            error_out = "Cannot write to file '" + path + "'.";
+            return false;
+        }
+
+        new_lines_out = static_cast<int>(result_lines.size());
+        return true;
+    }
+
+public:
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+            auto args = json::parse(json_args);
+
+            if (!args.contains("edits") || !args["edits"].is_array()) {
+                return "Error: 'edits' array is required.";
+            }
+
+            json result_edited  = json::array();
+            json result_failed  = json::array();
+
+            for (const auto& edit_entry : args["edits"]) {
+                std::string path = edit_entry.value("path", "");
+                int original_lines = 0, new_lines = 0;
+                std::string error;
+
+                if (process_file(edit_entry, error, original_lines, new_lines)) {
+                    json file_result;
+                    file_result["path"] = path;
+                    file_result["original_lines"] = original_lines;
+                    file_result["new_lines"] = new_lines;
+                    result_edited.push_back(file_result);
+                } else {
+                    json file_error;
+                    file_error["path"] = path.empty() ? "(unknown)" : path;
+                    file_error["error"] = error;
+                    result_failed.push_back(file_error);
+                }
+            }
+
+            json response;
+            bool any_success = !result_edited.empty();
+            response["success"] = any_success;
+            response["edited_files"]  = result_edited;
+            response["failed_files"]  = result_failed;
+
+            return response.dump(2);
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        }
+    }
+};
+
+// -----------------------------------------------------------------------
 // ListDirectoryTool - Browse directory contents
 // -----------------------------------------------------------------------
 class ListDirectoryTool : public Tool {
@@ -1059,6 +1478,10 @@ ToolPtr create_edit_file_tool() {
     return std::make_shared<EditFileTool>();
 }
 
+ToolPtr create_edit_files_tool() {
+    return std::make_shared<EditFilesTool>();
+}
+
 // -----------------------------------------------------------------------
 // ReadFileLinesTool - Read a specific line range from a file
 // -----------------------------------------------------------------------
@@ -1150,6 +1573,10 @@ public:
                 std::string path = file_entry.value("path", "");
                 std::string new_content = file_entry.value("content", "");
                 if (!path.empty()) {
+                    // Safety: integrated path check
+                    auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+                    if (check_result == PathCheckResult::Denied) continue;
+
                     std::ifstream existing(path);
                     if (existing.is_open()) {
                         std::stringstream ss;
@@ -1171,7 +1598,6 @@ public:
 private:
     // Check if content already has UTF-8 BOM (EF BB BF)
     static bool has_utf8_bom(const std::string& content) {
-        const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
         return content.size() >= 3 &&
                static_cast<unsigned char>(content[0]) == bom[0] &&
                static_cast<unsigned char>(content[1]) == bom[1] &&
@@ -1204,14 +1630,14 @@ public:
                 std::string encoding  = file_entry.value("encoding", "text");
 
                 if (path.empty()) {
-                    result_failed.push_back({{"error", "No file path provided."}});
+                    result_failed.push_back({{"path", ""}, {"status", "error"}, {"error", "No file path provided."}});
                     continue;
                 }
 
                 // Safety: integrated path check (working dir + whitelist + strict mode).
                 auto check_result = SafetyGuard::get_instance().is_path_ok(path);
                 if (check_result == PathCheckResult::Denied) {
-                    result_failed.push_back({{"path", path}, {"error", "Path is outside allowed directories. Operation denied."}});
+                    result_failed.push_back({{"path", path}, {"status", "error"}, {"error", "Path is outside allowed directories. Operation denied."}});
                     continue;
                 }
 
@@ -1224,8 +1650,7 @@ public:
 
                 // Auto-add UTF-8 BOM for C/C++ source files (text mode only)
                 if (!binary_mode && needs_bom(path) && !has_utf8_bom(content)) {
-                    const char bom[] = {0xEF, 0xBB, 0xBF};
-                    content.insert(0, bom, 3);
+                    content.insert(0, (const char*)bom, 3);
                 }
 
                 // Ensure parent directory exists
@@ -1235,7 +1660,7 @@ public:
                     std::error_code ec;
                     fs::create_directories(parent_dir, ec);
                     if (ec) {
-                        result_failed.push_back({{"path", path}, {"error", "Failed to create directory: " + ec.message()}});
+                        result_failed.push_back({{"path", path}, {"status", "error"}, {"error", "Failed to create directory: " + ec.message()}});
                         continue;
                     }
                 }
@@ -1243,7 +1668,7 @@ public:
                 // Write the file
                 std::ofstream file(path, binary_mode ? std::ios::binary : std::ios::trunc);
                 if (!file.is_open()) {
-                    result_failed.push_back({{"path", path}, {"error", "Cannot create/open file"}});
+                    result_failed.push_back({{"path", path}, {"status", "error"}, {"error", std::string("Cannot create/open file: ") + strerror(errno)}});
                     continue;
                 }
 
@@ -1254,17 +1679,13 @@ public:
                 }
                 file.close();
 
-                result_written.push_back({{"path", path}, {"bytes", static_cast<int>(content.size())}});
+                result_written.push_back({{"path", path}, {"status", "ok"}});
             }
 
             // Build response JSON
             json response;
-            bool all_success = result_failed.empty();
-            response["success"] = all_success;
             response["written_files"] = result_written;
-            if (!result_failed.empty()) {
-                response["failed_files"] = result_failed;
-            }
+            response["failed_files"]  = result_failed;
 
             return response.dump(2);
         } catch (const json::parse_error& e) {

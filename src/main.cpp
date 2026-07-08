@@ -309,11 +309,12 @@ int main(int argc, char* argv[]) {
     //ag.add_tool(agent::create_read_file_tool());
     ag.add_tool(agent::create_read_files_tool());
     //ag.add_tool(agent::create_read_file_lines_tool());
-    ag.add_tool(agent::create_write_file_tool());
+    //ag.add_tool(agent::create_write_file_tool());
     ag.add_tool(agent::create_write_files_tool());
     ag.add_tool(agent::create_append_file_tool());
     ag.add_tool(agent::create_insert_file_content_tool());
     ag.add_tool(agent::create_edit_file_tool());
+    //ag.add_tool(agent::create_edit_files_tool());
     ag.add_tool(agent::create_list_directory_tool());
     ag.add_tool(agent::create_terminal_tool());
     ag.add_tool(agent::create_code_search_tool());
@@ -327,6 +328,7 @@ int main(int argc, char* argv[]) {
     ag.add_tool(agent::create_grep_with_context_tool());
     ag.add_tool(agent::create_run_build_tool());
     // Batch file tools (read/delete multiple files)
+    ag.add_tool(agent::create_delete_files_tool());
     //ag.add_tool(agent::create_git_status_tool());
     //ag.add_tool(agent::create_git_diff_tool());
     ag.add_tool(agent::create_fetch_url_tool());
