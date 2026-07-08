@@ -32,6 +32,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string query = args.value("query", "");
             int top_k = args.value("top_k", 3);
 
@@ -135,6 +138,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string prefix = args.value("prefix", "");
 
             if (!agent::get_global_long_term_memory()) return "Error: Long-term memory not initialized.";

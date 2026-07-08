@@ -69,6 +69,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string pattern = args.value("pattern", "");
             std::string directory = args.value("directory", "");
             std::string file_pattern = args.value("file_pattern", "");

@@ -4,7 +4,6 @@
 #include "file_utils.h"
 #include "tui.h"
 #include "safety_guard.h"
-#include "safety_guard.h"
 
 const uint8_t bom[] = { 0xEF, 0xBB, 0xBF };
 
@@ -34,6 +33,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {                
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             int start_line = args.value("start_line", 0);
             int end_line   = args.value("end_line", 0);
@@ -192,6 +194,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
 
             // Build file list with per-file options
             struct FileTask { std::string path; bool outline; int start_line; int end_line; };
@@ -295,6 +300,9 @@ public:
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return;
+            }
             std::string path = args.value("path", "");
             std::string new_content = args.value("content", "");
             if (!path.empty()) {
@@ -319,6 +327,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             std::string content = args.value("content", "");
 
@@ -435,7 +446,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
-
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             bool dry_run = args.value("dry_run", false);
             bool recursive = args.value("recursive", true);
 
@@ -626,6 +639,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             std::string old_text = args.value("old_text", "");
             std::string new_text = args.value("new_text", "");
@@ -1125,7 +1141,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
-
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             if (!args.contains("edits") || !args["edits"].is_array()) {
                 return "Error: 'edits' array is required.";
             }
@@ -1187,15 +1205,22 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             if (path.empty()) {
-                path = "./";
+                return "Error: No directory path provided.";
             }
 
 namespace fs = std::filesystem;
 
             if (!path.empty() && path.back() != '/' && path.back() != '\\')
                 path += '/';
+
+            if (!fs::exists(path)) {
+                return "Error: Directory '" + path + "' does not exist.";
+            }
 
             std::string folders, files;
             int folder_count = 0, file_count = 0;
@@ -1274,6 +1299,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             std::string content = args.value("content", "");
 
@@ -1383,6 +1411,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             int line_number = args.value("line_number", 0);
             std::string content = args.value("content", "");
@@ -1426,7 +1457,7 @@ public:
                 }
                 // If content ends with a newline, the last getline produces an empty string
                 // which we should not add as an extra blank line
-                if (!content.empty() && content.back() == '\n' && !insert_lines.empty()) {
+                if (!content.empty() && content.back() == '\n' && !insert_lines.empty() && insert_lines.back().empty()) {
                     insert_lines.pop_back();
                 }
             }
@@ -1616,7 +1647,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
-
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             if (!args.contains("files") || !args["files"].is_array()) {
                 return "Error: 'files' array is required.";
             }

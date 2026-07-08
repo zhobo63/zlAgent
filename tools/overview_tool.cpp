@@ -36,6 +36,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string directory = args.value("directory", "");
             if (directory.empty()) directory = ".";
 

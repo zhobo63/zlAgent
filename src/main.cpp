@@ -11,7 +11,6 @@
 #include "skill_system.h"
 #include "rag_manager.h"
 #include "embedding_provider.h"
-#include "embedding_provider.h"
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
 #include "command_handlers.h"
@@ -309,8 +308,8 @@ int main(int argc, char* argv[]) {
     //ag.add_tool(agent::create_read_file_tool());
     ag.add_tool(agent::create_read_files_tool());
     //ag.add_tool(agent::create_read_file_lines_tool());
-    //ag.add_tool(agent::create_write_file_tool());
-    ag.add_tool(agent::create_write_files_tool());
+    ag.add_tool(agent::create_write_file_tool());
+    //ag.add_tool(agent::create_write_files_tool());
     ag.add_tool(agent::create_append_file_tool());
     ag.add_tool(agent::create_insert_file_content_tool());
     ag.add_tool(agent::create_edit_file_tool());

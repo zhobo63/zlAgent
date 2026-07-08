@@ -62,6 +62,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No directory path provided.";
 
@@ -109,6 +112,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             if (path.empty()) return "Error: No path provided.";
 
@@ -163,6 +169,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string source = args.value("source_path", "");
             std::string dest   = args.value("destination_path", "");
 
@@ -231,6 +240,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string source = args.value("source_path", "");
             std::string dest   = args.value("destination_path", "");
 
@@ -316,6 +328,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string glob = args.value("glob", args.value("pattern", ""));
             std::string directory = args.value("directory", ".");
 
@@ -429,6 +444,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", "");
             int start_line = args.value("start_line", 0);
             int end_line   = args.value("end_line", -1);
@@ -723,6 +741,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string regex_str = args.value("regex", "");
             std::string path      = args.value("path", "");
             int before = args.value("before", 0);
@@ -821,6 +842,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string command = args.value("command", "");
             std::string cwd     = args.value("cwd", "");
 
@@ -989,6 +1013,9 @@ public:
     std::string execute(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path = args.value("path", ".");
 
             // Resolve relative paths to absolute paths so that cwd is always unambiguous.
@@ -1086,6 +1113,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string path   = args.value("path", ".");
             bool staged        = args.value("staged", false);
 
@@ -1157,6 +1187,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string url = args.value("url", "");
 
             if (url.empty()) return "Error: No URL provided.";

@@ -22,6 +22,12 @@ set(TEST_SOURCES
     test_skill_loader.cpp
     test_rag_manager.cpp
     test_long_term_memory.cpp
+    # Tool tests
+    test_code_search_tool.cpp
+    test_file_tools.cpp
+    test_fs_tools.cpp
+    test_memory_tools.cpp
+    test_skill_tools.cpp
 )
 
 # Link the actual implementation source files so tests can call real code
@@ -40,6 +46,14 @@ set(TEST_IMPL_SOURCES
     ../src/llm_client.cpp
     ../src/token_counter.cpp
     ../src/remote_log.cpp
+    # File utilities (used by file tools)
+    ../src/file_utils.cpp
+    # Tool implementations
+    ../tools/code_search_tool.cpp
+    ../tools/file_tool.cpp
+    ../tools/fs_tool.cpp
+    ../tools/memory_tool.cpp
+    ../tools/skill_tool.cpp
 )
 
 add_executable(tests ${TEST_SOURCES} ${TEST_IMPL_SOURCES})

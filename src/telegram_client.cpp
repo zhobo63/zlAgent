@@ -30,6 +30,7 @@ void TelegramClient::start() {
 #ifdef CPPHTTLIB_OPENSSL_SUPPORT
     httplib::SSLClient client("api.telegram.org");
 #else
+    httplib::Client client("api.telegram.org");
     LOG_ERROR("Telegram", "HTTPS not supported — Telegram requires SSL.");
     return;
 #endif
@@ -87,8 +88,9 @@ bool TelegramClient::send_message(int64_t chat_id, const std::string& text) {
 #ifdef CPPHTTLIB_OPENSSL_SUPPORT
     httplib::SSLClient client("api.telegram.org");
 #else
+    httplib::Client client("api.telegram.org");
     LOG_ERROR("Telegram", "HTTPS not supported — Telegram requires SSL.");
-    return;
+    return false;
 #endif
 
     client.set_read_timeout(15, 0);
@@ -127,6 +129,7 @@ void TelegramClient::polling_loop() {
 #ifdef CPPHTTLIB_OPENSSL_SUPPORT
     httplib::SSLClient client("api.telegram.org");
 #else
+    httplib::Client client("api.telegram.org");
     LOG_ERROR("Telegram", "HTTPS not supported — Telegram requires SSL.");
     return;
 #endif

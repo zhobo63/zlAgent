@@ -50,6 +50,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string name = args.value("name", "");
             std::string description = args.value("description", "");
             std::string when_to_use = args.value("when_to_use", "");
@@ -143,6 +146,9 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
             std::string name = args.value("name", "");
 
             if (name.empty()) return "Error: Skill name is required.";
@@ -196,6 +202,9 @@ public:
             std::vector<std::string> dirs;
             if (!json_args.empty()) {
                 auto args = json::parse(json_args);
+                if (args.is_discarded()) {
+                    return "Error: Invalid JSON arguments - not json";
+                }
                 if (args.contains("scan_dirs") && args["scan_dirs"].is_array()) {
                     for (const auto& d : args["scan_dirs"]) {
                         dirs.push_back(d.get<std::string>());
