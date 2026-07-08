@@ -145,7 +145,7 @@ void test_read_file_tools(UnitReport& parent)
         args["start_line"] = 8;
         std::string result = tool->execute(args.dump());
         UNIT_TEST("start_only_contains_line8", result.find("line8") != std::string::npos);
-        UNIT_TEST("start_only_no_line1", result.find("line1") == std::string::npos);
+        UNIT_TEST("start_only_no_line7", result.find("line7") == std::string::npos);
 
         safe_remove_all(dir);
     }

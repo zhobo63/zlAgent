@@ -37,8 +37,8 @@ public:
                 return "Error: Invalid JSON arguments - not json";
             }
             std::string path = args.value("path", "");
-            int start_line = args.value("start_line", 0);
-            int end_line   = args.value("end_line", 0);
+            int start_line = args.value("start_line", -1);
+            int end_line   = args.value("end_line", -1);
 
             if (path.empty()) return "Error: No file path provided.";
 
@@ -46,13 +46,6 @@ public:
             auto check_result = SafetyGuard::get_instance().is_path_ok(path);
             if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
-            }
-            if (start_line > 0 && end_line >= start_line) {
-                std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
-                if (result.empty()) {
-                    return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
-                }
-                return result;
             }
 
             // Full file read
@@ -66,6 +59,14 @@ public:
             std::string fline;
             while (std::getline(file, fline)) line_count++;
             file.close();
+            if (end_line < 0) { end_line = line_count; }
+            if (start_line >= 0 && end_line >= 0 && end_line >= start_line) {
+                std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
+                if (result.empty()) {
+                    return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
+                }
+                return result;
+            }
 
             const int OUTLINE_THRESHOLD = 200; // lines
             if (line_count > OUTLINE_THRESHOLD) {
