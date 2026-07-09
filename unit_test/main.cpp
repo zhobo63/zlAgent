@@ -14,8 +14,9 @@ void test_example(UnitReport &parent) {
 }
 
 void test_code_search_tools(UnitReport& parent);
-void test_overview_tools(UnitReport& parent);
-void test_file_tools(UnitReport& parent);
+void test_overview_tool(UnitReport& parent);
+void test_file_tool(UnitReport& parent);
+void test_fs_tool(UnitReport& parent);
 
 void main() {
     UnitReport main("UnitTest");
@@ -23,8 +24,9 @@ void main() {
     try {
         //test_example(main);
         test_code_search_tools(main);
-        test_file_tools(main);
-        test_overview_tools(main);
+        test_file_tool(main);
+        test_overview_tool(main);
+        test_fs_tool(main);
     }
     catch (const std::exception& e) {
         std::cerr << "Exception caught: " << e.what() << std::endl;

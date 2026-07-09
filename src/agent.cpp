@@ -241,8 +241,11 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
             auto tool_ptr = registry_.find_tool(tc.name);
             if (tool_ptr) {
+                LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + std::to_string(tc.arguments.size()) + " bytes");
+
                 // Show preview before execution
                 try {
+                    tool_ptr->show_arguments(tc.arguments);
                     tool_ptr->show_preview(tc.arguments);
                 } catch (...) {
                     // If preview fails, continue without it
@@ -256,6 +259,9 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
                         continue;
                     }
                 }
+            }
+            else {
+                LOG_ERROR(u8"🛠️Tool", "\nNot found: " + tc.name + " with args: " + tc.arguments);
             }
 
             // Validate arguments are well-formed JSON before executing
@@ -273,8 +279,6 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
                 memory_.add(tool_msg);
                 continue;
             }
-
-            LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + tc.arguments);
 
             std::string result = registry_.execute(tc.name, tc.arguments);
 

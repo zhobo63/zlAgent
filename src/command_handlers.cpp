@@ -9,6 +9,7 @@
 #include "long_term_memory.h"
 #include "json.hpp"
 #include "key_watcher.h"
+#include "file_utils.h"
 
 namespace agent {
 
@@ -25,7 +26,7 @@ void register_command_handlers(
         "/model",
         "/facts", "/sessions", "/summary", "/new", "/save",
         "/search-kb", "/add-doc",
-        "/view",
+        "/view", "/outline",
         "/reply",
         "/quit", "/exit"
     });
@@ -40,6 +41,7 @@ void register_command_handlers(
             "  /tools             List all internal tools\n"
             "  /tool <name>       Show details for a specific tool\n"
             "  /view <path>       Overview project directory and generate code summary\n"
+            "  /outline <file>    Show file outline (symbol names and line numbers)\n"
             "\nModel commands:\n"
             "  /model             List available models and switch interactively\n"
             "\nMemory commands:\n"
@@ -510,6 +512,33 @@ void register_command_handlers(
         LOG_INFO("Command", result.c_str());
 
 
+    });
+
+    // ── /outline <file> ─────────────────────────────────────
+    dispatcher.register_command("outline", [](const std::vector<std::string>& args, std::string&) {
+        if (args.empty()) {
+            LOG_ERROR("Command", "Usage: /outline <file>");
+            return;
+        }
+
+        std::string path = args[0];
+        try {
+            if (!std::filesystem::is_regular_file(path)) {
+                LOG_ERROR("Command", "Not a regular file: '" + path + "'");
+                return;
+            }
+        } catch (...) {
+            LOG_ERROR("Command", "Failed to check path: '" + path + "'");
+            return;
+        }
+
+        std::string outline = GenerateFileOutline(path);
+        if (outline.empty()) {
+            LOG_INFO("Command", "No symbols found in '" + path + "'.");
+            return;
+        }
+
+        LOG_INFO("Command", outline.c_str());
     });
 
     // ── /reply [mode] ──────────────────────────────────────

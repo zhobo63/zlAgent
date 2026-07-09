@@ -919,24 +919,126 @@ void test_read_files_tools(UnitReport& parent)
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
-    // outline mode (outline=true)
+    // outline mode with actual code file (outline=true)
     {
         LOG_INFO("read_files", "test_read_files_outline_temp");
         std::string dir = "test_read_files_outline_temp";
         if (fs::exists(dir)) fs::remove_all(dir);
         fs::create_directories(dir);
 
-        std::ofstream out(fs::path(dir) / "outline.txt");
-        for (int i = 1; i <= 250; ++i)
-            out << "line" << i << "\n";
+        std::ofstream out(fs::path(dir) / "outline.cpp");
+        out << "void foo() {}\n"
+            << "int bar(int x) { return x; }\n";
         out.close();
 
         auto tool = create_read_files_tool();
         json args;
-        args["paths"] = {dir + "/outline.txt"};
+        args["paths"] = {dir + "/outline.cpp"};
         args["outline"] = true;
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("outline_success", raw_result.find("foo") != std::string::npos);
+        UNIT_TEST("outline_has_bar", raw_result.find("bar") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // outline mode with start_line/end_line range
+    {
+        LOG_INFO("read_files", "test_read_files_outline_range_temp");
+        std::string dir = "test_read_files_outline_range_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "range.cpp");
+        for (int i = 1; i <= 20; ++i)
+            out << "void func" << i << "() {}\n";
+        out.close();
+
+        auto tool = create_read_files_tool();
+        json args;
+        json file_obj;
+        file_obj["path"] = dir + "/range.cpp";
+        file_obj["outline"] = true;
+        file_obj["start_line"] = 5;
+        file_obj["end_line"] = 10;
+        args["files"] = json::array({file_obj});
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("outline_range_has_func5", raw_result.find("func5") != std::string::npos);
+        UNIT_TEST("outline_range_no_func1", raw_result.find("func1()") == std::string::npos);
+        UNIT_TEST("outline_range_no_func15", raw_result.find("func15()") == std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // content verification: paths mode reads correct content
+    {
+        LOG_INFO("read_files", "test_read_files_content_verify_temp");
+        std::string dir = "test_read_files_content_verify_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "hello.txt");
+        out << "hello world\n";
+        out.close();
+
+        auto tool = create_read_files_tool();
+        json args;
+        args["paths"] = {dir + "/hello.txt"};
+        args["outline"] = false;
         json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("outline_success", result["summary"]["success_count"] == 1);
+        UNIT_TEST("content_verify_has_hello", result["files"][0]["content"].get<std::string>().find("hello world") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // directory+glob with outline=true
+    {
+        LOG_INFO("read_files", "test_read_files_glob_outline_temp");
+        std::string dir = "test_read_files_glob_outline_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "a.cpp");
+        out << "void alpha() {}\n";
+        out.close();
+
+        auto tool = create_read_files_tool();
+        json args;
+        args["directory"] = dir;
+        args["glob"] = "*.cpp";
+        args["outline"] = true;
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("glob_outline_has_alpha", raw_result.find("alpha") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // per-file outline in object array (files mode)
+    {
+        LOG_INFO("read_files", "test_read_files_perfile_outline_temp");
+        std::string dir = "test_read_files_perfile_outline_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out1(fs::path(dir) / "a.cpp");
+        out1 << "void foo() {}\n";
+        out1.close();
+
+        std::ofstream out2(fs::path(dir) / "b.txt");
+        out2 << "plain text\n";
+        out2.close();
+
+        auto tool = create_read_files_tool();
+        json args;
+        json f1, f2;
+        f1["path"] = dir + "/a.cpp";
+        f1["outline"] = true;
+        f2["path"] = dir + "/b.txt";
+        f2["outline"] = false;
+        args["files"] = json::array({f1, f2});
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("perfile_outline_has_foo", raw_result.find("foo") != std::string::npos);
+        UNIT_TEST("perfile_content_has_plain", raw_result.find("plain text") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1362,6 +1464,19 @@ void test_edit_files_tools(UnitReport& parent)
         UNIT_TEST("missing_edits_returns_error", result.find("Error") != std::string::npos);
     }
 
+    // missing operations in edit entry returns error
+    {
+        LOG_INFO("edit_files", "missing_operations_returns_error");
+        auto tool = create_edit_files_tool();
+        json args;
+        json edit_obj;
+        edit_obj["path"] = "/some/file.txt";
+        // no operations key
+        args["edits"] = json::array({edit_obj});
+        std::string result = tool->execute(args.dump());
+        UNIT_TEST("missing_operations_returns_error", result.find("operations") != std::string::npos);
+    }
+
     // invalid JSON returns error
     {
         LOG_INFO("edit_files", "invalid_json_returns_error");
@@ -1480,15 +1595,15 @@ void test_write_files_tools(UnitReport& parent)
 
 // ── Entry point ────────────────────────────────────────────────
 
-void test_file_tools(UnitReport& parent)
+void test_file_tool(UnitReport& parent)
 {
     // Disable SafetyGuard for tests — empty whitelist + no working dir = allow all paths.
     auto& sg = SafetyGuard::get_instance();
     sg.reset_path_whitelist();
     sg.set_working_directory("");
 
-    UnitReport unit("file_tools");
-    LOG_INFO("test_file_tools", "file_tools");
+    UnitReport unit("file_tool");
+    LOG_INFO("test_file_tool", "file_tool");
 
     test_read_file_tools(unit);
     test_write_file_tools(unit);

@@ -2,8 +2,9 @@
 add_executable(unit_test
     main.cpp
     test_code_search_tool.cpp
-    test_file_tools.cpp
+    test_file_tool.cpp
     test_overview_tool.cpp
+    test_fs_tool.cpp
 )
 
 target_include_directories(unit_test PRIVATE ../include)

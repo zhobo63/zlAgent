@@ -140,6 +140,62 @@ public:
         return schema.dump();
     }
 
+    void show_arguments(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) return;
+
+            // paths mode
+            if (args.contains("paths") && args["paths"].is_array()) {
+                int count = static_cast<int>(args["paths"].size());
+                std::cout << "  paths: " << count << " file(s)\n";
+                for (const auto& p : args["paths"]) {
+                    if (p.is_string())
+                        std::cout << "    - '" << p.get<std::string>() << "'\n";
+                }
+            }
+
+            // files mode
+            if (args.contains("files") && args["files"].is_array()) {
+                int count = static_cast<int>(args["files"].size());
+                std::cout << "  files: " << count << " file(s)\n";
+                for (const auto& f : args["files"]) {
+                    if (!f.is_object()) continue;
+                    std::string path = f.value("path", "?");
+                    bool outline = f.value("outline", false);
+                    int start_line = f.value("start_line", 0);
+                    int end_line   = f.value("end_line", 0);
+                    if (start_line > 0 && end_line >= start_line) {
+                        std::cout << "    - '" << path << "' lines " << start_line << "-" << end_line;
+                        if (outline) std::cout << " [outline]";
+                        std::cout << '\n';
+                    } else {
+                        std::cout << "    - '" << path << "'";
+                        if (outline) std::cout << " [outline]";
+                        std::cout << '\n';
+                    }
+                }
+            }
+
+            // directory + glob mode
+            if (args.contains("directory") && args["directory"].is_string()) {
+                std::string dir = args.value("directory", "");
+                std::string glob = args.value("glob", "*");
+                bool outline = args.value("outline", false);
+                std::cout << "  directory: '" << dir << "'";
+                if (glob != "*") std::cout << " glob: '" << glob << "'";
+                if (outline) std::cout << " [outline]";
+                std::cout << '\n';
+            }
+
+            // top-level outline flag (when not already shown)
+            if (!args.contains("directory") && args.contains("outline") && args["outline"].is_boolean()) {
+                bool outline = args.value("outline", false);
+                if (outline) std::cout << "  outline: true\n";
+            }
+        } catch (...) {}
+    }
+
     bool needs_user_reply(UserReplyMode mode) const override {
         return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
     }
@@ -317,6 +373,23 @@ public:
         schema["properties"]["content"]["description"] = "The content to write";
         schema["required"] = {"path", "content"};
         return schema.dump();
+    }
+
+    void show_arguments(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) return;
+            std::cout << "  path: '" << args.value("path", "") << "'\n";
+            std::string content = args.value("content", "");
+            // Show content line-by-line with line numbers
+            int line_num = 1;
+            for (const auto& ch : content) {
+                if (ch == '\n') {
+                    ++line_num;
+                }
+            }
+            std::cout << "  content: " << line_num << " lines\n";
+        } catch (...) {}
     }
 
     void show_preview(const std::string& json_args) override {
@@ -820,14 +893,180 @@ public:
         schema["properties"]["edits"]["description"] = "List of file edits, each containing a path and operations array.";
         schema["properties"]["edits"]["items"]["type"] = "object";
         schema["properties"]["edits"]["items"]["properties"]["path"]["type"] = "string";
-        schema["properties"]["edits"]["items"]["properties"]["path"]["description"] = "File path to edit (relative to project root).";
+        schema["properties"]["edits"]["items"]["properties"]["path"]["description"] = "File path to edit (relative to project root). Required.";
         schema["properties"]["edits"]["items"]["properties"]["operations"]["type"] = "array";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["description"] = "List of operations for this file.";
+        schema["properties"]["edits"]["items"]["properties"]["operations"]["description"] = "List of operations for this file. Required.";
         schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["type"] = "object";
         schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["type"] = "string";
         schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["description"] = "Operation type: replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text.";
         schema["required"] = {"edits"};
         return schema.dump();
+    }
+
+    void show_arguments(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) return;
+            if (!args.contains("edits") || !args["edits"].is_array()) return;
+
+            int edit_count = static_cast<int>(args["edits"].size());
+            std::cout << "  edits: " << edit_count << " file(s)\n";
+
+            for (const auto& edit_entry : args["edits"]) {
+                std::string path = edit_entry.value("path", "");
+                if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) continue;
+                int op_count = static_cast<int>(edit_entry["operations"].size());
+                std::cout << "    - '" << path << "' (" << op_count << " operation(s))\n";
+
+                for (const auto& op : edit_entry["operations"]) {
+                    std::string type = op.value("type", "unknown");
+                    if (type == "replace_line_range") {
+                        int start = op.value("start_line", 0);
+                        int end   = op.value("end_line", 0);
+                        std::cout << "      replace_line_range: lines " << start << "-" << end << '\n';
+                    } else if (type == "insert_before_line") {
+                        int line_num = op.value("line_number", 0);
+                        std::cout << "      insert_before_line: before line " << line_num << '\n';
+                    } else if (type == "insert_after_line") {
+                        int line_num = op.value("line_number", 0);
+                        std::cout << "      insert_after_line: after line " << line_num << '\n';
+                    } else if (type == "delete_lines") {
+                        int start = op.value("start_line", 0);
+                        int end   = op.value("end_line", 0);
+                        std::cout << "      delete_lines: lines " << start << "-" << end << '\n';
+                    } else if (type == "replace_text") {
+                        std::string old_text = op.value("old_text", "");
+                        // Show first line of old_text as identifier
+                        size_t nl = old_text.find('\n');
+                        std::string preview = (nl != std::string::npos) ? old_text.substr(0, nl) : old_text;
+                        if (preview.size() > 60) preview = preview.substr(0, 57) + "...";
+                        std::cout << "      replace_text: '" << preview << "'\n";
+                    } else {
+                        std::cout << "      " << type << '\n';
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    void show_preview(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (!args.contains("edits") || !args["edits"].is_array()) return;
+
+            for (const auto& edit_entry : args["edits"]) {
+                std::string path = edit_entry.value("path", "");
+                if (path.empty() || !edit_entry.contains("operations") || !edit_entry["operations"].is_array()) continue;
+
+                // Read original content
+                std::vector<std::string> lines;
+                if (!read_file_lines(path, lines)) continue;
+                int total_lines = static_cast<int>(lines.size());
+
+                // Reconstruct full content for replace_text
+                std::string old_content;
+                for (int i = 0; i < total_lines; ++i) {
+                    if (i > 0) old_content += '\n';
+                    old_content += lines[i];
+                }
+
+                // Simulate operations to produce new content
+                std::string sim_content = old_content;
+                auto& operations = edit_entry["operations"];
+                bool has_line_ops = false;
+
+                for (const auto& op : operations) {
+                    std::string type = op.value("type", "");
+
+                    if (type == "replace_text") {
+                        std::string old_text = op.value("old_text", "");
+                        std::string new_text = op.value("new_text", "");
+                        if (!old_text.empty()) {
+                            size_t pos = sim_content.find(old_text);
+                            if (pos != std::string::npos) {
+                                sim_content.replace(pos, old_text.size(), new_text);
+                            }
+                        }
+                    } else {
+                        // Line-based operations — need to simulate on lines
+                        has_line_ops = true;
+                        break;
+                    }
+                }
+
+                if (has_line_ops) {
+                    // Simulate line-based operations
+                    std::vector<ModifiedBlock> blocks;
+                    for (const auto& op : operations) {
+                        std::string type = op.value("type", "");
+                        if (type == "replace_line_range") {
+                            int start = op.value("start_line", 0);
+                            int end   = op.value("end_line", 0);
+                            std::string new_text = op.value("new_text", "");
+                            blocks.push_back({start, end, new_text, false});
+                        } else if (type == "insert_before_line") {
+                            int line_num = op.value("line_number", 0);
+                            std::string content_str = op.value("content", "");
+                            blocks.push_back({line_num, -1, content_str, true});
+                        } else if (type == "insert_after_line") {
+                            int line_num = op.value("line_number", 0);
+                            std::string content_str = op.value("content", "");
+                            blocks.push_back({line_num + 1, -1, content_str, true});
+                        } else if (type == "delete_lines") {
+                            int start = op.value("start_line", 0);
+                            int end   = op.value("end_line", 0);
+                            blocks.push_back({start, end, "", false});
+                        }
+                    }
+
+                    std::sort(blocks.begin(), blocks.end(), [](const ModifiedBlock& a, const ModifiedBlock& b) {
+                        if (a.start != b.start) return a.start < b.start;
+                        if (a.is_insertion && !b.is_insertion) return true;
+                        return false;
+                    });
+
+                    std::vector<std::string> result_lines;
+                    int current_line = 1;
+                    for (const auto& block : blocks) {
+                        if (block.is_insertion) {
+                            while (current_line < block.start) {
+                                result_lines.push_back(lines[current_line - 1]);
+                                current_line++;
+                            }
+                            auto insert_lines = split_lines(block.new_content);
+                            for (const auto& il : insert_lines)
+                                result_lines.push_back(il);
+                        } else {
+                            while (current_line < block.start) {
+                                result_lines.push_back(lines[current_line - 1]);
+                                current_line++;
+                            }
+                            auto replace_lines = split_lines(block.new_content);
+                            for (const auto& rl : replace_lines)
+                                result_lines.push_back(rl);
+                            current_line = block.end + 1;
+                        }
+                    }
+                    while (current_line <= total_lines) {
+                        result_lines.push_back(lines[current_line - 1]);
+                        current_line++;
+                    }
+
+                    std::string new_content_str;
+                    for (int i = 0; i < static_cast<int>(result_lines.size()); ++i) {
+                        if (i > 0) new_content_str += '\n';
+                        new_content_str += result_lines[i];
+                    }
+
+                    std::string diff = DiffEdit(old_content, new_content_str);
+                    std::cout << "\n" << path << "\n" << diff << "\n";
+                } else if (sim_content != old_content) {
+                    // Only replace_text operations
+                    std::string diff = DiffEdit(old_content, sim_content);
+                    std::cout << "\n" << path << "\n" << diff << "\n";
+                }
+            }
+        } catch (...) {}
     }
 
     bool needs_user_reply(UserReplyMode mode) const override {
@@ -930,6 +1169,12 @@ private:
             return false;
         }
 
+        // Validate operations before doing I/O
+        if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) {
+            error_out = "'operations' array is required.";
+            return false;
+        }
+
         auto check_result = SafetyGuard::get_instance().is_path_ok(path);
         if (check_result == PathCheckResult::Denied) {
             error_out = "Path '" + path + "' is outside allowed directories. Operation denied.";
@@ -952,6 +1197,11 @@ private:
         }
 
         std::vector<ModifiedBlock> blocks;
+
+        if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) {
+            error_out = "'operations' array is required.";
+            return false;
+        }
 
         auto& operations = edit_entry["operations"];
         for (const auto& op : operations) {
@@ -1305,6 +1555,20 @@ public:
         schema["required"] = {"path", "content"};
         return schema.dump();
     }
+    void show_arguments(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) return;
+            std::cout << "  path: '" << args.value("path", "") << "'\n";
+            std::string content = args.value("content", "");
+            int line_num = 1;
+            for (const auto& ch : content) {
+                if (ch == '\n') ++line_num;
+            }
+            std::cout << "  content: " << line_num << " lines\n";
+        } catch (...) {}
+    }
+
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
@@ -1384,6 +1648,22 @@ public:
         schema["required"] = {"path", "line_number", "content"};
         return schema.dump();
     }
+    void show_arguments(const std::string& json_args) override {
+        try {
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) return;
+            std::cout << "  path: '" << args.value("path", "") << "'\n";
+            int line_number = args.value("line_number", 0);
+            std::cout << "  line_number: " << line_number << '\n';
+            std::string content = args.value("content", "");
+            int line_count = 1;
+            for (const auto& ch : content) {
+                if (ch == '\n') ++line_count;
+            }
+            std::cout << "  content: " << line_count << " lines\n";
+        } catch (...) {}
+    }
+
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);

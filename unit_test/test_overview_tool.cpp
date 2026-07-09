@@ -15,7 +15,7 @@ static void safe_remove_all(const std::string& path)
 
 // ── ProjectOverviewTool ────────────────────────────────────────
 
-void test_overview_tools(UnitReport& parent)
+void test_overview_tool(UnitReport& parent)
 {
     UnitReport unit("overview_tools");
     LOG_INFO("test_overview_tools", "overview_tools");

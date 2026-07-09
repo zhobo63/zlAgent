@@ -636,7 +636,7 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
         }
 
         if (sym.kind == "function") {
-            oss << sym.name << "()";
+            oss << sym.kind << " " << sym.name << "()";
         } else {
             oss << sym.kind << " " << sym.name;
         }
