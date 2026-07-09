@@ -308,17 +308,17 @@ int main(int argc, char* argv[]) {
     //ag.add_tool(agent::create_read_file_tool());
     ag.add_tool(agent::create_read_files_tool());
     //ag.add_tool(agent::create_read_file_lines_tool());
-    ag.add_tool(agent::create_write_file_tool());
-    //ag.add_tool(agent::create_write_files_tool());
-    ag.add_tool(agent::create_append_file_tool());
-    ag.add_tool(agent::create_insert_file_content_tool());
-    ag.add_tool(agent::create_edit_file_tool());
-    //ag.add_tool(agent::create_edit_files_tool());
+    //ag.add_tool(agent::create_write_file_tool());
+    ag.add_tool(agent::create_write_files_tool());
+    //ag.add_tool(agent::create_append_file_tool());
+    //ag.add_tool(agent::create_insert_file_content_tool());
+    //ag.add_tool(agent::create_edit_file_tool());
+    ag.add_tool(agent::create_edit_files_tool());
     ag.add_tool(agent::create_list_directory_tool());
     ag.add_tool(agent::create_terminal_tool());
     ag.add_tool(agent::create_code_search_tool());
     ag.add_tool(agent::create_create_directory_tool());
-    ag.add_tool(agent::create_delete_path_tool());
+    //ag.add_tool(agent::create_delete_path_tool());
     ag.add_tool(agent::create_delete_files_tool());
     ag.add_tool(agent::create_copy_path_tool());
     ag.add_tool(agent::create_move_path_tool());
@@ -340,7 +340,7 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Main", "\nLoading skills...");
 
     // 1. Load native skills from zlagent/skills/.
-    auto native_skills = agent::SkillLoader::scan_directory("zlagent/skills", "native");
+    auto native_skills = agent::SkillLoader::scan_directory(".zlagent/skills", "native");
     for (auto& skill : native_skills) {
         skill_registry.register_skill(skill);
         LOG_INFO("Skill", u8"  \u2713 " + skill->name + " (" + skill->source_path + ")");

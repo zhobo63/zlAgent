@@ -118,6 +118,7 @@ if(OPENSSL_FOUND)
         # Static link OpenSSL from NuGet package
         set(OPENSSL_STATIC_DIR "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/lib/win-x64/native")
         target_include_directories(zlagent_core PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
+        target_include_directories(zlagent PRIVATE "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
         target_link_libraries(zlagent_core PRIVATE
             "${OPENSSL_STATIC_DIR}/libssl_static_v143.lib"
             "${OPENSSL_STATIC_DIR}/libcrypto_static_v143.lib"
@@ -143,7 +144,7 @@ endif()
 
 
 # Unit tests (enable with -DBUILD_TESTING=ON)
-option(BUILD_TESTING "Build unit tests" OFF)
+option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
     add_subdirectory(unit_test)
 endif()

@@ -146,10 +146,10 @@ struct TokenUsage {
 
 | 項目 | 要求 |
 |------|------|
-| **Session Summary** | `save_session()` — 通過 LLM 生成會話摘要（主題 + 精簡內容），儲存到 `.zlagent_memory/` |
+| **Session Summary** | `save_session()` — 通過 LLM 生成會話摘要（主題 + 精簡內容），儲存到 `.zlagent/memory/` |
 | **Semantic Facts** | `add_fact(key, value)` — 結構化 key-value 事實，支援 prefix 查詢、刪除 |
 | **Auto Extract** | 儲存會話時自動通過 LLM 提取關鍵事實（如專案構建系統、技術棧等） |
-| **JSON Persistence** | `load()` / `save()` — JSON 格式持久化到 `.zlagent_memory/` 目錄 |
+| **JSON Persistence** | `load()` / `save()` — JSON 格式持久化到 `.zlagent/memory/` 目錄 |
 | **Prompt Injection** | `build_context_string()` — 將近期會話 + 相關事實組合成文字，注入系統提示詞 |
 | **RAG Integration** | `integrate_with_rag()` — 將會話摘要寫入 RAG 知識庫，支援語意搜尋 |
 | **CLI Tools** | `search_memories` / `recall_facts` — LLM 可調用的工具，從長期記憶中檢索資訊 |
@@ -159,7 +159,7 @@ struct TokenUsage {
 | Key | 類型 | 預設值 | 說明 |
 |-----|------|--------|------|
 | `long_term_enabled` | bool | `false` | 長期記憶開關 |
-| `store_dir` | string | `.zlagent_memory` | 儲存目錄路徑 |
+| `store_dir` | string | `.zlagent/memory` | 儲存目錄路徑 |
 | `max_sessions` | int | `100` | 最大會話摘要數量 |
 | `inject_facts_to_prompt` | bool | `true` | 啟動時將事實注入系統提示詞 |
 | `auto_extract_facts` | bool | `true` | 儲存會話時自動提取事實 |
@@ -1087,7 +1087,7 @@ void add_doc_arg_completions(const char *text, int start, int end) {
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **短期記憶** | LLM 摘要壓縮，歷史超長時自動壓縮舊訊息為摘要 | ✅ `memory` (max_messages=50 觸發閾值) |
-| **長期記憶** | 持久化儲存，跨會話回憶 | ✅ `LongTermMemory` — Episodic (session summaries via LLM), Semantic (structured facts auto-extracted), JSON persistence (.zlagent_memory/), RAG integration, search_memories + recall_facts tools |
+| **長期記憶** | 持久化儲存，跨會話回憶 | ✅ `LongTermMemory` — Episodic (session summaries via LLM), Semantic (structured facts auto-extracted), JSON persistence (.zlagent/memory/), RAG integration, search_memories + recall_facts tools |
 | **上下文壓縮/摘要** | 對超長歷史做智慧摘要 | ✅ `Memory::summarize()` |
 | **向量檢索 (RAG)** | 從知識庫中語意搜尋相關片段 | ✅ |
 

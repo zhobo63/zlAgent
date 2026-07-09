@@ -544,6 +544,10 @@ static void parse_markdown_outline(const std::vector<std::string>& lines,
 }
 
 std::string GenerateFileOutline(const std::string& path) {
+    return GenerateFileOutline(path, 0, -1);
+}
+
+std::string GenerateFileOutline(const std::string& path, int startLine, int endLine) {
     std::ifstream file(path);
     if (!file.is_open()) return "";
 
@@ -556,14 +560,22 @@ std::string GenerateFileOutline(const std::string& path) {
 
     if (lines.empty()) return "File is empty.";
 
+    // Determine range to scan (1-based → 0-based)
+    int from = startLine > 0 ? startLine - 1 : 0;
+    int to   = endLine > 0 && endLine <= static_cast<int>(lines.size())
+                 ? endLine
+                 : static_cast<int>(lines.size());
+
+    if (from >= static_cast<int>(lines.size())) {
+        return "Error: start_line exceeds file length (" + std::to_string(lines.size()) + " lines).";
+    }
+
     std::string ext = get_extension_outline(path);
 
     // Parse symbols with depth tracking
     std::vector<RawSymbol> raw_symbols;
 
-    //TODO .c 
-
-    if (ext == ".cpp" || ext == ".h" || ext == ".hpp" || ext == ".cc" || ext == ".cxx") {
+    if (ext == ".c" || ext == ".cpp" || ext == ".h" || ext == ".hpp" || ext == ".cc" || ext == ".cxx") {
         parse_cpp_outline(lines, ext, raw_symbols);
     } else if (ext == ".py") {
         parse_python_outline(lines, ext, raw_symbols);
@@ -607,9 +619,17 @@ std::string GenerateFileOutline(const std::string& path) {
 
     // Format output
     std::ostringstream oss;
-    oss << "# File outline for " << path << "\n\n";
+    oss << "# File outline for " << path << "\n";
+    if (startLine > 0) {
+        oss << "# Range: lines " << startLine << "-" << endLine << "\n";
+    }
+    oss << "\n";
 
     for (const auto& sym : symbols) {
+        // Only show symbols whose start line falls within the requested range
+        if (startLine > 0 && sym.start_line < startLine) continue;
+        if (endLine > 0 && sym.start_line > endLine) break;
+
         // Indentation: one space per depth level
         for (int d = 0; d < sym.depth; d++) {
             oss << " ";

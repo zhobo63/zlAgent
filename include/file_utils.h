@@ -37,6 +37,10 @@ struct OutlineSymbol {
 /// Returns empty string on failure or if the file has no recognizable symbols.
 std::string GenerateFileOutline(const std::string& path);
 
+/// Overload: generate outline for a specific line range (1-based, inclusive).
+/// If start_line <= 0 or end_line > total lines, scans the whole file.
+std::string GenerateFileOutline(const std::string& path, int startLine, int endLine);
+
 // -----------------------------------------------------------------------
 // Glob pattern matching helpers
 // -----------------------------------------------------------------------

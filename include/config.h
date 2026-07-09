@@ -41,7 +41,7 @@ struct Config {
     struct Memory {
         int max_messages = 50;
         bool long_term_enabled = false;
-        std::string store_dir = ".zlagent_memory";
+        std::string store_dir = ".zlagent/memory";
         int max_sessions = 100;
         bool inject_facts_to_prompt = true;
         bool auto_extract_facts = true;

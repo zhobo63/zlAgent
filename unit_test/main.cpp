@@ -14,6 +14,7 @@ void test_example(UnitReport &parent) {
 }
 
 void test_code_search_tools(UnitReport& parent);
+void test_overview_tools(UnitReport& parent);
 void test_file_tools(UnitReport& parent);
 
 void main() {
@@ -23,6 +24,7 @@ void main() {
         //test_example(main);
         test_code_search_tools(main);
         test_file_tools(main);
+        test_overview_tools(main);
     }
     catch (const std::exception& e) {
         std::cerr << "Exception caught: " << e.what() << std::endl;
@@ -31,5 +33,10 @@ void main() {
         std::cerr << "Unknown exception caught" << std::endl;
     }
     unit_test_valid(main);
+    std::cout << "Report:" << std::endl;
     print_uint_test(main);
+
+    if (main.result) {
+        log_unit_test("all", true);
+    }
 }

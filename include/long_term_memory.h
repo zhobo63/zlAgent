@@ -37,7 +37,7 @@ struct FactEntry {
 class LongTermMemory {
 public:
     struct Config {
-        std::string store_dir = ".zlagent_memory";
+        std::string store_dir = ".zlagent/memory";
         int max_sessions = 100;              // max session summaries to keep
         bool inject_facts_to_prompt = true;  // append facts to system prompt at startup
         bool auto_extract_facts = true;      // ask LLM to extract facts when saving a session

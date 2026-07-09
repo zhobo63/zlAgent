@@ -33,7 +33,7 @@ public:
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
             auto args = json::parse(json_args);
-            if (args.is_discarded()) {                
+            if (args.is_discarded()) {
                 return "Error: Invalid JSON arguments - not json";
             }
             std::string path = args.value("path", "");
@@ -103,12 +103,14 @@ public:
     std::string name() const override { return "read_files"; }
     std::string description() const override {
         return
-            "Read the contents of multiple files. "
-            "The 'outline' parameter is required at top-level when using 'paths' or 'directory'+glob — set true for outline mode (symbol names and line numbers), false to read full file content. "
-            "Modes can be combined in a single call:"
-            " (1) string array paths, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"],\"outline\":false};"
-            " (2) object array with per-file options, each file can have its own outline/start_line/end_line, e.g. {\"files\":[{\"path\":\"a.cpp\",\"start_line\":1,\"end_line\":100,\"outline\":false}]};"
-            " (3) directory + glob pattern.";
+            "Read the contents of multiple files. Supports three input modes that can be combined in a single call:\n"
+            "  (1) paths — string array, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"], \"outline\":false}\n"
+            "      outline is required at top-level: true for file outlines (symbol names and line numbers), false for full content.\n"
+            "  (2) files — object array with per-file options, e.g. {\"files\":[{\"path\":\"a.cpp\",\"outline\":true,\"start_line\":1,\"end_line\":100}]}\n"
+            "      Each file can have its own outline (bool), start_line/end_line for range. In outline mode, range limits the symbols returned.\n"
+            "  (3) directory + glob — e.g. {\"directory\":\"src\", \"glob\":\"*.cpp\", \"outline\":true}\n"
+            "      Scans a directory with a file pattern; outline is required at top-level.\n"
+            "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -157,7 +159,9 @@ private:
 
         // Outline mode
         if (want_outline) {
-            std::string outline = agent::GenerateFileOutline(path);
+            int sl = start_line > 0 ? start_line : 0;
+            int el = end_line >= start_line && start_line > 0 ? end_line : -1;
+            std::string outline = agent::GenerateFileOutline(path, sl, el);
             if (!outline.empty()) {
                 files_array.push_back({{"path", path}, {"outline", outline}});
                 success_count++;
@@ -359,6 +363,18 @@ public:
             if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
+
+            // Ensure parent directory exists
+            namespace fs = std::filesystem;
+            auto parent_dir = fs::path(path).parent_path();
+            if (!parent_dir.empty()) {
+                std::error_code ec;
+                fs::create_directories(parent_dir, ec);
+                if (ec) {
+                    return "Error: Failed to create directory '" + parent_dir.string() + "': " + ec.message();
+                }
+            }
+
             std::ofstream file(path, std::ios::trunc);
             if (!file.is_open()) {
                 return "Error: Cannot create/open file '" + path + "'";

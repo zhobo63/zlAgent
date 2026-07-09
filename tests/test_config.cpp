@@ -54,7 +54,7 @@ TEST_CASE("Config: RAG section defaults", "[config]") {
 TEST_CASE("Config: memory long-term defaults", "[config]") {
     auto cfg = Config::load("nonexistent.ini");
     REQUIRE(cfg.memory.long_term_enabled == false);
-    REQUIRE(cfg.memory.store_dir == ".zlagent_memory");
+    REQUIRE(cfg.memory.store_dir == ".zlagent/memory");
     REQUIRE(cfg.memory.max_sessions == 100);
 }
 

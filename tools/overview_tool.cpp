@@ -39,7 +39,10 @@ public:
             if (args.is_discarded()) {
                 return "Error: Invalid JSON arguments - not json";
             }
-            std::string directory = args.value("directory", "");
+            std::string directory;
+            if (args.is_object()) {
+                directory = args.value("directory", "");
+            }
             if (directory.empty()) directory = ".";
 
             std::string result = overview(directory);

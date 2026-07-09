@@ -3,6 +3,7 @@
 #include <fstream>
 
 #include "tools.h"
+#include "safety_guard.h"
 
 using namespace agent;
 namespace fs = std::filesystem;
@@ -1161,8 +1162,8 @@ void test_edit_files_tools(UnitReport& parent)
         op["new_text"] = "replaced";
         json edit_obj;
         edit_obj["path"] = dir + "/replace.txt";
-        edit_obj["operations"] = {op};
-        args["edits"] = {edit_obj};
+        edit_obj["operations"] = json::array({op});
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_replace", result.find("Error") == std::string::npos);
 
@@ -1193,8 +1194,8 @@ void test_edit_files_tools(UnitReport& parent)
         op["content"] = "new line";
         json edit_obj;
         edit_obj["path"] = dir + "/insert.txt";
-        edit_obj["operations"] = {op};
-        args["edits"] = {edit_obj};
+        edit_obj["operations"] = json::array({op});
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_insert", result.find("Error") == std::string::npos);
 
@@ -1224,8 +1225,8 @@ void test_edit_files_tools(UnitReport& parent)
         op["end_line"] = 3;
         json edit_obj;
         edit_obj["path"] = dir + "/delete.txt";
-        edit_obj["operations"] = {op};
-        args["edits"] = {edit_obj};
+        edit_obj["operations"] = json::array({op});
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_delete", result.find("Error") == std::string::npos);
 
@@ -1276,7 +1277,7 @@ void test_edit_files_tools(UnitReport& parent)
         json edit_obj;
         edit_obj["path"] = dir + "/multi.txt";
         edit_obj["operations"] = ops;
-        args["edits"] = {edit_obj};
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_multi_ops", result.find("Error") == std::string::npos);
 
@@ -1327,7 +1328,7 @@ void test_edit_files_tools(UnitReport& parent)
         json edit_obj;
         edit_obj["path"] = dir + "/overlap.txt";
         edit_obj["operations"] = ops;
-        args["edits"] = {edit_obj};
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("overlap_returns_error", result.find("Overlapping") != std::string::npos);
 
@@ -1346,8 +1347,8 @@ void test_edit_files_tools(UnitReport& parent)
         op["new_text"] = "x";
         json edit_obj;
         edit_obj["path"] = "/nonexistent/file.txt";
-        edit_obj["operations"] = {op};
-        args["edits"] = {edit_obj};
+        edit_obj["operations"] = json::array({op});
+        args["edits"] = json::array({edit_obj});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("nonexistent_returns_error", result.find("Cannot open file") != std::string::npos);
     }
@@ -1403,7 +1404,7 @@ void test_write_files_tools(UnitReport& parent)
         f1["content"] = "hello";
         f2["path"] = dir + "/f2.txt";
         f2["content"] = "world";
-        args["files"] = {f1, f2};
+        args["files"] = json::array({f1, f2});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("no_error_on_write", result.find("Error") == std::string::npos);
 
@@ -1429,7 +1430,7 @@ void test_write_files_tools(UnitReport& parent)
         json f1;
         f1["path"] = dir + "/sub/deep/f.txt";
         f1["content"] = "nested";
-        args["files"] = {f1};
+        args["files"] = json::array({f1});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("auto_dir_file_exists", fs::exists(fs::path(dir) / "sub" / "deep" / "f.txt"));
 
@@ -1444,7 +1445,7 @@ void test_write_files_tools(UnitReport& parent)
         json f1;
         f1["path"] = "";
         f1["content"] = "test";
-        args["files"] = {f1};
+        args["files"] = json::array({f1});
         std::string result = tool->execute(args.dump());
         UNIT_TEST("empty_path_error_entry", result.find("No file path provided") != std::string::npos);
     }
@@ -1481,6 +1482,11 @@ void test_write_files_tools(UnitReport& parent)
 
 void test_file_tools(UnitReport& parent)
 {
+    // Disable SafetyGuard for tests — empty whitelist + no working dir = allow all paths.
+    auto& sg = SafetyGuard::get_instance();
+    sg.reset_path_whitelist();
+    sg.set_working_directory("");
+
     UnitReport unit("file_tools");
     LOG_INFO("test_file_tools", "file_tools");
 

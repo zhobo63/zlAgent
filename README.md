@@ -178,7 +178,7 @@ ask_unknown = false                  ; 未知短命令是否詢問用戶
 | | `max_tokens` | int | `4096` | 最大輸出 token 數 |
 | `[memory]` | `max_messages` | int | `50` | 對話記憶容量 |
 | | `long_term_enabled` | bool | `false` | 長期記憶開關（會話摘要 + 語義事實） |
-| | `store_dir` | string | `.zlagent_memory` | 長期記憶儲存目錄 |
+| | `store_dir` | string | `.zlagent/memory` | 長期記憶儲存目錄 |
 | | `max_sessions` | int | `100` | 最多保留的會話數 |
 | | `inject_facts_to_prompt` | bool | `true` | 將語義事實注入系統提示詞 |
 | | `auto_extract_facts` | bool | `true` | 自動從對話中提取結構化事實 |
@@ -389,7 +389,7 @@ knowledge_dirs = docs/             ; directories to ingest at startup
 [memory]
 max_messages = 50
 long_term_enabled = true
-store_dir = .zlagent_memory
+store_dir = .zlagent/memory
 max_sessions = 100
 inject_facts_to_prompt = true
 auto_extract_facts = true
