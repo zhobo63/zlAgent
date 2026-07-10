@@ -382,4 +382,56 @@
 | 原子性操作 | ✅（每檔獨立） | ❌ |
 | Token 效率 | ✅（一次請求） | ❌（多次請求） |
 
-# 未來調整 [ ]
+# 未來調整方向 [ ]
+
+{
+  type: object,
+  properties: {
+    replace_line_range: [
+      type: array,
+      required: [path, start_line, end_line, new_text],
+      properties: {
+        path: string,
+        start_line: number,
+        end_line: number,
+        new_text: string,
+      }
+    ],
+    insert_before_line: [
+      type: array,
+      required: [path, start_line, new_text],
+      properties: {
+        path: string,
+        start_line: number,
+        new_text: string,
+      }
+    ],
+    insert_after_line: [
+      type: array,
+      required: [path, start_line, new_text],
+      properties: {
+        path: string,
+        start_line: number,
+        new_text: string,
+      }
+    ],
+    delete_lines: [
+      type: array,
+      required: [path, start_line, end_line],
+      properties: {
+        path: string,
+        start_line: number,
+        end_line: number,    
+      }
+    ],
+    replace_text: [
+      type: array,
+      required: [path, old_text, new_text],
+      properties: {
+        path: string,
+        old_text: string,
+        new_text: string,
+      }
+    ]    
+  }
+}
