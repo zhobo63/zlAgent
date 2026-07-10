@@ -241,11 +241,13 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
             auto tool_ptr = registry_.find_tool(tc.name);
             if (tool_ptr) {
-                LOG_INFO(u8"🛠️Tool", "\nExecuting: " + tc.name + " with args: " + std::to_string(tc.arguments.size()) + " bytes");
+                LOG_INFO(u8"🛠️Tool", "Executing: " + tc.name + " with args: " + std::to_string(tc.arguments.size()) + " bytes");
 
                 // Show preview before execution
                 try {
+                    LOG_INFO(u8"🛠️Tool", "[arguments]");
                     tool_ptr->show_arguments(tc.arguments);
+                    LOG_INFO(u8"🛠️Tool", "[preview]");
                     tool_ptr->show_preview(tc.arguments);
                 } catch (...) {
                     // If preview fails, continue without it
@@ -290,6 +292,9 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             memory_.add(tool_msg);
 
             LOG_INFO(u8"🛠️Tool", "Result: " + std::to_string(result.size()) + " bytes\n");
+            if (tool_ptr) {
+                tool_ptr->show_result(result);
+            }
         }
 
         // Loop again - LLM will see tool results and decide next action

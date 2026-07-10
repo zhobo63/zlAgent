@@ -61,23 +61,21 @@ public:
             file.close();
             if (end_line < 0) { end_line = line_count; }
             if (start_line >= 0 && end_line >= 0 && end_line >= start_line) {
-                std::string result = agent::ReadFileLinesAsString(path, start_line, end_line);
-                if (result.empty()) {
+                std::string content = agent::ReadFileLinesAsString(path, start_line, end_line, line_count);
+                if (content.empty()) {
                     return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
                 }
-                return result;
+                std::ostringstream oss;
+                oss << "# File for " << path << " (" << line_count << ")\n";
+                oss << content;
+                return oss.str();
             }
 
             const int OUTLINE_THRESHOLD = 200; // lines
             if (line_count > OUTLINE_THRESHOLD) {
                 std::string outline = agent::GenerateFileOutline(path);
                 if (!outline.empty()) {
-                    std::ostringstream header;
-                    header << "SUCCESS: File outline retrieved. This file is too large to read all at once, so the outline below shows the file's structure with line numbers.\n\n";
-                    header << "TOTAL LINE: " << line_count << "\n";
-                    header << "IMPORTANT: DO NOT retry this call without line numbers - you will get the same outline.\n";
-                    header << "Instead, use the line numbers below to read specific sections by calling this tool again with start_line and end_line parameters.\n\n";
-                    return header.str() + outline;
+                    return outline;
                 }
             }
 
@@ -86,9 +84,17 @@ public:
             if (!file.is_open()) {
                 return "Error: Cannot open file '" + path + "'";
             }
-            std::stringstream ss;
-            ss << file.rdbuf();
-            return ss.str();
+
+            int width = static_cast<int>(std::to_string(line_count).size());
+            std::ostringstream oss;
+            oss << "# File for " << path << " (" << line_count << ")\n";
+
+            int current = 1;
+            while (std::getline(file, fline)) {
+                oss << std::setw(width) << current << " " << fline << "\n";
+                current++;
+            }
+            return oss.str();
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
@@ -201,15 +207,14 @@ public:
     }
 
 private:
-    // Process a single file: read content or outline, append to result
+    // Process a single file: read content or outline, append formatted text to result
     void process_file(const std::string& path, bool want_outline,
                       int start_line, int end_line,
-                      json& files_array, json& errors_array,
-                      int& total_size, int& success_count) {
+                      std::ostringstream& oss) {
         // Safety check
         auto check_result = SafetyGuard::get_instance().is_path_ok(path);
         if (check_result == PathCheckResult::Denied) {
-            errors_array.push_back({{"path", path}, {"error", "Path is outside allowed directories. Operation denied."}});
+            oss << "# Error: " << path << " - Path is outside allowed directories. Operation denied.";
             return;
         }
 
@@ -219,42 +224,52 @@ private:
             int el = end_line >= start_line && start_line > 0 ? end_line : -1;
             std::string outline = agent::GenerateFileOutline(path, sl, el);
             if (!outline.empty()) {
-                files_array.push_back({{"path", path}, {"outline", outline}});
-                success_count++;
+                oss << outline;
             } else {
-                errors_array.push_back({{"path", path}, {"error", "Failed to generate outline"}});
+                oss << "# Error: " << path << " - Failed to generate outline";
             }
             return;
         }
 
+        // Count total lines for proper width
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            oss << "# Error: " << path << " - Cannot open file";
+            return;
+        }
+        int line_count = 0;
+        std::string fline;
+        while (std::getline(file, fline)) line_count++;
+        file.close();
+
         // Line range mode (object mode only)
         if (start_line > 0 && end_line >= start_line) {
-            std::string content = agent::ReadFileLinesAsString(path, start_line, end_line);
+            std::string content = agent::ReadFileLinesAsString(path, start_line, end_line, line_count);
             if (!content.empty()) {
-                total_size += static_cast<int>(content.size());
-                files_array.push_back({{"path", path}, {"content", content}});
-                success_count++;
+                oss << "# File for " << path << " (" << line_count << ")\n";
+                oss << content;
             } else {
-                errors_array.push_back({{"path", path}, {"error", "Line range out of bounds or cannot read file"}});
+                oss << "# Error: " << path << " - Line range out of bounds or cannot read file";
             }
             return;
         }
 
         // Full content mode
-        std::ifstream file(path);
+        int width = static_cast<int>(std::to_string(line_count).size());
+        oss << "# File for " << path << " (" << line_count << ")\n";
+
+        file.open(path);
         if (!file.is_open()) {
-            errors_array.push_back({{"path", path}, {"error", "Cannot open file"}});
+            oss << "# Error: " << path << " - Cannot open file";
             return;
         }
 
-        std::stringstream ss;
-        ss << file.rdbuf();
-        std::string content = ss.str();
+        int current = 1;
+        while (std::getline(file, fline)) {
+            oss << std::setw(width) << current << " " << fline << "\n";
+            current++;
+        }
         file.close();
-
-        total_size += static_cast<int>(content.size());
-        files_array.push_back({{"path", path}, {"content", content}, {"size_bytes", static_cast<int>(content.size())}});
-        success_count++;
     }
 
 public:
@@ -325,33 +340,16 @@ public:
                 return "No files found matching the criteria.";
             }
 
-            // Process each file
-            json files_array = json::array();
-            json errors_array = json::array();
-            int total_size = 0;
-            int success_count = 0;
-
+            // Process each file into plain text output
+            std::ostringstream oss;
+            bool first = true;
             for (const auto& task : tasks) {
-                process_file(task.path, task.outline, task.start_line, task.end_line,
-                             files_array, errors_array, total_size, success_count);
+                if (!first) oss << "\n";
+                first = false;
+                process_file(task.path, task.outline, task.start_line, task.end_line, oss);
             }
 
-            // Build response
-            json result;
-            result["files"] = files_array;
-            result["total_files"] = static_cast<int>(tasks.size());
-            if (total_size > 0) {
-                result["total_size_bytes"] = total_size;
-            }
-            result["summary"] = {
-                {"success_count", success_count},
-                {"error_count", static_cast<int>(errors_array.size())}
-            };
-            if (!errors_array.empty()) {
-                result["summary"]["errors"] = errors_array;
-            }
-
-            return result.dump(2);
+            return oss.str();
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
@@ -890,8 +888,9 @@ public:
         json schema;
         schema["type"] = "object";
         schema["properties"]["edits"]["type"] = "array";
-        schema["properties"]["edits"]["description"] = "List of file edits, each containing a path and operations array.";
+        schema["properties"]["edits"]["description"] = "List of file edits. Each edit MUST have both 'path' and 'operations'. Example: [{\"path\": \"src/main.cpp\", \"operations\": [{\"type\": \"replace_line_range\", \"start_line\": 1, \"end_line\": 5, \"new_text\": \"...\"}]}]";
         schema["properties"]["edits"]["items"]["type"] = "object";
+        schema["properties"]["edits"]["items"]["required"] = {"path", "operations"};
         schema["properties"]["edits"]["items"]["properties"]["path"]["type"] = "string";
         schema["properties"]["edits"]["items"]["properties"]["path"]["description"] = "File path to edit (relative to project root). Required.";
         schema["properties"]["edits"]["items"]["properties"]["operations"]["type"] = "array";

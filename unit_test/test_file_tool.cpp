@@ -123,7 +123,7 @@ void test_read_file_tools(UnitReport& parent)
         json args;
         args["path"] = dir + "/large.txt";
         std::string result = tool->execute(args.dump());
-        UNIT_TEST("outline_mode_triggered", result.find("File outline retrieved") != std::string::npos);
+        UNIT_TEST("outline_mode_triggered", result.find("# File outline for") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -814,9 +814,9 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         args["paths"] = {dir + "/a.txt", dir + "/b.txt"};
         args["outline"] = false;
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("has_files_array", result.contains("files"));
-        UNIT_TEST("success_count_is_2", result["summary"]["success_count"] == 2);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("has_file_header_a", raw_result.find("# File for") != std::string::npos);
+        UNIT_TEST("success_count_is_2", (raw_result.find("content of a") != std::string::npos && raw_result.find("content of b") != std::string::npos));
 
         safe_remove_all(dir);
     }
@@ -841,8 +841,8 @@ void test_read_files_tools(UnitReport& parent)
         file_obj["start_line"] = 3;
         file_obj["end_line"] = 5;
         args["files"] = json::array({file_obj});
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("range_success", result["summary"]["success_count"] == 1);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("range_success", (raw_result.find("line3") != std::string::npos && raw_result.find("line5") != std::string::npos));
 
         safe_remove_all(dir);
     }
@@ -867,8 +867,8 @@ void test_read_files_tools(UnitReport& parent)
         args["directory"] = dir;
         args["glob"] = "*.txt";
         args["outline"] = false;
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("glob_success", result["summary"]["success_count"] == 1);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("glob_success", raw_result.find("txt content") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -880,8 +880,8 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         args["paths"] = {"/nonexistent/file.txt"};
         args["outline"] = false;
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("error_entry_present", result["summary"]["error_count"] == 1);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("error_entry_present", raw_result.find("# Error:") != std::string::npos);
     }
 
     // missing required params returns error
@@ -985,8 +985,8 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         args["paths"] = {dir + "/hello.txt"};
         args["outline"] = false;
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("content_verify_has_hello", result["files"][0]["content"].get<std::string>().find("hello world") != std::string::npos);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("content_verify_has_hello", raw_result.find("hello world") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1058,9 +1058,9 @@ void test_read_files_tools(UnitReport& parent)
         json args;
         args["paths"] = {dir + "/a.txt", "/nonexistent/b.txt"};
         args["outline"] = false;
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("mixed_success_count", result["summary"]["success_count"] == 1);
-        UNIT_TEST("mixed_error_count", result["summary"]["error_count"] == 1);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("mixed_success_count", raw_result.find("content of a") != std::string::npos);
+        UNIT_TEST("mixed_error_count", raw_result.find("# Error:") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1105,9 +1105,10 @@ void test_read_files_tools(UnitReport& parent)
         args["directory"] = dir + "/subdir";
         args["glob"] = "*.txt";
 
-        json result = json::parse(tool->execute(args.dump()));
-        UNIT_TEST("combined_success_count", result["summary"]["success_count"] == 3);
-        UNIT_TEST("combined_total_files", result["total_files"] == 3);
+        std::string raw_result = tool->execute(args.dump());
+        UNIT_TEST("combined_has_paths_content", raw_result.find("paths content") != std::string::npos);
+        UNIT_TEST("combined_has_line_range", raw_result.find("line3") != std::string::npos);
+        UNIT_TEST("combined_has_glob_content", raw_result.find("glob content") != std::string::npos);
 
         safe_remove_all(dir);
     }

@@ -36,15 +36,26 @@ bool ReadFileLines(const std::string& path, int startLine, int endLine,
 }
 
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine) {
+    // Count total lines for proper width
+    std::ifstream file(path);
+    if (!file.is_open()) return "";
+    int total_lines = 0;
+    std::string dummy;
+    while (std::getline(file, dummy)) total_lines++;
+    file.close();
+    return ReadFileLinesAsString(path, startLine, endLine, total_lines);
+}
+
+std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine, int totalLines) {
     std::vector<std::pair<int, std::string>> lines;
     if (!ReadFileLines(path, startLine, endLine, lines)) return "";
 
-    // Calculate width needed for line numbers (e.g., 5 chars for up to 99999)
-    int width = static_cast<int>(std::to_string(endLine).size());
+    // Calculate width needed for line numbers based on total file length
+    int width = static_cast<int>(std::to_string(totalLines).size());
 
     std::ostringstream oss;
     for (const auto& [num, content] : lines) {
-        oss << std::setw(width) << num << " | " << content << "\n";
+        oss << std::setw(width) << num << " " << content << "\n";
     }
     return oss.str();
 }
@@ -558,7 +569,8 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
     }
     file.close();
 
-    if (lines.empty()) return "File is empty.";
+    int total_lines = static_cast<int>(lines.size());
+    if (total_lines == 0) return "# File outline for " + path + " (0)\n";
 
     // Determine range to scan (1-based → 0-based)
     int from = startLine > 0 ? startLine - 1 : 0;
@@ -566,8 +578,8 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
                  ? endLine
                  : static_cast<int>(lines.size());
 
-    if (from >= static_cast<int>(lines.size())) {
-        return "Error: start_line exceeds file length (" + std::to_string(lines.size()) + " lines).";
+    if (from >= total_lines) {
+        return "# File outline for " + path + " Error: start_line exceeds file length (" + std::to_string(total_lines) + " lines)";
     }
 
     std::string ext = get_extension_outline(path);
@@ -591,12 +603,15 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
         parse_markdown_outline(lines, raw_symbols);
     }
 
-    if (raw_symbols.empty()) return "No symbols found in '" + path + "'.";
+    if (raw_symbols.empty()) {
+        std::ostringstream oss;
+        oss << "# File outline for " << path << " (" << total_lines << ")\n";
+        return oss.str();
+    }
 
     // Compute end_line for each symbol:
     // A symbol's range ends just before the next symbol at same or shallower depth.
     std::vector<OutlineSymbol> symbols;
-    int total_lines = static_cast<int>(lines.size());
 
     for (int i = 0; i < static_cast<int>(raw_symbols.size()); i++) {
         OutlineSymbol sym;
@@ -617,38 +632,28 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
         symbols.push_back(sym);
     }
 
-    // Format output
+    // Format output with line numbers
     std::ostringstream oss;
-    oss << "# File outline for " << path << "\n";
-    if (startLine > 0) {
-        oss << "# Range: lines " << startLine << "-" << endLine << "\n";
-    }
-    oss << "\n";
+    int width = static_cast<int>(std::to_string(total_lines).size());
+    oss << "# File outline for " << path << " (" << total_lines << ")\n";
 
     for (const auto& sym : symbols) {
         // Only show symbols whose start line falls within the requested range
         if (startLine > 0 && sym.start_line < startLine) continue;
         if (endLine > 0 && sym.start_line > endLine) break;
 
-        // Indentation: one space per depth level
+        oss << std::setw(width) << sym.start_line << " ";
+
+        // Indentation: two spaces per depth level
         for (int d = 0; d < sym.depth; d++) {
-            oss << " ";
+            oss << "  ";
         }
 
         if (sym.kind == "function") {
-            oss << sym.kind << " " << sym.name << "()";
+            oss << sym.name << "()\n";
         } else {
-            oss << sym.kind << " " << sym.name;
+            oss << sym.kind << " " << sym.name << "\n";
         }
-
-        // Range: show [Lstart-end] for multi-line, [Lline] for single-line
-        if (sym.end_line > sym.start_line) {
-            oss << " [L" << sym.start_line << "-" << sym.end_line << "]";
-        } else {
-            oss << " [L" << sym.start_line << "]";
-        }
-
-        oss << "\n";
     }
 
     return oss.str();

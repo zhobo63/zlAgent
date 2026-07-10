@@ -13,8 +13,11 @@ bool ReadFileLines(const std::string& path, int startLine, int endLine,
                    std::vector<std::pair<int, std::string>>& out);
 
 /// Convenience overload that returns the content as a single string with line numbers prefixed.
-/// Format: " 10 | some text\n" per line. Returns empty string on failure.
+/// Format: " 10 some text\n" per line. Width based on total file length. Returns empty string on failure.
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine);
+
+/// Overload that accepts the total line count to determine proper width for line numbers.
+std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine, int totalLines);
 
 /// Generate a colored unified diff between old_text and new_text.
 /// Returns ANSI-colored string with red for removed lines (-) and green for added lines (+).
