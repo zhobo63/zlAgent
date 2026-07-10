@@ -60,6 +60,79 @@ std::string ReadFileLinesAsString(const std::string& path, int startLine, int en
     return oss.str();
 }
 
+// ── read_file_lines / write_file_lines ───────────────────
+
+bool read_file_lines(const std::string& path,
+                     std::vector<std::string>& out_lines,
+                     bool* has_trailing_newline) {
+    std::ifstream infile(path);
+    if (!infile.is_open()) return false;
+    std::string line;
+    while (std::getline(infile, line)) {
+        out_lines.push_back(line);
+    }
+    // Detect whether the file ends with a newline by reading the last byte
+    if (has_trailing_newline) {
+        infile.clear();
+        std::streampos fsize = infile.tellg();
+        if (fsize > 0) {
+            infile.seekg(-1, std::ios::end);
+            char last;
+            infile.get(last);
+            *has_trailing_newline = (last == '\n');
+        } else {
+            *has_trailing_newline = false;
+        }
+    }
+    infile.close();
+    return true;
+}
+
+bool write_file_lines(const std::string& path,
+                      const std::vector<std::string>& lines,
+                      bool has_trailing_newline) {
+    std::ofstream outfile(path, std::ios::trunc);
+    if (!outfile.is_open()) return false;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        outfile << lines[i];
+        if (i < static_cast<int>(lines.size()) - 1)
+            outfile << '\n';
+    }
+    // Restore trailing newline if the original file had one
+    if (has_trailing_newline && !lines.empty())
+        outfile << '\n';
+    outfile.close();
+    return true;
+}
+
+// ── EditLines ────────────────────────────────────────────
+
+bool EditLines::read_file(const std::string& path) {
+    lines.clear();
+    has_trailing_newline = false;
+    return read_file_lines(path, lines, &has_trailing_newline);
+}
+
+void EditLines::parse(const std::string& text) {
+    lines.clear();
+    if (text.empty()) return;
+
+    // Remove trailing newline so getline doesn't produce an extra empty element
+    std::string trimmed = text;
+    if (!trimmed.empty() && trimmed.back() == '\n')
+        trimmed.pop_back();
+
+    std::istringstream iss(trimmed);
+    std::string line;
+    while (std::getline(iss, line)) {
+        lines.push_back(line);
+    }
+}
+
+bool EditLines::write_file(const std::string& path) const {
+    return write_file_lines(path, lines, has_trailing_newline);
+}
+
 }
 
 namespace agent {

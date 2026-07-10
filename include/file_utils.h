@@ -1,9 +1,35 @@
 #pragma once
 
+#include <fstream>
 #include <string>
 #include <vector>
 
 namespace agent {
+
+/// Read all lines from a file. Detects whether the file ends with a newline.
+/// has_trailing_newline is optional — pass nullptr if you don't need it.
+bool read_file_lines(const std::string& path,
+                     std::vector<std::string>& out_lines,
+                     bool* has_trailing_newline = nullptr);
+
+/// Write lines back to a file. Restores trailing newline if requested.
+bool write_file_lines(const std::string& path,
+                      const std::vector<std::string>& lines,
+                      bool has_trailing_newline = false);
+
+struct EditLines {
+    std::vector<std::string> lines;
+    bool has_trailing_newline = false;
+
+    /// Read from file — detects trailing newline automatically.
+    bool read_file(const std::string& path);
+
+    /// Parse text into lines (e.g. new_text input). Trailing \n is stripped.
+    void parse(const std::string& text);
+
+    /// Write back to file — restores trailing newline if original had one.
+    bool write_file(const std::string& path) const;
+};
 
 /// Read a specific line range from a file.
 /// Lines are 1-based (startLine = 1 means the first line).

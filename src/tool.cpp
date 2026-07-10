@@ -62,15 +62,33 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
 }
 
 void Tool::show_text(const std::string& args) {
-    // Not valid JSON: print raw content and check for newlines
-    if (args.find('\n') != std::string::npos) {
-        int lines = 1;
-        for (char c : args) if (c == '\n') ++lines;
-        std::cout << "<" << lines << " lines>\n";
+    std::cout << args << '\n';    
+}
+
+void Tool::show_json_text(const std::string& json_args) {
+    std::cout << TUI::ANSI_BRIGHT_BLACK;
+    try {
+        auto args = nlohmann::json::parse(json_args);
+        if (!show_json(args, 0)) {
+            show_text(json_args);
+        }
+    } catch (...) {
+        show_text(json_args);
     }
-    else {
-        std::cout << args << '\n';
-    }
+    std::cout << TUI::ANSI_RESET;
+}
+
+void Tool::show_arguments(const std::string& json_args) {
+    LOG_INFO(u8"🛠️Tool", name() + " [arguments]");
+    show_json_text(json_args);
+}
+void Tool::show_preview(const std::string& json_args) {
+    LOG_INFO(u8"🛠️Tool", name() + " [preview]");
+    show_json_text(json_args);
+}
+void Tool::show_result(const std::string& json_args) {
+    LOG_INFO(u8"🛠️Tool", name() + " [result]");
+    show_json_text(json_args);
 }
 
 void ToolRegistry::register_tool(ToolPtr tool) {
