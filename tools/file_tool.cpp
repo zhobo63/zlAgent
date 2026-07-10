@@ -868,12 +868,9 @@ public:
     std::string name() const override { return "edit_files"; }
     std::string description() const override {
         return R"(Edit one or more files in a single call. 
-Each file can have multiple operations: 
-replace_line_range, 
-insert_before_line, 
-insert_after_line, 
-delete_lines, 
-replace_text. 
+Each operation type is specified as a top-level array property.
+Supported operations: replace_line_range, insert_before_line,
+insert_after_line, delete_lines, replace_text.
 All line numbers are based on the original file before any edits.
 Operations within a file are atomic - if any operation fails (e.g., overlapping ranges),
 that entire file is rolled back. Files are independent of each other.)";
@@ -881,32 +878,70 @@ that entire file is rolled back. Files are independent of each other.)";
     std::string parameters_schema() const override {
         static std::string schema = json::parse(R"({
             "type": "object",
-            "required": ["edits"],
             "properties": {
-                "edits": {
+                "replace_line_range": {
                     "type": "array",
-                    "description": "List of file edits. Each edit MUST have both 'path' and 'operations'. Example: [{\"path\": \"src/main.cpp\", \"operations\": [{\"type\": \"replace_line_range\", \"start_line\": 1, \"end_line\": 5, \"new_text\": \"...\"}]}]",
+                    "description": "Replace a range of lines with new text. All line numbers are based on the original file.",
                     "items": {
                         "type": "object",
-                        "required": ["path", "operations"],
+                        "required": ["path", "start_line", "end_line", "new_text"],
                         "properties": {
-                            "path": {
-                                "type": "string",
-                                "description": "File path to edit (relative to project root). Required."
-                            },
-                            "operations": {
-                                "type": "array",
-                                "description": "List of operations for this file. Required.",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "type": {
-                                            "type": "string",
-                                            "description": "Operation type: replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text."
-                                        }
-                                    }
-                                }
-                            }
+                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
+                            "start_line": {"type": "integer", "description": "Starting line number (1-based, inclusive) "},
+                            "end_line": {"type": "integer", "description": "Ending line number (1-based, inclusive) "},
+                            "new_text": {"type": "string", "description": "Replacement text. Empty string deletes the range."}
+                        }
+                    }
+                },
+                "insert_before_line": {
+                    "type": "array",
+                    "description": "Insert new text before the specified line.",
+                    "items": {
+                        "type": "object",
+                        "required": ["path", "start_line", "new_text"],
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
+                            "start_line": {"type": "integer", "description": "Line number to insert before (1-based). 1 means insert at the very beginning."},
+                            "new_text": {"type": "string", "description": "Text to insert"}
+                        }
+                    }
+                },
+                "insert_after_line": {
+                    "type": "array",
+                    "description": "Insert new text after the specified line.",
+                    "items": {
+                        "type": "object",
+                        "required": ["path", "start_line", "new_text"],
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
+                            "start_line": {"type": "integer", "description": "Line number to insert after (1-based)."},
+                            "new_text": {"type": "string", "description": "Text to insert"}
+                        }
+                    }
+                },
+                "delete_lines": {
+                    "type": "array",
+                    "description": "Delete a range of lines.",
+                    "items": {
+                        "type": "object",
+                        "required": ["path", "start_line", "end_line"],
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
+                            "start_line": {"type": "integer", "description": "Starting line number (1-based, inclusive) "},
+                            "end_line": {"type": "integer", "description": "Ending line number (1-based, inclusive) "}
+                        }
+                    }
+                },
+                "replace_text": {
+                    "type": "array",
+                    "description": "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
+                    "items": {
+                        "type": "object",
+                        "required": ["path", "old_text", "new_text"],
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
+                            "old_text": {"type": "string", "description": "Exact text to find and replace. Must match exactly."},
+                            "new_text": {"type": "string", "description": "Replacement text"}
                         }
                     }
                 }
@@ -920,45 +955,52 @@ that entire file is rolled back. Files are independent of each other.)";
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
-            if (!args.contains("edits") || !args["edits"].is_array()) return;
 
-            int edit_count = static_cast<int>(args["edits"].size());
-            std::cout << "  edits: " << edit_count << " file(s)\n";
+            // Collect all operations grouped by path
+            std::map<std::string, int> file_op_count;
 
-            for (const auto& edit_entry : args["edits"]) {
-                std::string path = edit_entry.value("path", "");
-                if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) continue;
-                int op_count = static_cast<int>(edit_entry["operations"].size());
-                std::cout << "    - '" << path << "' (" << op_count << " operation(s))\n";
+            auto show_ops = [&](const char* type_name, const json& arr) {
+                for (const auto& op : arr) {
+                    std::string path = op.value("path", "");
+                    if (path.empty()) continue;
+                    file_op_count[path]++;
 
-                for (const auto& op : edit_entry["operations"]) {
-                    std::string type = op.value("type", "unknown");
-                    if (type == "replace_line_range") {
+                    if (std::string(type_name) == "replace_line_range") {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        std::cout << "      replace_line_range: lines " << start << "-" << end << '\n';
-                    } else if (type == "insert_before_line") {
-                        int line_num = op.value("line_number", 0);
-                        std::cout << "      insert_before_line: before line " << line_num << '\n';
-                    } else if (type == "insert_after_line") {
-                        int line_num = op.value("line_number", 0);
-                        std::cout << "      insert_after_line: after line " << line_num << '\n';
-                    } else if (type == "delete_lines") {
+                        std::cout << "    replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
+                    } else if (std::string(type_name) == "insert_before_line") {
+                        int line_num = op.value("start_line", 0);
+                        std::cout << "    insert_before_line: '" << path << "' before line " << line_num << '\n';
+                    } else if (std::string(type_name) == "insert_after_line") {
+                        int line_num = op.value("start_line", 0);
+                        std::cout << "    insert_after_line: '" << path << "' after line " << line_num << '\n';
+                    } else if (std::string(type_name) == "delete_lines") {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        std::cout << "      delete_lines: lines " << start << "-" << end << '\n';
-                    } else if (type == "replace_text") {
+                        std::cout << "    delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
+                    } else if (std::string(type_name) == "replace_text") {
                         std::string old_text = op.value("old_text", "");
-                        // Show first line of old_text as identifier
                         size_t nl = old_text.find('\n');
                         std::string preview = (nl != std::string::npos) ? old_text.substr(0, nl) : old_text;
                         if (preview.size() > 60) preview = preview.substr(0, 57) + "...";
-                        std::cout << "      replace_text: '" << preview << "'\n";
-                    } else {
-                        std::cout << "      " << type << '\n';
+                        std::cout << "    replace_text: '" << path << "' '" << preview << "'\n";
                     }
                 }
-            }
+            };
+
+            if (args.contains("replace_line_range") && args["replace_line_range"].is_array())
+                show_ops("replace_line_range", args["replace_line_range"]);
+            if (args.contains("insert_before_line") && args["insert_before_line"].is_array())
+                show_ops("insert_before_line", args["insert_before_line"]);
+            if (args.contains("insert_after_line") && args["insert_after_line"].is_array())
+                show_ops("insert_after_line", args["insert_after_line"]);
+            if (args.contains("delete_lines") && args["delete_lines"].is_array())
+                show_ops("delete_lines", args["delete_lines"]);
+            if (args.contains("replace_text") && args["replace_text"].is_array())
+                show_ops("replace_text", args["replace_text"]);
+
+            std::cout << "  files affected: " << file_op_count.size() << '\n';
         } catch (const std::exception& e) {
             std::cerr << "show_arguments error: " << e.what() << '\n';
         } catch (...) {}
@@ -967,85 +1009,46 @@ that entire file is rolled back. Files are independent of each other.)";
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
-            if (!args.contains("edits") || !args["edits"].is_array()) return;
+            if (args.is_discarded()) return;
 
-            for (const auto& edit_entry : args["edits"]) {
-                std::string path = edit_entry.value("path", "");
-                if (path.empty() || !edit_entry.contains("operations") || !edit_entry["operations"].is_array()) continue;
+            auto file_ops = parse_operations(args);
 
-                // Read original content
+            // Simulate each file
+            for (auto& [path, ops] : file_ops) {
                 std::vector<std::string> lines;
                 if (!agent::read_file_lines(path, lines)) continue;
                 int total_lines = static_cast<int>(lines.size());
 
-                // Reconstruct full content for replace_text
                 std::string old_content;
                 for (int i = 0; i < total_lines; ++i) {
                     if (i > 0) old_content += '\n';
                     old_content += lines[i];
                 }
 
-                // Simulate operations to produce new content
+                // Apply replace_text first on content string
                 std::string sim_content = old_content;
-                auto& operations = edit_entry["operations"];
-                bool has_line_ops = false;
-
-                for (const auto& op : operations) {
-                    std::string type = op.value("type", "");
-
-                    if (type == "replace_text") {
-                        std::string old_text = op.value("old_text", "");
-                        std::string new_text = op.value("new_text", "");
-                        if (!old_text.empty()) {
-                            size_t pos = sim_content.find(old_text);
-                            if (pos != std::string::npos) {
-                                sim_content.replace(pos, old_text.size(), new_text);
-                            }
-                        }
-                    } else {
-                        // Line-based operations — need to simulate on lines
-                        has_line_ops = true;
-                        break;
-                    }
+                for (auto& [old_t, new_t] : ops.text_replacements) {
+                    size_t pos = sim_content.find(old_t);
+                    if (pos != std::string::npos)
+                        sim_content.replace(pos, old_t.size(), new_t);
                 }
 
-                if (has_line_ops) {
-                    // Simulate line-based operations
-                    std::vector<ModifiedBlock> blocks;
-                    for (const auto& op : operations) {
-                        std::string type = op.value("type", "");
-                        if (type == "replace_line_range") {
-                            int start = op.value("start_line", 0);
-                            int end   = op.value("end_line", 0);
-                            std::string new_text = op.value("new_text", "");
-                            blocks.push_back({start, end, new_text, false});
-                        } else if (type == "insert_before_line") {
-                            int line_num = op.value("line_number", 0);
-                            std::string content_str = op.value("content", "");
-                            blocks.push_back({line_num, -1, content_str, true});
-                        } else if (type == "insert_after_line") {
-                            int line_num = op.value("line_number", 0);
-                            std::string content_str = op.value("content", "");
-                            blocks.push_back({line_num + 1, -1, content_str, true});
-                        } else if (type == "delete_lines") {
-                            int start = op.value("start_line", 0);
-                            int end   = op.value("end_line", 0);
-                            blocks.push_back({start, end, "", false});
-                        }
-                    }
+                // Re-split after text replacement for line-based simulation
+                agent::EditLines el;
+                el.parse(sim_content);
+                lines = std::move(el.lines);
+                total_lines = static_cast<int>(lines.size());
 
-                    std::vector<std::string> result_lines = apply_blocks(lines, total_lines, blocks);
-
+                if (!ops.blocks.empty()) {
+                    std::vector<std::string> result_lines = apply_blocks(lines, total_lines, ops.blocks);
                     std::string new_content_str;
                     for (int i = 0; i < static_cast<int>(result_lines.size()); ++i) {
                         if (i > 0) new_content_str += '\n';
                         new_content_str += result_lines[i];
                     }
-
                     std::string diff = DiffEdit(old_content, new_content_str);
                     std::cout << "\n" << path << "\n" << diff << "\n";
                 } else if (sim_content != old_content) {
-                    // Only replace_text operations
                     std::string diff = DiffEdit(old_content, sim_content);
                     std::cout << "\n" << path << "\n" << diff << "\n";
                 }
@@ -1067,6 +1070,70 @@ private:
         std::string new_content;
         bool is_insertion;       // true for insert_before/after (end == -1)
     };
+
+    struct FileOps {
+        std::vector<ModifiedBlock> blocks;
+        std::vector<std::pair<std::string, std::string>> text_replacements;
+    };
+
+    /// Parse flat JSON args and collect operations grouped by file path.
+    static std::map<std::string, FileOps> parse_operations(const json& args) {
+        std::map<std::string, FileOps> file_ops;
+
+        auto add_block = [&](const json& op) {
+            std::string path = op.value("path", "");
+            if (path.empty()) return;
+            int start = op.value("start_line", 0);
+            int end   = op.value("end_line", 0);
+            std::string new_text = op.value("new_text", "");
+            file_ops[path].blocks.push_back({start, end, new_text, false});
+        };
+
+        auto add_insertion = [&](const json& op) {
+            std::string path = op.value("path", "");
+            if (path.empty()) return;
+            int start_line = op.value("start_line", 0);
+            std::string new_text = op.value("new_text", "");
+            file_ops[path].blocks.push_back({start_line, -1, new_text, true});
+        };
+
+        auto add_insert_after = [&](const json& op) {
+            std::string path = op.value("path", "");
+            if (path.empty()) return;
+            int start_line = op.value("start_line", 0);
+            std::string new_text = op.value("new_text", "");
+            file_ops[path].blocks.push_back({start_line + 1, -1, new_text, true});
+        };
+
+        auto add_delete = [&](const json& op) {
+            std::string path = op.value("path", "");
+            if (path.empty()) return;
+            int start = op.value("start_line", 0);
+            int end   = op.value("end_line", 0);
+            file_ops[path].blocks.push_back({start, end, "", false});
+        };
+
+        auto add_replace_text = [&](const json& op) {
+            std::string path = op.value("path", "");
+            if (path.empty()) return;
+            std::string old_text = op.value("old_text", "");
+            std::string new_text = op.value("new_text", "");
+            file_ops[path].text_replacements.push_back({old_text, new_text});
+        };
+
+        if (args.contains("replace_line_range") && args["replace_line_range"].is_array())
+            for (const auto& op : args["replace_line_range"]) add_block(op);
+        if (args.contains("insert_before_line") && args["insert_before_line"].is_array())
+            for (const auto& op : args["insert_before_line"]) add_insertion(op);
+        if (args.contains("insert_after_line") && args["insert_after_line"].is_array())
+            for (const auto& op : args["insert_after_line"]) add_insert_after(op);
+        if (args.contains("delete_lines") && args["delete_lines"].is_array())
+            for (const auto& op : args["delete_lines"]) add_delete(op);
+        if (args.contains("replace_text") && args["replace_text"].is_array())
+            for (const auto& op : args["replace_text"]) add_replace_text(op);
+
+        return file_ops;
+    }
 
     static std::vector<std::string> split_lines(const std::string& text) {
         agent::EditLines el;
@@ -1151,19 +1218,14 @@ private:
         return results;
     }
 
-    bool process_file(const json& edit_entry,
+    bool process_file(const std::string& path,
+                      const std::vector<ModifiedBlock>& blocks,
+                      const std::vector<std::pair<std::string, std::string>>& text_replacements,
                       std::string& error_out,
                       int& original_lines_out,
                       int& new_lines_out) {
-        std::string path = edit_entry.value("path", "");
         if (path.empty()) {
             error_out = "No file path provided.";
-            return false;
-        }
-
-        // Validate operations before doing I/O
-        if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) {
-            error_out = "'operations' array is required.";
             return false;
         }
 
@@ -1188,158 +1250,89 @@ private:
             if (i > 0) content += '\n';
             content += lines[i];
         }
+
+        // Validate line-based blocks against original file size
+        for (const auto& block : blocks) {
+            if (block.is_insertion) {
+                if (block.start < 1 || block.start > total_lines + 1) {
+                    error_out = "Line number out of range: insert at position " +
+                                std::to_string(block.start) + " (file has " +
+                                std::to_string(total_lines) + " lines).";
+                    return false;
+                }
+            } else {
+                if (block.start < 1 || block.end < block.start || block.end > total_lines) {
+                    error_out = "Invalid line range: start=" +
+                                std::to_string(block.start) + ", end=" + std::to_string(block.end) +
+                                " in file with " + std::to_string(total_lines) + " lines.";
+                    return false;
+                }
+            }
+        }
+
+        // Check for overlapping line operations
+        for (size_t i = 0; i < blocks.size(); ++i) {
+            for (size_t j = i + 1; j < blocks.size(); ++j) {
+                if (blocks_overlap(blocks[i], blocks[j])) {
+                    error_out = "Overlapping line operations detected.";
+                    return false;
+                }
+            }
+        }
+
+        // Apply replace_text on content string
         bool text_modified = false;
+        for (const auto& [old_text, new_text] : text_replacements) {
+            if (old_text.empty()) {
+                error_out = "old_text cannot be empty string.";
+                return false;
+            }
 
-        std::vector<ModifiedBlock> blocks;
+            size_t first_pos = content.find(old_text);
+            if (first_pos == std::string::npos) {
+                error_out = "old_text not found in file: \"" + old_text + "\".";
+                return false;
+            }
 
-        auto& operations = edit_entry["operations"];
-        for (const auto& op : operations) {
-            std::string type = op.value("type", "");
+            auto occurrences = find_all_occurrences(content, lines, old_text);
 
-            if (type == "replace_line_range") {
-                int start = op.value("start_line", 0);
-                int end   = op.value("end_line", 0);
-                std::string new_text = op.value("new_text", "");
-
-                if (start < 1 || end < start || end > total_lines) {
-                    error_out = "Invalid line range: replace_line_range(start=" +
-                                std::to_string(start) + ", end=" + std::to_string(end) +
-                                ") in file with " + std::to_string(total_lines) + " lines.";
-                    return false;
+            if (occurrences.size() == 1) {
+                content.replace(occurrences[0].second, old_text.size(), new_text);
+                text_modified = true;
+            } else {
+                std::ostringstream prompt;
+                prompt << "\n" << path << ": \"" << old_text << "\" found in "
+                       << occurrences.size() << " locations:\n";
+                for (size_t i = 0; i < occurrences.size(); ++i) {
+                    int line_num = occurrences[i].first;
+                    prompt << "  [" << (i + 1) << "] Line " << line_num
+                           << ": \"" << lines[line_num - 1] << "\"\n";
                 }
+                prompt << "\nChoose: [N] skip / [num] replace that one / [A] all: ";
+                std::cout << prompt.str();
 
-                ModifiedBlock block{start, end, new_text, false};
-                for (const auto& existing : blocks) {
-                    if (blocks_overlap(block, existing)) {
-                        error_out = "Overlapping line operations detected: replace_line_range(" +
-                                    std::to_string(start) + "-" + std::to_string(end) + ") overlaps with another operation.";
-                        return false;
+                std::string choice = KeyWatcher::readline("", nullptr);
+
+                if (choice == "N" || choice == "n") {
+                    // Skip this operation
+                } else if (choice == "A" || choice == "a") {
+                    size_t search_pos = 0;
+                    while (true) {
+                        auto found = content.find(old_text, search_pos);
+                        if (found == std::string::npos) break;
+                        content.replace(found, old_text.size(), new_text);
+                        search_pos = found + new_text.size();
                     }
-                }
-                blocks.push_back(block);
-
-            } else if (type == "insert_before_line") {
-                int line_num = op.value("line_number", 0);
-                std::string content_str = op.value("content", "");
-
-                if (line_num < 1 || line_num > total_lines + 1) {
-                    error_out = "Line number out of range: insert_before_line at line " +
-                                std::to_string(line_num) + " (file has " +
-                                std::to_string(total_lines) + " lines).";
-                    return false;
-                }
-
-                ModifiedBlock block{line_num, -1, content_str, true};
-                for (const auto& existing : blocks) {
-                    if (blocks_overlap(block, existing)) {
-                        error_out = "Overlapping line operations detected: insert_before_line(" +
-                                    std::to_string(line_num) + ") overlaps with another operation.";
-                        return false;
-                    }
-                }
-                blocks.push_back(block);
-
-            } else if (type == "insert_after_line") {
-                int line_num = op.value("line_number", 0);
-                std::string content_str = op.value("content", "");
-
-                if (line_num < 1 || line_num > total_lines) {
-                    error_out = "Line number out of range: insert_after_line at line " +
-                                std::to_string(line_num) + " (file has " +
-                                std::to_string(total_lines) + " lines).";
-                    return false;
-                }
-
-                ModifiedBlock block{line_num + 1, -1, content_str, true};
-                for (const auto& existing : blocks) {
-                    if (blocks_overlap(block, existing)) {
-                        error_out = "Overlapping line operations detected: insert_after_line(" +
-                                    std::to_string(line_num) + ") overlaps with another operation.";
-                        return false;
-                    }
-                }
-                blocks.push_back(block);
-
-            } else if (type == "delete_lines") {
-                int start = op.value("start_line", 0);
-                int end   = op.value("end_line", 0);
-
-                if (start < 1 || end < start || end > total_lines) {
-                    error_out = "Invalid line range: delete_lines(start=" +
-                                std::to_string(start) + ", end=" + std::to_string(end) +
-                                ") in file with " + std::to_string(total_lines) + " lines.";
-                    return false;
-                }
-
-                ModifiedBlock block{start, end, "", false};
-                for (const auto& existing : blocks) {
-                    if (blocks_overlap(block, existing)) {
-                        error_out = "Overlapping line operations detected: delete_lines(" +
-                                    std::to_string(start) + "-" + std::to_string(end) + ") overlaps with another operation.";
-                        return false;
-                    }
-                }
-                blocks.push_back(block);
-
-            } else if (type == "replace_text") {
-                std::string old_text = op.value("old_text", "");
-                std::string new_text = op.value("new_text", "");
-
-                if (old_text.empty()) {
-                    error_out = "old_text cannot be empty string.";
-                    return false;
-                }
-
-                size_t first_pos = content.find(old_text);
-                if (first_pos == std::string::npos) {
-                    error_out = "old_text not found in file: \"" + old_text + "\".";
-                    return false;
-                }
-
-                auto occurrences = find_all_occurrences(content, lines, old_text);
-
-                if (occurrences.size() == 1) {
-                    content.replace(occurrences[0].second, old_text.size(), new_text);
                     text_modified = true;
                 } else {
-                    std::ostringstream prompt;
-                    prompt << "\n" << path << ": \"" << old_text << "\" found in "
-                           << occurrences.size() << " locations:\n";
-                    for (size_t i = 0; i < occurrences.size(); ++i) {
-                        int line_num = occurrences[i].first;
-                        prompt << "  [" << (i + 1) << "] Line " << line_num
-                               << ": \"" << lines[line_num - 1] << "\"\n";
-                    }
-                    prompt << "\nChoose: [N] skip / [num] replace that one / [A] all: ";
-                    std::cout << prompt.str();
-
-                    std::string choice = KeyWatcher::readline("", nullptr);
-
-                    if (choice == "N" || choice == "n") {
-                        // Skip this operation
-                    } else if (choice == "A" || choice == "a") {
-                        size_t search_pos = 0;
-                        while (true) {
-                            auto found = content.find(old_text, search_pos);
-                            if (found == std::string::npos) break;
-                            content.replace(found, old_text.size(), new_text);
-                            search_pos = found + new_text.size();
-                        }
+                    int idx = 0;
+                    try { idx = std::stoi(choice); } catch (...) {}
+                    if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
+                        auto [line_num, pos] = occurrences[idx - 1];
+                        content.replace(pos, old_text.size(), new_text);
                         text_modified = true;
-                    } else {
-                        int idx = 0;
-                        try { idx = std::stoi(choice); } catch (...) {}
-                        if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
-                            auto [line_num, pos] = occurrences[idx - 1];
-                            content.replace(pos, old_text.size(), new_text);
-                            text_modified = true;
-                        }
                     }
                 }
-
-            } else {
-                error_out = "Unknown operation type: \"" + type + "\".";
-                return false;
             }
         }
 
@@ -1358,6 +1351,12 @@ private:
             new_lines_out = static_cast<int>(el.lines.size());
             return true;
         }
+
+        // Re-split content after text replacement for line-based operations
+        agent::EditLines el;
+        el.parse(content);
+        lines = std::move(el.lines);
+        total_lines = static_cast<int>(lines.size());
 
         // Apply all blocks to produce new lines
         std::vector<std::string> result_lines = apply_blocks(lines, total_lines, blocks);
@@ -1379,19 +1378,17 @@ public:
             if (args.is_discarded()) {
                 return "Error: Invalid JSON arguments - not json";
             }
-            if (!args.contains("edits") || !args["edits"].is_array()) {
-                return "Error: 'edits' array is required.";
-            }
+
+            auto file_ops = parse_operations(args);
 
             json result_edited  = json::array();
             json result_failed  = json::array();
 
-            for (const auto& edit_entry : args["edits"]) {
-                std::string path = edit_entry.value("path", "");
+            for (auto& [path, ops] : file_ops) {
                 int original_lines = 0, new_lines = 0;
                 std::string error;
 
-                if (process_file(edit_entry, error, original_lines, new_lines)) {
+                if (process_file(path, ops.blocks, ops.text_replacements, error, original_lines, new_lines)) {
                     json file_result;
                     file_result["path"] = path;
                     file_result["original_lines"] = original_lines;

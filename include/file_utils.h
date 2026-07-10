@@ -31,6 +31,28 @@ struct EditLines {
     bool write_file(const std::string& path) const;
 };
 
+struct EditFile: EditLines {
+
+    struct ModifiedBlock {
+        int start;
+        int end;
+        std::string new_content;
+        bool is_insert;       // true for insert_before/after (end == -1)
+
+        bool is_overlay(const ModifiedBlock& b);
+    };
+
+    std::vector<ModifiedBlock> blocks;
+
+    void replace_line_range(int start, int end, const std::string &new_text);
+    void insert_before_line(int start, const std::string &new_text);
+    void insert_after_line(int start, const std::string &new_text);
+    void delete_lines(int start, int end);
+    void replace_text(const std::string &old_text, const std::string &new_text);
+
+    // apply_blocks(EditLines &_lines)
+};
+
 /// Read a specific line range from a file.
 /// Lines are 1-based (startLine = 1 means the first line).
 /// Returns true on success; out contains pairs of (line_number, content_without_newline).

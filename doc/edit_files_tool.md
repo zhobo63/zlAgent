@@ -384,6 +384,8 @@
 
 # 未來調整方向 [ ]
 
+- 現在同檔都在記憶體裡面操作 一樣可以把同檔邏輯放在一起處理 如果失敗 直接不寫回就可以了
+
 {
   type: object,
   properties: {
@@ -435,3 +437,17 @@
     ]    
   }
 }
+
+## execute, show_preview 提出相同邏輯 共用函式
+
+struct FileEdit
+{
+  EditLines file;
+  std::vector<ModifiedBlock> blocks;
+  std::vector<std::pair<std::string, std::string>> text_replacements;
+}
+
+- 蒐集該檔案所有操作 放入blocks
+- 從 blocks 找到最小 start_line, 最大 end_line
+- 如果 blocks 非法 標記錯誤 不執行本檔案操作
+- 使用 EditLines 讀取檔案
