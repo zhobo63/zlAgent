@@ -382,19 +382,4 @@
 | 原子性操作 | ✅（每檔獨立） | ❌ |
 | Token 效率 | ✅（一次請求） | ❌（多次請求） |
 
-{
-  type: object,
-  required: ["files"],
-  properties: {
-    type: array,
-    required: ["path", "mode"],
-    properties: {
-      path: string,
-      mode: string, //replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text,
-      start_line: number,
-      end_line: number,
-      old_text: string,
-      new_text: string,
-    }
-  }
-}
+# 未來調整 [ ]

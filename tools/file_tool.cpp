@@ -710,6 +710,10 @@ public:
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                Tool::show_preview(json_args);
+                return;
+            }
             std::string path = args.value("path", "");
             std::string old_text = args.value("old_text", "");
             std::string new_text = args.value("new_text", "");
@@ -863,27 +867,56 @@ class EditFilesTool : public Tool {
 public:
     std::string name() const override { return "edit_files"; }
     std::string description() const override {
-        return "Edit one or more files in a single call. Each file can have multiple operations: replace_line_range, insert_before_line, insert_after_line, delete_lines, replace_text. All line numbers are based on the original file before any edits. Operations within a file are atomic - if any operation fails (e.g., overlapping ranges), that entire file is rolled back. Files are independent of each other.";
+        return R"(Edit one or more files in a single call. 
+Each file can have multiple operations: 
+replace_line_range, 
+insert_before_line, 
+insert_after_line, 
+delete_lines, 
+replace_text. 
+All line numbers are based on the original file before any edits.
+Operations within a file are atomic - if any operation fails (e.g., overlapping ranges),
+that entire file is rolled back. Files are independent of each other.)";
     }
     std::string parameters_schema() const override {
-        json schema;
-        schema["type"] = "object";
-        schema["properties"]["edits"]["type"] = "array";
-        schema["properties"]["edits"]["description"] = "List of file edits. Each edit MUST have both 'path' and 'operations'. Example: [{\"path\": \"src/main.cpp\", \"operations\": [{\"type\": \"replace_line_range\", \"start_line\": 1, \"end_line\": 5, \"new_text\": \"...\"}]}]";
-        schema["properties"]["edits"]["items"]["type"] = "object";
-        schema["properties"]["edits"]["items"]["required"] = {"path", "operations"};
-        schema["properties"]["edits"]["items"]["properties"]["path"]["type"] = "string";
-        schema["properties"]["edits"]["items"]["properties"]["path"]["description"] = "File path to edit (relative to project root). Required.";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["type"] = "array";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["description"] = "List of operations for this file. Required.";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["type"] = "object";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["type"] = "string";
-        schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["properties"]["type"]["description"] = "Operation type: replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text.";
-        schema["required"] = {"edits"};
-        return schema.dump();
+        static std::string schema = json::parse(R"({
+            "type": "object",
+            "required": ["edits"],
+            "properties": {
+                "edits": {
+                    "type": "array",
+                    "description": "List of file edits. Each edit MUST have both 'path' and 'operations'. Example: [{\"path\": \"src/main.cpp\", \"operations\": [{\"type\": \"replace_line_range\", \"start_line\": 1, \"end_line\": 5, \"new_text\": \"...\"}]}]",
+                    "items": {
+                        "type": "object",
+                        "required": ["path", "operations"],
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "File path to edit (relative to project root). Required."
+                            },
+                            "operations": {
+                                "type": "array",
+                                "description": "List of operations for this file. Required.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "description": "Operation type: replace_line_range, insert_before_line, insert_after_line, delete_lines, or replace_text."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })").dump();
+        return schema;
     }
 
     void show_arguments(const std::string& json_args) override {
+        Tool::show_arguments(json_args);
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;

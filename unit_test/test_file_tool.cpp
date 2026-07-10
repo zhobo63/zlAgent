@@ -1766,7 +1766,7 @@ void test_edit_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string result = tool->execute(args.dump());
+        std::string result = tool->execute(args_str);
         UNIT_TEST("missing_operations_returns_error", result.find("operations") != std::string::npos);
     }
 
@@ -1777,6 +1777,7 @@ void test_edit_files_tools(UnitReport& parent)
         std::string args_str = "not json";
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1787,6 +1788,7 @@ void test_edit_files_tools(UnitReport& parent)
         std::string args_str = "";
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
