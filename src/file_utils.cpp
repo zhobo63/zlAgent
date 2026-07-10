@@ -133,7 +133,148 @@ bool EditLines::write_file(const std::string& path) const {
     return write_file_lines(path, lines, has_trailing_newline);
 }
 
+// ── EditFile implementation ───────────────────────────────
+
+static std::vector<std::string> split_edit_lines(const std::string& text) {
+    EditLines el;
+    el.parse(text);
+    return el.lines;
 }
+
+bool EditFile::ModifiedBlock::is_overlay(const ModifiedBlock& b) {
+    if (is_insert && b.is_insert) return false;
+    // Ensure a is the non-insertion one
+    const ModifiedBlock* ta = this, *tb = &b;
+    if (ta->is_insert) { std::swap(ta, tb); }
+    int a_start = ta->start, a_end = ta->end;
+    if (!tb->is_insert)
+        return !(a_end < tb->start || tb->end < a_start);
+    // tb is insertion — adjacent (tb.start == a_end+1) is OK
+    return tb->start >= a_start && tb->start <= a_end;
+}
+
+void EditFile::replace_line_range(int start, int end, const std::string& new_text) {
+    blocks.push_back({start, end, new_text, false});
+}
+
+void EditFile::insert_before_line(int start, const std::string& new_text) {
+    blocks.push_back({start, -1, new_text, true});
+}
+
+void EditFile::insert_after_line(int start, const std::string& new_text) {
+    blocks.push_back({start + 1, -1, new_text, true});
+}
+
+void EditFile::delete_lines(int start, int end) {
+    blocks.push_back({start, end, "", false});
+}
+
+bool EditFile::validate_blocks(std::string& error_out) const {
+    int total = static_cast<int>(lines.size());
+
+    for (const auto& block : blocks) {
+        if (block.is_insert) {
+            if (block.start < 1 || block.start > total + 1) {
+                error_out = "Line number out of range: insert at position " +
+                            std::to_string(block.start) + " (file has " +
+                            std::to_string(total) + " lines).";
+                return false;
+            }
+        } else {
+            if (block.start < 1 || block.end < block.start || block.end > total) {
+                error_out = "Invalid line range: start=" +
+                            std::to_string(block.start) + ", end=" + std::to_string(block.end) +
+                            " in file with " + std::to_string(total) + " lines.";
+                return false;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < blocks.size(); ++i)
+        for (size_t j = i + 1; j < blocks.size(); ++j)
+            if (blocks[i].is_overlay(blocks[j])) {
+                error_out = "Overlapping line operations detected.";
+                return false;
+            }
+
+    return true;
+}
+
+int EditFile::pos_to_line(const std::vector<std::string>& lines, size_t pos) {
+    // Find which 1-based line the content position falls on.
+    size_t offset = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        if (pos <= offset + lines[i].size())
+            return i + 1;
+        offset += lines[i].size() + 1; // +1 for newline
+    }
+    return static_cast<int>(lines.size());
+}
+
+std::vector<std::pair<int, size_t>> EditFile::find_occurrences(
+        const std::vector<std::string>& lines,
+        const std::string& old_text) {
+    // Reconstruct content and find all occurrences of old_text.
+    // Returns (line_number_of_start, content_position) for each match.
+    std::string content;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        if (i > 0) content += '\n';
+        content += lines[i];
+    }
+
+    std::vector<std::pair<int, size_t>> results;
+    if (old_text.empty()) return results;
+
+    size_t search_pos = 0;
+    while (true) {
+        auto found = content.find(old_text, search_pos);
+        if (found == std::string::npos) break;
+        int line_num = pos_to_line(lines, found);
+        results.push_back({line_num, found});
+        search_pos = found + 1;
+    }
+    return results;
+}
+
+void EditFile::apply_blocks(EditLines& out_lines) {
+    std::vector<ModifiedBlock> sorted_blocks = blocks;
+    std::sort(sorted_blocks.begin(), sorted_blocks.end(),
+        [](const ModifiedBlock& a, const ModifiedBlock& b) {
+            if (a.start != b.start) return a.start < b.start;
+            if (a.is_insert && !b.is_insert) return true;
+            return false;
+        });
+
+    int total_lines = static_cast<int>(lines.size());
+    std::vector<std::string> result;
+    int current_line = 1;
+
+    for (const auto& block : sorted_blocks) {
+        while (current_line < block.start) {
+            result.push_back(lines[current_line - 1]);
+            ++current_line;
+        }
+        if (block.is_insert) {
+            auto insert_lines = split_edit_lines(block.new_content);
+            for (const auto& il : insert_lines)
+                result.push_back(il);
+        } else {
+            auto replace_lines = split_edit_lines(block.new_content);
+            for (const auto& rl : replace_lines)
+                result.push_back(rl);
+            current_line = block.end + 1;
+        }
+    }
+
+    while (current_line <= total_lines) {
+        result.push_back(lines[current_line - 1]);
+        ++current_line;
+    }
+
+    out_lines.lines = std::move(result);
+}
+
+} // namespace agent
 
 namespace agent {
 

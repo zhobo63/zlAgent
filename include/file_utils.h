@@ -34,12 +34,12 @@ struct EditLines {
 struct EditFile: EditLines {
 
     struct ModifiedBlock {
-        int start;
-        int end;
+        int start;               // 1-based inclusive
+        int end;                 // 1-based inclusive (-1 means insertion point, no line consumed)
         std::string new_content;
-        bool is_insert;       // true for insert_before/after (end == -1)
+        bool is_insert;          // true for insert_before/after (end == -1)
 
-        bool is_overlay(const ModifiedBlock& b);
+        bool is_overlay(const ModifiedBlock& b) const;
     };
 
     std::vector<ModifiedBlock> blocks;
@@ -48,9 +48,21 @@ struct EditFile: EditLines {
     void insert_before_line(int start, const std::string &new_text);
     void insert_after_line(int start, const std::string &new_text);
     void delete_lines(int start, int end);
-    void replace_text(const std::string &old_text, const std::string &new_text);
 
-    // apply_blocks(EditLines &_lines)
+    /// Validate all blocks: line ranges within file size, no overlapping.
+    /// Returns true on success; sets error_out on failure.
+    bool validate_blocks(std::string& error_out) const;
+
+    /// Find all occurrences of old_text and return (line_number, content_pos) pairs.
+    static std::vector<std::pair<int, size_t>> find_occurrences(
+            const std::vector<std::string>& lines,
+            const std::string& old_text);
+
+    /// Convert a content position to the 1-based line number it falls on.
+    static int pos_to_line(const std::vector<std::string>& lines, size_t pos);
+
+    /// Apply all blocks to produce new lines. Call after replace_text has been handled.
+    void apply_blocks(EditLines& out_lines);
 };
 
 /// Read a specific line range from a file.
