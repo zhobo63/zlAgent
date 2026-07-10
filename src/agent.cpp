@@ -7,6 +7,7 @@
 #include "multi_agent.h"
 #include "logger.h"
 #include "file_utils.h"
+#include <regex>
 
 namespace agent {
 
@@ -84,6 +85,154 @@ void Agent::discover_local_tools_from_overview(const std::string& overview) {
     LOG_INFO("Lazy", "Local tools from overview: " + std::to_string(added) + " registered, " + std::to_string(skipped) + " skipped (already registered)." );
 }
 
+// ── File reference preprocessing ───────────────────────────
+// Parses user_input for patterns like "file.cpp L1-20", "file.cpp (1:10)", etc.
+// and appends the corresponding file content after each reference.
+
+struct LineRange {
+    int start = 0;
+    int end   = 0;
+};
+
+static std::vector<LineRange> parse_line_ranges(const std::string& spec) {
+    std::vector<LineRange> ranges;
+    // Split by ':' for multi-range, e.g. "1-10:50-60"
+    size_t pos = 0;
+    while (pos < spec.size()) {
+        size_t colon = spec.find(':', pos);
+        std::string segment = (colon == std::string::npos) ? spec.substr(pos) : spec.substr(pos, colon - pos);
+
+        // Strip leading 'L'
+        if (!segment.empty() && segment[0] == 'L')
+            segment = segment.substr(1);
+
+        size_t dash = segment.find('-');
+        if (dash != std::string::npos) {
+            try {
+                LineRange r;
+                r.start = std::stoi(segment.substr(0, dash));
+                r.end   = std::stoi(segment.substr(dash + 1));
+                ranges.push_back(r);
+            } catch (...) {}
+        } else {
+            // Single line
+            try {
+                int val = std::stoi(segment);
+                ranges.push_back({val, val});
+            } catch (...) {}
+        }
+
+        pos = (colon == std::string::npos) ? spec.size() : colon + 1;
+    }
+    return ranges;
+}
+
+std::string Agent::preprocess_file_references(const std::string& user_input) {
+    // Regex: match "filepath line_spec" where line_spec is optional.
+    // Filepath: at least one char of [a-zA-Z0-9_./\-] ending with .ext
+    // Line spec (optional): whitespace then L?digits, possibly with - or : for ranges,
+    // optionally wrapped in parentheses.
+    // Regex for file with line spec
+    static const std::regex file_ref_with_lines_re(
+        R"((([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+))\s+(L?\d+(?:-\d+)?(?::L?\d+-\d+)*|\(L?\d+(?:-\d+)?(?::L?\d+-\d+)*\)))"
+    );
+    // Regex for bare file path (no line spec)
+    static const std::regex file_ref_bare_re(
+        R"(([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+))"
+    );
+
+    std::string result = user_input;
+    // We process matches from the original string and build a new result,
+    // inserting content after each match.
+    auto begin = std::sregex_iterator(user_input.begin(), user_input.end(), file_ref_with_lines_re);
+    auto end   = std::sregex_iterator();
+
+    // Collect all insertions with their positions (in the original string)
+    struct Insertion {
+        size_t pos;       // position after the match in original string
+        std::string text; // content to insert
+    };
+    std::vector<Insertion> insertions;
+
+    for (auto it = begin; it != end; ++it) {
+        std::smatch m = *it;
+        std::string filepath = m[2].str();
+        std::string line_spec_raw = m[3].str();
+
+        // Check file exists
+        namespace fs = std::filesystem;
+        if (!fs::exists(filepath)) {
+            continue; // silently skip non-existent files
+        }
+
+        // Strip parentheses from line spec
+        std::string line_spec = line_spec_raw;
+        if (line_spec.front() == '(' && line_spec.back() == ')')
+            line_spec = line_spec.substr(1, line_spec.size() - 2);
+
+        auto ranges = parse_line_ranges(line_spec);
+        if (ranges.empty()) continue;
+
+        std::ostringstream content_oss;
+        for (const auto& r : ranges) {
+            if (r.start <= 0 || r.end < r.start) continue;
+            std::string lines_content = ReadFileLinesAsString(filepath, r.start, r.end);
+            if (!lines_content.empty()) {
+                content_oss << "--- File: " << filepath << " (lines "
+                            << r.start << "-" << r.end << ") ---\n"
+                            << lines_content
+                            << "--- End of file ---\n";
+            }
+        }
+
+        if (!content_oss.str().empty()) {
+            insertions.push_back({(size_t)(m.position() + m.length()), content_oss.str()});
+        } else {
+            // No line ranges succeeded — fall back to outline
+            std::string outline = GenerateFileOutline(filepath);
+            if (!outline.empty()) {
+                insertions.push_back({ (size_t)(m.position() + m.length()),
+                    "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
+            }
+        }
+    }
+
+    // Also match bare file paths without line spec — insert outline
+    {
+        auto begin2 = std::sregex_iterator(user_input.begin(), user_input.end(), file_ref_bare_re);
+        for (auto it = begin2; it != end; ++it) {
+            std::smatch m = *it;
+            std::string filepath = m[1].str();
+
+            // Skip if this match is already covered by a with-lines match
+            bool dominated = false;
+            for (const auto& ins : insertions) {
+                if (ins.pos >= (size_t)m.position() && ins.pos <= (size_t)(m.position() + m.length())) {
+                    dominated = true;
+                    break;
+                }
+            }
+            if (dominated) continue;
+
+            namespace fs = std::filesystem;
+            if (!fs::exists(filepath)) continue;
+
+            std::string outline = GenerateFileOutline(filepath);
+            if (!outline.empty()) {
+                insertions.push_back({(size_t)(m.position() + m.length()),
+                    "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
+            }
+        }
+    }
+
+    // Apply insertions in reverse order so positions remain valid
+    for (auto it = insertions.rbegin(); it != insertions.rend(); ++it) {
+        result.insert(it->pos, it->text);
+    }
+
+    return result;
+}
+
 // ── LLM-based planning decision ────────────────────────────
 
 bool Agent::needs_planning(ChatResponse &resp) {
@@ -107,8 +256,11 @@ std::string Agent::run_stream(const std::string& user_input, TokenCallback on_to
     // Lazy discover local tools on first chat.
     // discover_local_tools();
 
-    // Add user message to memory
-    ChatMessage user_msg{"user", user_input, ""};
+    // Preprocess: auto-inject file content for referenced files
+    std::string enriched_input = preprocess_file_references(user_input);
+
+    // Add user message to memory (with enriched content)
+    ChatMessage user_msg{"user", enriched_input, ""};
     memory_.add(user_msg);
 
     // Reset iteration count before task

@@ -99,7 +99,11 @@ public:
 
     // Discover local tools from a project overview string, excluding already-registered ones.
     void discover_local_tools_from_overview(const std::string& overview);
+
 private:
+    // Preprocess user_input: detect file references and inject content (outline or line ranges).
+    // Only runs on first iteration. Original text is preserved; content is appended after each reference.
+    std::string preprocess_file_references(const std::string& user_input);
     LLMClient llm_;
     ToolRegistry registry_;
     Memory memory_;

@@ -856,6 +856,12 @@ void test_edit_file_tools(UnitReport& parent)
     parent.report.push_back(unit);
 }
 
+// ── EditFilesTool ──────────────────────────────────────────
+
+void test_edit_files_tools(UnitReport& parent)
+{
+
+}
 
 // ── ListDirectoryTool ──────────────────────────────────────────
 

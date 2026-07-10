@@ -119,7 +119,7 @@ public:
             "      Each file can have its own outline (bool), start_line/end_line for range. In outline mode, range limits the symbols returned.\n"
             "  (3) directory + glob — e.g. {\"directory\":\"src\", \"glob\":\"*.cpp\", \"outline\":true}\n"
             "      Scans a directory with a file pattern; outline is required at top-level.\n"
-            "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown";
+            "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown\n";
     }
     std::string parameters_schema() const override {
         static std::string schema = json::parse(R"({
@@ -137,11 +137,11 @@ public:
                 },
                 "directory": {
                     "type": "string",
-                    "description": "Directory to search in (default: current directory)"
+                    "description": "Directory to search in (default: current directory) "
                 },
                 "glob": {
                     "type": "string",
-                    "description": "File pattern to match (mutually exclusive with paths, default: '*')"
+                    "description": "File pattern to match (mutually exclusive with paths, default: '*') "
                 },
                 "outline": {
                     "type": "boolean",
