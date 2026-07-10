@@ -245,9 +245,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
                 // Show preview before execution
                 try {
-                    LOG_INFO(u8"🛠️Tool", "[arguments]");
                     tool_ptr->show_arguments(tc.arguments);
-                    LOG_INFO(u8"🛠️Tool", "[preview]");
                     tool_ptr->show_preview(tc.arguments);
                 } catch (...) {
                     // If preview fails, continue without it

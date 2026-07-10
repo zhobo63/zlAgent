@@ -29,45 +29,17 @@ public:
     static bool show_json(const nlohmann::json& args, int depth = 0);
 
     static void show_text(const std::string& args);
+    static void show_json_text(const std::string& json_args);
 
     // Show user friendly arguments
     // Default: parse json_args and display key-value pairs in a readable format.
-    virtual void show_arguments(const std::string& json_args) {
-        try {
-            auto args = nlohmann::json::parse(json_args);
-            if (!show_json(args, 0)) {
-                show_text(json_args);
-            }
-        } catch (...) {
-            show_text(json_args);
-        }
-    }
-
-    virtual void show_result(const std::string& json_args) {
-        try {
-            auto args = nlohmann::json::parse(json_args);
-            if (!show_json(args, 0)) {
-                show_text(json_args);
-            }
-        } catch (...) {
-            show_text(json_args);
-        }
-    }
+    virtual void show_arguments(const std::string& json_args);
 
     // Show a preview (e.g. diff) before execution. Override to provide custom preview.
     // Default does nothing.
-    virtual void show_preview(const std::string& json_args) {
-        try {
-            auto args = nlohmann::json::parse(json_args);
-            if (args.is_discarded()) {            
-                show_text(json_args);
-                return;
-            }
-            show_json(args, 0);
-        } catch (...) {
-            show_text(json_args);
-        }
-    }
+    virtual void show_preview(const std::string& json_args);
+
+    virtual void show_result(const std::string& json_args);
 
     // Whether this tool requires user confirmation in the given mode.
     // Default: only when Always mode is active.

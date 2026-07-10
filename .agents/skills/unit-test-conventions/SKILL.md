@@ -39,7 +39,11 @@ void test_my_tools(UnitReport& parent)
     auto tool = create_some_tool();
     json args;
     args["key"] = "value";
-    std::string result = tool->execute(args.dump());
+    auto args_str = args.dump();
+    tool->show_arguments(args_str);
+    tool->show_preview(args_str);
+    std::string result = tool->execute(args_str);
+    tool->show_result(result);
     UNIT_TEST("test_case_name", result.find("expected") != std::string::npos);
 
     safe_remove_all(dir);  // 清理

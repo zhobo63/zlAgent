@@ -3,6 +3,7 @@
 #include "tool.h"
 #include "file_utils.h"
 #include "tui.h"
+#include "key_watcher.h"
 #include "safety_guard.h"
 
 const uint8_t bom[] = { 0xEF, 0xBB, 0xBF };
@@ -809,18 +810,12 @@ public:
                 // --- Line-based mode: replace lines start_line..end_line with new_text ---
                 if (new_text.empty()) return "Error: new_text is required in line-based mode.";
 
-                std::ifstream infile(path);
-                if (!infile.is_open()) {
-                    return "Error: Cannot open file '" + path + "'";
-                }
-
                 // Read all lines, preserving structure
                 std::vector<std::string> lines;
-                std::string line;
-                while (std::getline(infile, line)) {
-                    lines.push_back(line);
+                bool has_trailing_newline = false;
+                if (!agent::read_file_lines(path, lines, &has_trailing_newline)) {
+                    return "Error: Cannot open file '" + path + "'";
                 }
-                infile.close();
 
                 if (end_line > static_cast<int>(lines.size())) {
                     return "Error: end_line " + std::to_string(end_line) +
@@ -834,16 +829,9 @@ public:
                 }
 
                 // Split new_text into lines
-                std::vector<std::string> insert_lines;
-                {
-                    std::istringstream iss(new_text);
-                    while (std::getline(iss, line)) {
-                        insert_lines.push_back(line);
-                    }
-                    if (!new_text.empty() && new_text.back() == '\n' && !insert_lines.empty()) {
-                        insert_lines.pop_back();
-                    }
-                }
+                agent::EditLines el;
+                el.parse(new_text);
+                std::vector<std::string> insert_lines = std::move(el.lines);
 
                 // Replace the range [start_line-1, end_line-1] with insert_lines
                 int replace_start = start_line - 1;
@@ -854,16 +842,9 @@ public:
                 }
 
                 // Write back
-                std::ofstream outfile(path, std::ios::trunc);
-                if (!outfile.is_open()) {
+                if (!agent::write_file_lines(path, lines, has_trailing_newline)) {
                     return "Error: Cannot write to file '" + path + "'";
                 }
-                for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-                    outfile << lines[i];
-                    if (i < static_cast<int>(lines.size()) - 1)
-                        outfile << '\n';
-                }
-                outfile.close();
 
                 std::string diff = DiffEdit(old_content, new_text);
                 return "Successfully replaced lines " + std::to_string(start_line) + "-" +
@@ -945,6 +926,8 @@ public:
                     }
                 }
             }
+        } catch (const std::exception& e) {
+            std::cerr << "show_arguments error: " << e.what() << '\n';
         } catch (...) {}
     }
 
@@ -959,7 +942,7 @@ public:
 
                 // Read original content
                 std::vector<std::string> lines;
-                if (!read_file_lines(path, lines)) continue;
+                if (!agent::read_file_lines(path, lines)) continue;
                 int total_lines = static_cast<int>(lines.size());
 
                 // Reconstruct full content for replace_text
@@ -1018,38 +1001,7 @@ public:
                         }
                     }
 
-                    std::sort(blocks.begin(), blocks.end(), [](const ModifiedBlock& a, const ModifiedBlock& b) {
-                        if (a.start != b.start) return a.start < b.start;
-                        if (a.is_insertion && !b.is_insertion) return true;
-                        return false;
-                    });
-
-                    std::vector<std::string> result_lines;
-                    int current_line = 1;
-                    for (const auto& block : blocks) {
-                        if (block.is_insertion) {
-                            while (current_line < block.start) {
-                                result_lines.push_back(lines[current_line - 1]);
-                                current_line++;
-                            }
-                            auto insert_lines = split_lines(block.new_content);
-                            for (const auto& il : insert_lines)
-                                result_lines.push_back(il);
-                        } else {
-                            while (current_line < block.start) {
-                                result_lines.push_back(lines[current_line - 1]);
-                                current_line++;
-                            }
-                            auto replace_lines = split_lines(block.new_content);
-                            for (const auto& rl : replace_lines)
-                                result_lines.push_back(rl);
-                            current_line = block.end + 1;
-                        }
-                    }
-                    while (current_line <= total_lines) {
-                        result_lines.push_back(lines[current_line - 1]);
-                        current_line++;
-                    }
+                    std::vector<std::string> result_lines = apply_blocks(lines, total_lines, blocks);
 
                     std::string new_content_str;
                     for (int i = 0; i < static_cast<int>(result_lines.size()); ++i) {
@@ -1065,6 +1017,8 @@ public:
                     std::cout << "\n" << path << "\n" << diff << "\n";
                 }
             }
+        } catch (const std::exception& e) {
+            std::cerr << "show_preview error: " << e.what() << '\n';
         } catch (...) {}
     }
 
@@ -1081,43 +1035,49 @@ private:
         bool is_insertion;       // true for insert_before/after (end == -1)
     };
 
-    static bool read_file_lines(const std::string& path,
-                                 std::vector<std::string>& out_lines) {
-        std::ifstream infile(path);
-        if (!infile.is_open()) return false;
-        std::string line;
-        while (std::getline(infile, line)) {
-            out_lines.push_back(line);
-        }
-        infile.close();
-        return true;
-    }
-
-    static bool write_file_lines(const std::string& path,
-                                  const std::vector<std::string>& lines) {
-        std::ofstream outfile(path, std::ios::trunc);
-        if (!outfile.is_open()) return false;
-        for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-            outfile << lines[i];
-            if (i < static_cast<int>(lines.size()) - 1)
-                outfile << '\n';
-        }
-        outfile.close();
-        return true;
-    }
-
     static std::vector<std::string> split_lines(const std::string& text) {
-        std::vector<std::string> result;
-        if (text.empty()) return result;
-        std::istringstream iss(text);
-        std::string line;
-        while (std::getline(iss, line)) {
-            result.push_back(line);
+        agent::EditLines el;
+        el.parse(text);
+        return el.lines;
+    }
+
+    /// Sort and apply all blocks to produce new lines.
+    static std::vector<std::string> apply_blocks(
+            const std::vector<std::string>& lines,
+            int total_lines,
+            std::vector<ModifiedBlock> blocks) {
+        std::sort(blocks.begin(), blocks.end(), [](const ModifiedBlock& a, const ModifiedBlock& b) {
+            if (a.start != b.start) return a.start < b.start;
+            if (a.is_insertion && !b.is_insertion) return true;
+            return false;
+        });
+
+        std::vector<std::string> result_lines;
+        int current_line = 1;
+
+        for (const auto& block : blocks) {
+            while (current_line < block.start) {
+                result_lines.push_back(lines[current_line - 1]);
+                current_line++;
+            }
+            if (block.is_insertion) {
+                auto insert_lines = split_lines(block.new_content);
+                for (const auto& il : insert_lines)
+                    result_lines.push_back(il);
+            } else {
+                auto replace_lines = split_lines(block.new_content);
+                for (const auto& rl : replace_lines)
+                    result_lines.push_back(rl);
+                current_line = block.end + 1;
+            }
         }
-        if (!text.empty() && text.back() == '\n' && !result.empty()) {
-            result.pop_back();
+
+        while (current_line <= total_lines) {
+            result_lines.push_back(lines[current_line - 1]);
+            current_line++;
         }
-        return result;
+
+        return result_lines;
     }
 
     static bool blocks_overlap(const ModifiedBlock& a, const ModifiedBlock& b) {
@@ -1129,8 +1089,8 @@ private:
         if (!tb.is_insertion) {
             return !(a_end < tb.start || tb.end < a_start);
         }
-        // tb is insertion at position tb.start
-        return tb.start >= a_start && tb.start <= a_end + 1;
+        // tb is insertion at position tb.start — adjacent (tb.start == a_end+1) is OK
+        return tb.start >= a_start && tb.start <= a_end;
     }
 
     static std::vector<std::pair<int, size_t>> find_all_occurrences(
@@ -1181,7 +1141,8 @@ private:
         }
 
         std::vector<std::string> lines;
-        if (!read_file_lines(path, lines)) {
+        bool has_trailing_newline = false;
+        if (!agent::read_file_lines(path, lines, &has_trailing_newline)) {
             error_out = "Cannot open file '" + path + "'.";
             return false;
         }
@@ -1194,13 +1155,9 @@ private:
             if (i > 0) content += '\n';
             content += lines[i];
         }
+        bool text_modified = false;
 
         std::vector<ModifiedBlock> blocks;
-
-        if (!edit_entry.contains("operations") || !edit_entry["operations"].is_array()) {
-            error_out = "'operations' array is required.";
-            return false;
-        }
 
         auto& operations = edit_entry["operations"];
         for (const auto& op : operations) {
@@ -1310,6 +1267,7 @@ private:
 
                 if (occurrences.size() == 1) {
                     content.replace(occurrences[0].second, old_text.size(), new_text);
+                    text_modified = true;
                 } else {
                     std::ostringstream prompt;
                     prompt << "\n" << path << ": \"" << old_text << "\" found in "
@@ -1322,8 +1280,7 @@ private:
                     prompt << "\nChoose: [N] skip / [num] replace that one / [A] all: ";
                     std::cout << prompt.str();
 
-                    std::string choice;
-                    std::cin >> choice;
+                    std::string choice = KeyWatcher::readline("", nullptr);
 
                     if (choice == "N" || choice == "n") {
                         // Skip this operation
@@ -1335,12 +1292,14 @@ private:
                             content.replace(found, old_text.size(), new_text);
                             search_pos = found + new_text.size();
                         }
+                        text_modified = true;
                     } else {
                         int idx = 0;
                         try { idx = std::stoi(choice); } catch (...) {}
                         if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
                             auto [line_num, pos] = occurrences[idx - 1];
                             content.replace(pos, old_text.size(), new_text);
+                            text_modified = true;
                         }
                     }
                 }
@@ -1353,64 +1312,24 @@ private:
 
         // If no line-based blocks and content unchanged, nothing to do
         if (blocks.empty()) {
-            std::string old_content_str;
-            for (int i = 0; i < total_lines; ++i) {
-                if (i > 0) old_content_str += '\n';
-                old_content_str += lines[i];
-            }
-            if (content == old_content_str) {
+            if (!text_modified) {
                 new_lines_out = total_lines;
                 return true;
             }
-            std::vector<std::string> new_lines = split_lines(content);
-            if (!write_file_lines(path, new_lines)) {
+            agent::EditLines el;
+            el.parse(content);
+            if (!agent::write_file_lines(path, el.lines, has_trailing_newline)) {
                 error_out = "Cannot write to file '" + path + "'.";
                 return false;
             }
-            new_lines_out = static_cast<int>(new_lines.size());
+            new_lines_out = static_cast<int>(el.lines.size());
             return true;
         }
 
-        // Sort blocks by start position (ascending)
-        std::sort(blocks.begin(), blocks.end(), [](const ModifiedBlock& a, const ModifiedBlock& b) {
-            if (a.start != b.start) return a.start < b.start;
-            if (a.is_insertion && !b.is_insertion) return true;
-            return false;
-        });
-
         // Apply all blocks to produce new lines
-        std::vector<std::string> result_lines;
-        int current_line = 1;
+        std::vector<std::string> result_lines = apply_blocks(lines, total_lines, blocks);
 
-        for (const auto& block : blocks) {
-            if (block.is_insertion) {
-                while (current_line < block.start) {
-                    result_lines.push_back(lines[current_line - 1]);
-                    current_line++;
-                }
-                auto insert_lines = split_lines(block.new_content);
-                for (const auto& il : insert_lines) {
-                    result_lines.push_back(il);
-                }
-            } else {
-                while (current_line < block.start) {
-                    result_lines.push_back(lines[current_line - 1]);
-                    current_line++;
-                }
-                auto replace_lines = split_lines(block.new_content);
-                for (const auto& rl : replace_lines) {
-                    result_lines.push_back(rl);
-                }
-                current_line = block.end + 1;
-            }
-        }
-
-        while (current_line <= total_lines) {
-            result_lines.push_back(lines[current_line - 1]);
-            current_line++;
-        }
-
-        if (!write_file_lines(path, result_lines)) {
+        if (!agent::write_file_lines(path, result_lines, has_trailing_newline)) {
             error_out = "Cannot write to file '" + path + "'.";
             return false;
         }
@@ -1571,6 +1490,10 @@ public:
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                Tool::show_preview(json_args);
+                return;
+            }
             std::string path = args.value("path", "");
             std::string content = args.value("content", "");
             if (!path.empty()) {
@@ -1650,7 +1573,10 @@ public:
     void show_arguments(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
-            if (args.is_discarded()) return;
+            if (args.is_discarded()) {
+                Tool::show_arguments(json_args);
+                return;
+            }
             std::cout << "  path: '" << args.value("path", "") << "'\n";
             int line_number = args.value("line_number", 0);
             std::cout << "  line_number: " << line_number << '\n';
@@ -1666,6 +1592,10 @@ public:
     void show_preview(const std::string& json_args) override {
         try {
             auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                Tool::show_preview(json_args);
+                return;
+            }
             std::string path = args.value("path", "");
             int line_number = args.value("line_number", 0);
             std::string content = args.value("content", "");
@@ -1742,18 +1672,11 @@ public:
             }
 
             // Read the file
-            std::ifstream infile(path);
-            if (!infile.is_open()) {
+            std::vector<std::string> lines;
+            bool has_trailing_newline = false;
+            if (!agent::read_file_lines(path, lines, &has_trailing_newline)) {
                 return "Error: Cannot open file '" + path + "'";
             }
-
-            // Split into lines, preserving line endings
-            std::vector<std::string> lines;
-            std::string line;
-            while (std::getline(infile, line)) {
-                lines.push_back(line);
-            }
-            infile.close();
 
             // Check if line_number is within bounds or at the end
             if (line_number > static_cast<int>(lines.size()) + 1) {
@@ -1762,18 +1685,9 @@ public:
             }
 
             // Split content into lines for insertion
-            std::vector<std::string> insert_lines;
-            {
-                std::istringstream iss(content);
-                while (std::getline(iss, line)) {
-                    insert_lines.push_back(line);
-                }
-                // If content ends with a newline, the last getline produces an empty string
-                // which we should not add as an extra blank line
-                if (!content.empty() && content.back() == '\n' && !insert_lines.empty() && insert_lines.back().empty()) {
-                    insert_lines.pop_back();
-                }
-            }
+            agent::EditLines el;
+            el.parse(content);
+            std::vector<std::string> insert_lines = std::move(el.lines);
 
             // Insert before the given line (0-based index = line_number - 1)
             int insert_pos = line_number - 1;
@@ -1783,16 +1697,9 @@ public:
 
             LOG_DEBUG("InsertFileContentTool", "execute path:" + path + " line:" + std::to_string(line_number) + " content:" + std::to_string(content.length()) + "bytes");
             // Write back
-            std::ofstream outfile(path, std::ios::trunc);
-            if (!outfile.is_open()) {
+            if (!agent::write_file_lines(path, lines, has_trailing_newline)) {
                 return "Error: Cannot write to file '" + path + "'";
             }
-            for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-                outfile << lines[i];
-                if (i < static_cast<int>(lines.size()) - 1)
-                    outfile << '\n';
-            }
-            outfile.close();
 
             return "Successfully inserted content before line " + std::to_string(line_number) +
                    " in '" + path + "'";

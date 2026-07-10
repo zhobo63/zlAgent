@@ -19,6 +19,14 @@ void test_file_tool(UnitReport& parent);
 void test_fs_tool(UnitReport& parent);
 
 void main() {
+#ifdef _WIN32
+    // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
+    setlocale(LC_ALL, "zh_TW.UTF-8");
+    // Set console input/output code pages to UTF-8 so emoji and all Unicode display correctly.
+    SetConsoleCP(65001);
+    SetConsoleOutputCP(65001);
+#endif
+
     UnitReport main("UnitTest");
 
     try {

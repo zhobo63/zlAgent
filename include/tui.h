@@ -28,6 +28,9 @@ enum class AnsiColor {
     BrightBlack = 8, // gray (bright black)
 };
 
+// \x1b	Hexadecimal
+// \033	Octal
+
 inline std::string ansi_color(AnsiColor fg, bool bold = false) {
     return "\033[" + std::to_string(bold ? 1 : 0) + ";" + std::to_string(30 + static_cast<int>(fg)) + "m";
 }
