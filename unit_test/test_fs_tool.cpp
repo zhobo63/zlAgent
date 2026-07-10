@@ -34,7 +34,11 @@ void test_create_directory_tool(UnitReport& parent)
 
         json args;
         args["path"] = dir + "/new_folder";
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("basic_success", result.find("Successfully created") != std::string::npos);
         UNIT_TEST("dir_exists", fs::exists(fs::path(dir) / "new_folder"));
 
@@ -51,7 +55,11 @@ void test_create_directory_tool(UnitReport& parent)
         auto tool = create_create_directory_tool();
         json args;
         args["path"] = dir + "/existing_folder";
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("already_exists_no_error", result.find("Error") == std::string::npos);
 
         safe_remove_all(dir);
@@ -67,7 +75,11 @@ void test_create_directory_tool(UnitReport& parent)
         auto tool = create_create_directory_tool();
         json args;
         args["path"] = dir + "/a/b/c";
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("nested_success", result.find("Successfully created") != std::string::npos);
         UNIT_TEST("nested_dir_exists", fs::exists(fs::path(dir) / "a" / "b" / "c"));
 
@@ -127,7 +139,11 @@ void test_delete_path_tool(UnitReport& parent)
         auto tool = create_delete_path_tool();
         json args;
         args["path"] = (fs::path(dir) / "test.txt").string();
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("delete_file_success", result.find("Successfully deleted") != std::string::npos);
         UNIT_TEST("file_does_not_exist_after_delete", !fs::exists(fs::path(dir) / "test.txt"));
 
@@ -155,7 +171,11 @@ void test_delete_path_tool(UnitReport& parent)
         auto tool = create_delete_path_tool();
         json args;
         args["path"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("delete_directory_success", result.find("Successfully deleted") != std::string::npos);
         UNIT_TEST("directory_does_not_exist_after_delete", !fs::exists(dir));
     }
@@ -224,7 +244,11 @@ void test_copy_path_tool(UnitReport& parent)
         json args;
         args["source_path"] = (fs::path(dir) / "source.txt").string();
         args["destination_path"] = (fs::path(dir) / "dest.txt").string();
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("copy_file_success", result.find("Successfully copied") != std::string::npos);
         UNIT_TEST("source_exists_after_copy", fs::exists(fs::path(dir) / "source.txt"));
         UNIT_TEST("dest_exists_after_copy", fs::exists(fs::path(dir) / "dest.txt"));
@@ -262,7 +286,11 @@ void test_copy_path_tool(UnitReport& parent)
         json args;
         args["source_path"] = (fs::path(dir) / "src_dir").string();
         args["destination_path"] = (fs::path(dir) / "dst_dir").string();
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("copy_directory_success", result.find("Successfully copied") != std::string::npos);
 
         // verify directory structure is preserved

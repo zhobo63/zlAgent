@@ -1,5 +1,7 @@
 #include "pch.h"
 
+#include <cstring>
+
 #include "tool.h"
 #include "file_utils.h"
 #include "tui.h"
@@ -120,31 +122,35 @@ public:
             "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown";
     }
     std::string parameters_schema() const override {
-        json schema;
-        schema["type"] = "object";
-
-        // paths - string[] only
-        schema["properties"]["paths"]["type"] = "array";
-        schema["properties"]["paths"]["description"] = "List of file paths to read as a string array. E.g. [\"file1.cpp\", \"file2.h\"]. Requires top-level 'outline'. Can be combined with files/directory+glob.";
-
-        // files - object[] for per-file options
-        schema["properties"]["files"]["type"] = "array";
-        schema["properties"]["files"]["description"] = "List of file objects with per-file options. Each object: {\"path\": \"file.cpp\", \"outline\": false, \"start_line\": 1, \"end_line\": 100}. Can be combined with paths/directory+glob.";
-
-        // directory + glob
-        schema["properties"]["directory"]["type"] = "string";
-        schema["properties"]["directory"]["description"] = "Directory to search in (default: current directory)";
-        schema["properties"]["glob"]["type"] = "string";
-        schema["properties"]["glob"]["description"] = "File pattern to match (mutually exclusive with paths, default: '*')";
-
-        // outline - required for string array mode and directory+glob mode
-        schema["properties"]["outline"]["type"] = "boolean";
-        schema["properties"]["outline"]["description"] = "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content.";
-
-        // required fields
-        schema["required"] = json::array({"outline"});
-
-        return schema.dump();
+        static std::string schema = json::parse(R"({
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of file paths to read as a string array. E.g. [\"file1.cpp\", \"file2.h\"]. Requires top-level 'outline'. Can be combined with files/directory+glob."
+                },
+                "files": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "List of file objects with per-file options. Each object: {\"path\": \"file.cpp\", \"outline\": false, \"start_line\": 1, \"end_line\": 100}. Can be combined with paths/directory+glob."
+                },
+                "directory": {
+                    "type": "string",
+                    "description": "Directory to search in (default: current directory)"
+                },
+                "glob": {
+                    "type": "string",
+                    "description": "File pattern to match (mutually exclusive with paths, default: '*')"
+                },
+                "outline": {
+                    "type": "boolean",
+                    "description": "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content."
+                }
+            },
+            "required": ["outline"]
+        })").dump();
+        return schema;
     }
 
     void show_arguments(const std::string& json_args) override {
@@ -406,7 +412,7 @@ public:
                     ss << existing.rdbuf();
                     std::string old_content = ss.str();
                     existing.close();
-                    std::string diff = DiffEdit(old_content, new_content);
+                    std::string diff = DiffEdit(old_content, new_content, 1);
                     std::cout << std::endl << path << std::endl << diff << std::endl;
                 }
             }
@@ -733,7 +739,7 @@ public:
                         for (const auto& [num, content] : lines) {
                             old_content += content + "\n";
                         }
-                        std::string diff = DiffEdit(old_content, new_text);
+                        std::string diff = DiffEdit(old_content, new_text, start_line);
                         std::cout << std::endl << path << " (lines " << start_line << "-" << end_line << ")" << std::endl << diff << std::endl;
                     }
                 }
@@ -814,43 +820,32 @@ public:
                 // --- Line-based mode: replace lines start_line..end_line with new_text ---
                 if (new_text.empty()) return "Error: new_text is required in line-based mode.";
 
-                // Read all lines, preserving structure
-                std::vector<std::string> lines;
-                bool has_trailing_newline = false;
-                if (!agent::read_file_lines(path, lines, &has_trailing_newline)) {
+                agent::EditFile ef;
+                if (!ef.read_file(path)) {
                     return "Error: Cannot open file '" + path + "'";
                 }
 
-                if (end_line > static_cast<int>(lines.size())) {
+                if (end_line > static_cast<int>(ef.lines.size())) {
                     return "Error: end_line " + std::to_string(end_line) +
-                           " exceeds file length (" + std::to_string(lines.size()) + " lines).";
+                           " exceeds file length (" + std::to_string(ef.lines.size()) + " lines).";
                 }
 
                 // Capture the old content for diff
                 std::string old_content;
                 for (int i = start_line - 1; i <= end_line - 1; ++i) {
-                    old_content += lines[i] + "\n";
+                    old_content += ef.lines[i] + "\n";
                 }
 
-                // Split new_text into lines
-                agent::EditLines el;
-                el.parse(new_text);
-                std::vector<std::string> insert_lines = std::move(el.lines);
+                ef.replace_line_range(start_line, end_line, new_text);
 
-                // Replace the range [start_line-1, end_line-1] with insert_lines
-                int replace_start = start_line - 1;
-                int replace_end   = end_line;   // exclusive for erase
-                lines.erase(lines.begin() + replace_start, lines.begin() + replace_end);
-                for (int i = static_cast<int>(insert_lines.size()) - 1; i >= 0; --i) {
-                    lines.insert(lines.begin() + replace_start, insert_lines[i]);
-                }
+                agent::EditLines result;
+                ef.apply_blocks(result);
 
-                // Write back
-                if (!agent::write_file_lines(path, lines, has_trailing_newline)) {
+                if (!result.write_file(path)) {
                     return "Error: Cannot write to file '" + path + "'";
                 }
 
-                std::string diff = DiffEdit(old_content, new_text);
+                std::string diff = DiffEdit(old_content, new_text, start_line);
                 return "Successfully replaced lines " + std::to_string(start_line) + "-" +
                        std::to_string(end_line) + " in '" + path + "'.\n" + diff;
             }
@@ -965,21 +960,21 @@ that entire file is rolled back. Files are independent of each other.)";
                     if (path.empty()) continue;
                     file_op_count[path]++;
 
-                    if (std::string(type_name) == "replace_line_range") {
+                    if (strcmp(type_name, "replace_line_range") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         std::cout << "    replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
-                    } else if (std::string(type_name) == "insert_before_line") {
+                    } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         std::cout << "    insert_before_line: '" << path << "' before line " << line_num << '\n';
-                    } else if (std::string(type_name) == "insert_after_line") {
+                    } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         std::cout << "    insert_after_line: '" << path << "' after line " << line_num << '\n';
-                    } else if (std::string(type_name) == "delete_lines") {
+                    } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         std::cout << "    delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
-                    } else if (std::string(type_name) == "replace_text") {
+                    } else if (strcmp(type_name, "replace_text") == 0) {
                         std::string old_text = op.value("old_text", "");
                         size_t nl = old_text.find('\n');
                         std::string preview = (nl != std::string::npos) ? old_text.substr(0, nl) : old_text;
@@ -989,21 +984,23 @@ that entire file is rolled back. Files are independent of each other.)";
                 }
             };
 
-            if (args.contains("replace_line_range") && args["replace_line_range"].is_array())
+            if (is_json_array(args, "replace_line_range"))
                 show_ops("replace_line_range", args["replace_line_range"]);
-            if (args.contains("insert_before_line") && args["insert_before_line"].is_array())
+            if (is_json_array(args, "insert_before_line"))
                 show_ops("insert_before_line", args["insert_before_line"]);
-            if (args.contains("insert_after_line") && args["insert_after_line"].is_array())
+            if (is_json_array(args, "insert_after_line"))
                 show_ops("insert_after_line", args["insert_after_line"]);
-            if (args.contains("delete_lines") && args["delete_lines"].is_array())
+            if (is_json_array(args, "delete_lines"))
                 show_ops("delete_lines", args["delete_lines"]);
-            if (args.contains("replace_text") && args["replace_text"].is_array())
+            if (is_json_array(args, "replace_text"))
                 show_ops("replace_text", args["replace_text"]);
 
             std::cout << "  files affected: " << file_op_count.size() << '\n';
         } catch (const std::exception& e) {
             std::cerr << "show_arguments error: " << e.what() << '\n';
-        } catch (...) {}
+        } catch (...) {
+            std::cerr << "unknown error in show_arguments\n";
+        }
     }
 
     void show_preview(const std::string& json_args) override {
@@ -1011,61 +1008,28 @@ that entire file is rolled back. Files are independent of each other.)";
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
 
-            // Build EditFile per path for simulation — only line-based ops
-            std::map<std::string, agent::EditFile> file_edits;
+            // Reuse parse_operations to avoid duplicating JSON parsing logic
+            auto file_ops = parse_operations(args);
 
-            auto add_block = [&](const char* key) {
-                if (!args.contains(key) || !args[key].is_array()) return;
-                for (const auto& op : args[key]) {
-                    std::string path = op.value("path", "");
-                    if (path.empty()) continue;
-                    int start = op.value("start_line", 0);
-                    int end   = op.value("end_line", 0);
-                    std::string new_text = op.value("new_text", "");
-                    file_edits[path].replace_line_range(start, end, new_text);
-                }
-            };
-
-            auto add_insertion = [&](const char* key) {
-                if (!args.contains(key) || !args[key].is_array()) return;
-                for (const auto& op : args[key]) {
-                    std::string path = op.value("path", "");
-                    if (path.empty()) continue;
-                    int start_line = op.value("start_line", 0);
-                    std::string new_text = op.value("new_text", "");
-                    file_edits[path].insert_before_line(start_line, new_text);
-                }
-            };
-
-            auto add_insert_after = [&](const char* key) {
-                if (!args.contains(key) || !args[key].is_array()) return;
-                for (const auto& op : args[key]) {
-                    std::string path = op.value("path", "");
-                    if (path.empty()) continue;
-                    int start_line = op.value("start_line", 0);
-                    std::string new_text = op.value("new_text", "");
-                    file_edits[path].insert_after_line(start_line, new_text);
-                }
-            };
-
-            add_block("replace_line_range");
-            add_insertion("insert_before_line");
-            add_insert_after("insert_after_line");
-            add_block("delete_lines");
-
-            for (auto& [path, ef] : file_edits) {
+            for (auto& [path, ops] : file_ops) {
+                agent::EditFile ef;
                 if (!ef.read_file(path)) continue;
-                std::string old_content = lines_to_string(ef.lines);
+                for (const auto& block : ops.blocks)
+                    ef.blocks.push_back(block);
+
+                std::string old_content = ef.to_string();
 
                 EditLines result;
                 ef.apply_blocks(result);
 
-                std::string new_content = lines_to_string(result.lines);
-                std::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content) << "\n";
+                std::string new_content = result.to_string();
+                std::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
             }
         } catch (const std::exception& e) {
             std::cerr << "show_preview error: " << e.what() << '\n';
-        } catch (...) {}
+        } catch (...) {
+            std::cerr << "unknown error in show_preview\n";
+        }
     }
 
     bool needs_user_reply(UserReplyMode mode) const override {
@@ -1073,6 +1037,10 @@ that entire file is rolled back. Files are independent of each other.)";
     }
 
 private:
+    static bool is_json_array(const json& obj, const char* key) {
+        return obj.contains(key) && obj[key].is_array();
+    }
+
     struct FileOps {
         std::vector<agent::EditFile::ModifiedBlock> blocks;
         std::vector<std::pair<std::string, std::string>> text_replacements; // (old_text, new_text) — resolved to blocks after interaction
@@ -1123,27 +1091,18 @@ private:
             file_ops[path].text_replacements.push_back({old_text, new_text});
         };
 
-        if (args.contains("replace_line_range") && args["replace_line_range"].is_array())
+        if (is_json_array(args, "replace_line_range"))
             for (const auto& op : args["replace_line_range"]) add_block(op);
-        if (args.contains("insert_before_line") && args["insert_before_line"].is_array())
+        if (is_json_array(args, "insert_before_line"))
             for (const auto& op : args["insert_before_line"]) add_insertion(op);
-        if (args.contains("insert_after_line") && args["insert_after_line"].is_array())
+        if (is_json_array(args, "insert_after_line"))
             for (const auto& op : args["insert_after_line"]) add_insert_after(op);
-        if (args.contains("delete_lines") && args["delete_lines"].is_array())
+        if (is_json_array(args, "delete_lines"))
             for (const auto& op : args["delete_lines"]) add_delete(op);
-        if (args.contains("replace_text") && args["replace_text"].is_array())
+        if (is_json_array(args, "replace_text"))
             for (const auto& op : args["replace_text"]) add_replace_text(op);
 
         return file_ops;
-    }
-
-    static std::string lines_to_string(const std::vector<std::string>& lines) {
-        std::string s;
-        for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-            if (i > 0) s += '\n';
-            s += lines[i];
-        }
-        return s;
     }
 
     /// Process a single file: validate blocks, apply replace_text interactively (converted to blocks), write back.
@@ -1175,11 +1134,7 @@ private:
             ef.blocks.push_back(block);
 
         // Resolve replace_text into blocks via interaction
-        std::string content;
-        for (int i = 0; i < static_cast<int>(ef.lines.size()); ++i) {
-            if (i > 0) content += '\n';
-            content += ef.lines[i];
-        }
+        std::string content = ef.to_string();
 
         for (const auto& [old_text, new_text] : ops.text_replacements) {
             if (old_text.empty()) {
@@ -1195,26 +1150,8 @@ private:
 
             auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
 
-            // Helper: convert a content position to line range [start_line, end_line]
-            auto pos_to_range = [&](size_t cpos) -> std::pair<int, int> {
-                int start_line = agent::EditFile::pos_to_line(ef.lines, cpos);
-                size_t last_char_pos = cpos + old_text.size() - 1;
-                // Find the line that contains the last character of old_text
-                size_t offset = 0;
-                int end_line = static_cast<int>(ef.lines.size());
-                for (int i = 0; i < static_cast<int>(ef.lines.size()); ++i) {
-                    size_t line_end = offset + ef.lines[i].size();
-                    if (last_char_pos <= line_end) {
-                        end_line = i + 1;
-                        break;
-                    }
-                    offset += ef.lines[i].size() + 1; // +1 for newline
-                }
-                return {start_line, end_line};
-            };
-
             if (occurrences.size() == 1) {
-                auto [sl, el] = pos_to_range(occurrences[0].second);
+                auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, occurrences[0].second, old_text.size());
                 ef.replace_line_range(sl, el, new_text);
             } else {
                 std::ostringstream prompt;
@@ -1234,7 +1171,7 @@ private:
                     // Skip this operation
                 } else if (choice == "A" || choice == "a") {
                     for (const auto& [ln, cpos] : occurrences) {
-                        auto [sl, el] = pos_to_range(cpos);
+                        auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
                         ef.replace_line_range(sl, el, new_text);
                     }
                 } else {
@@ -1242,7 +1179,7 @@ private:
                     try { idx = std::stoi(choice); } catch (...) {}
                     if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
                         auto [ln, cpos] = occurrences[idx - 1];
-                        auto [sl, el] = pos_to_range(cpos);
+                        auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
                         ef.replace_line_range(sl, el, new_text);
                     }
                 }
@@ -1253,11 +1190,11 @@ private:
         if (!ef.validate_blocks(error_out))
             return false;
 
-        // Apply all blocks to produce new lines
+        // Apply all blocks and write back
         EditLines result;
         ef.apply_blocks(result);
 
-        if (!write_file_lines(path, result.lines, ef.has_trailing_newline)) {
+        if (!result.write_file(path)) {
             error_out = "Cannot write to file '" + path + "'.";
             return false;
         }
@@ -1430,7 +1367,7 @@ public:
                     std::string old_content = ss.str();
                     existing.close();
                     std::string new_content = old_content + content;
-                    std::string diff = DiffEdit(old_content, new_content);
+                    std::string diff = DiffEdit(old_content, new_content, 1);
                     std::cout << std::endl << path << std::endl << diff << std::endl;
                 }
             }

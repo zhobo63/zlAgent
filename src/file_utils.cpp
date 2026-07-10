@@ -133,6 +133,15 @@ bool EditLines::write_file(const std::string& path) const {
     return write_file_lines(path, lines, has_trailing_newline);
 }
 
+std::string EditLines::to_string() const {
+    std::string s;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        if (i > 0) s += '\n';
+        s += lines[i];
+    }
+    return s;
+}
+
 // ── EditFile implementation ───────────────────────────────
 
 static std::vector<std::string> split_edit_lines(const std::string& text) {
@@ -141,7 +150,7 @@ static std::vector<std::string> split_edit_lines(const std::string& text) {
     return el.lines;
 }
 
-bool EditFile::ModifiedBlock::is_overlay(const ModifiedBlock& b) {
+bool EditFile::ModifiedBlock::is_overlay(const ModifiedBlock& b) const {
     if (is_insert && b.is_insert) return false;
     // Ensure a is the non-insertion one
     const ModifiedBlock* ta = this, *tb = &b;
@@ -211,6 +220,24 @@ int EditFile::pos_to_line(const std::vector<std::string>& lines, size_t pos) {
     return static_cast<int>(lines.size());
 }
 
+std::pair<int, int> EditFile::text_range_to_lines(
+        const std::vector<std::string>& lines, size_t pos, size_t len) {
+    int start_line = pos_to_line(lines, pos);
+    size_t last_char_pos = pos + len - 1;
+    // Find the line that contains the last character of the matched text
+    size_t offset = 0;
+    int end_line = static_cast<int>(lines.size());
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        size_t line_end = offset + lines[i].size();
+        if (last_char_pos <= line_end) {
+            end_line = i + 1;
+            break;
+        }
+        offset += lines[i].size() + 1; // +1 for newline
+    }
+    return {start_line, end_line};
+}
+
 std::vector<std::pair<int, size_t>> EditFile::find_occurrences(
         const std::vector<std::string>& lines,
         const std::string& old_text) {
@@ -272,6 +299,7 @@ void EditFile::apply_blocks(EditLines& out_lines) {
     }
 
     out_lines.lines = std::move(result);
+    out_lines.has_trailing_newline = has_trailing_newline;
 }
 
 } // namespace agent
@@ -293,7 +321,9 @@ static std::vector<std::string> splitLines(const std::string& s) {
     return lines;
 }
 
-std::string DiffEdit(const std::string& old_text, const std::string& new_text) {
+std::string DiffEdit(const std::string& old_text,
+                     const std::string& new_text,
+                     int start_line) {
     auto old_lines = splitLines(old_text);
     auto new_lines = splitLines(new_text);
 
@@ -322,27 +352,110 @@ std::string DiffEdit(const std::string& old_text, const std::string& new_text) {
     }
     std::reverse(lcs_lines.begin(), lcs_lines.end());
 
-    // Build diff output
-    std::ostringstream oss;
-    int oi = 0, ni = 0, li = 0;
+    // Collect diff operations: Context, Remove, Add
+    enum class DiffOp { Context, Remove, Add };
+    struct DiffEntry { DiffOp op; std::string line; };
+    std::vector<DiffEntry> entries;
 
+    int oi = 0, ni = 0, li = 0;
     while (oi < m || ni < n) {
-        // Emit removed lines (old only)
         while (oi < m &&
                (li >= static_cast<int>(lcs_lines.size()) || old_lines[oi] != lcs_lines[li])) {
-            oss << TUI::ANSI_FG_RED << "-" << old_lines[oi] << TUI::ANSI_RESET << "\n";
-            ++oi;
+            entries.push_back({DiffOp::Remove, old_lines[oi]}); ++oi;
         }
-        // Emit added lines (new only)
         while (ni < n &&
                (li >= static_cast<int>(lcs_lines.size()) || new_lines[ni] != lcs_lines[li])) {
-            oss << TUI::ANSI_FG_GREEN << "+" << new_lines[ni] << TUI::ANSI_RESET << "\n";
-            ++ni;
+            entries.push_back({DiffOp::Add, new_lines[ni]}); ++ni;
         }
-        // Emit context line (LCS match)
         if (li < static_cast<int>(lcs_lines.size())) {
-            oss << " " << lcs_lines[li] << "\n";
+            entries.push_back({DiffOp::Context, lcs_lines[li]});
             ++oi; ++ni; ++li;
+        }
+    }
+
+    // Output with context compression: skip long runs of unchanged lines
+    constexpr int CONTEXT_LINES = 3;
+    std::ostringstream oss;
+
+    if (entries.empty()) return "";
+
+    // Compute old/new line numbers for each entry
+    std::vector<int> old_line(entries.size(), -1); // -1 means no old-line mapping
+    std::vector<int> new_line(entries.size(), -1);
+    int ol = start_line, nl = start_line;
+    for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
+        switch (entries[k].op) {
+            case DiffOp::Context:
+                old_line[k] = ol++; new_line[k] = nl++; break;
+            case DiffOp::Remove:
+                old_line[k] = ol++; break;
+            case DiffOp::Add:
+                new_line[k] = nl++; break;
+        }
+    }
+
+    // Find indices of change entries (Remove or Add)
+    std::vector<int> change_indices;
+    for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
+        if (entries[k].op != DiffOp::Context)
+            change_indices.push_back(k);
+    }
+
+    // Group nearby changes into hunks: merge groups whose output ranges overlap
+    std::vector<std::pair<int, int>> groups; // [first_change_idx, last_change_idx] in change_indices
+    for (int ci = 0; ci < static_cast<int>(change_indices.size()); ++ci) {
+        if (!groups.empty()) {
+            auto& g = groups.back();
+            int prev_end = std::min(change_indices[g.second] + CONTEXT_LINES, static_cast<int>(entries.size()));
+            int curr_start = std::max(change_indices[ci] - CONTEXT_LINES, 0);
+            if (curr_start < prev_end) {
+                g.second = ci; // merge
+                continue;
+            }
+        }
+        groups.push_back({ci, ci});
+    }
+
+    auto fmt_line_num = [&](int ln) -> std::string {
+        if (start_line <= 0 || ln < 0) return "";
+        char buf[16];
+        int w = static_cast<int>(std::snprintf(buf, sizeof(buf), "%d", ln));
+        return std::string(buf, w);
+    };
+
+    for (int gi = 0; gi < static_cast<int>(groups.size()); ++gi) {
+        auto& [gfirst, glast] = groups[gi];
+        int first_change = change_indices[gfirst];
+        int last_change  = change_indices[glast];
+
+        // Output range: CONTEXT_LINES before first change to CONTEXT_LINES after last change
+        int start = std::max(first_change - CONTEXT_LINES, 0);
+        int end   = std::min(last_change + CONTEXT_LINES, static_cast<int>(entries.size()) - 1);
+
+        if (gi > 0) oss << "---\n";
+
+        for (int k = start; k <= end; ++k) {
+            const auto& e = entries[k];
+            switch (e.op) {
+                case DiffOp::Context: {
+                    std::string ln = fmt_line_num(old_line[k]);
+                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TUI::ANSI_RESET << " " << e.line << "\n";
+                    break;
+                }
+                case DiffOp::Remove: {
+                    std::string ln = fmt_line_num(old_line[k]);
+                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TUI::ANSI_RESET << " " << TUI::ANSI_FG_RED << "-" << e.line << TUI::ANSI_RESET << "\n";
+                    break;
+                }
+                case DiffOp::Add: {
+                    std::string ln = fmt_line_num(new_line[k]);
+                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TUI::ANSI_RESET << " " << TUI::ANSI_FG_GREEN << "+" << e.line << TUI::ANSI_RESET << "\n";
+                    break;
+                }
+            }
         }
     }
 

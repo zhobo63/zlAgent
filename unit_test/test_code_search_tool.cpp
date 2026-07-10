@@ -36,7 +36,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = "main";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("basic_search_matches", result.find("int main()") != std::string::npos);
 
         safe_remove_all(dir);
@@ -58,7 +62,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = "int main";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("case_insensitive_match", result.find("INT MAIN()") != std::string::npos);
 
         safe_remove_all(dir);
@@ -81,7 +89,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = R"(std::(vector|string))";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("regex_vector_match", result.find("std::vector<int>") != std::string::npos);
         UNIT_TEST("regex_string_match", result.find("std::string s") != std::string::npos);
 
@@ -104,7 +116,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = "nonexistent_pattern_xyz";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("no_matches_found", result.find("No matches found") != std::string::npos);
 
         safe_remove_all(dir);
@@ -131,7 +147,11 @@ void test_code_search_tools(UnitReport& parent)
         args["pattern"] = ".*";
         args["directory"] = dir;
         args["file_pattern"] = "*.cpp";
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("filter_cpp_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("filter_cpp_no_foo", result.find("void foo()") == std::string::npos);
 
@@ -159,7 +179,11 @@ void test_code_search_tools(UnitReport& parent)
         args["pattern"] = ".*";
         args["directory"] = dir;
         args["file_pattern"] = "*.h";
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("filter_h_no_main", result.find("int main()") == std::string::npos);
         UNIT_TEST("filter_h_has_foo", result.find("void foo()") != std::string::npos);
 
@@ -186,7 +210,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = ".*";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("nofilter_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("nofilter_has_foo", result.find("void foo()") != std::string::npos);
 
@@ -216,7 +244,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = ".*";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("recursive_has_top", result.find("int top()") != std::string::npos);
         UNIT_TEST("recursive_has_mid", result.find("int mid()") != std::string::npos);
         UNIT_TEST("recursive_has_bottom", result.find("int bottom()") != std::string::npos);
@@ -243,7 +275,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = ".*";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("hidden_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("hidden_no_secret", result.find("secret_data") == std::string::npos);
 
@@ -274,7 +310,11 @@ void test_code_search_tools(UnitReport& parent)
         json args;
         args["pattern"] = ".*";
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("gitignore_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("gitignore_no_binary", result.find("binary_data") == std::string::npos);
 

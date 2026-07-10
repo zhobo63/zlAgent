@@ -29,6 +29,9 @@ struct EditLines {
 
     /// Write back to file — restores trailing newline if original had one.
     bool write_file(const std::string& path) const;
+
+    /// Join lines with '\n' into a single string (no trailing newline).
+    std::string to_string() const;
 };
 
 struct EditFile: EditLines {
@@ -61,6 +64,11 @@ struct EditFile: EditLines {
     /// Convert a content position to the 1-based line number it falls on.
     static int pos_to_line(const std::vector<std::string>& lines, size_t pos);
 
+    /// Given a text match at content position `pos` with length `len`, return the
+    /// [start_line, end_line] range (1-based) that covers the matched text.
+    static std::pair<int, int> text_range_to_lines(
+        const std::vector<std::string>& lines, size_t pos, size_t len);
+
     /// Apply all blocks to produce new lines. Call after replace_text has been handled.
     void apply_blocks(EditLines& out_lines);
 };
@@ -79,10 +87,14 @@ std::string ReadFileLinesAsString(const std::string& path, int startLine, int en
 /// Overload that accepts the total line count to determine proper width for line numbers.
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine, int totalLines);
 
-/// Generate a colored unified diff between old_text and new_text.
+/// Generate a colored unified diff between old_text and new_text with line numbers.
 /// Returns ANSI-colored string with red for removed lines (-) and green for added lines (+).
-/// Context lines (unchanged) are shown without color.
-std::string DiffEdit(const std::string& old_text, const std::string& new_text);
+/// Context lines (unchanged) are shown without color. Line numbers are prefixed in gray.
+/// start_line is the 1-based line number of the first line of old_text; new_text continues
+/// from there. If start_line <= 0, no line numbers are printed.
+std::string DiffEdit(const std::string& old_text,
+                     const std::string& new_text,
+                     int start_line = 0);
 
 // -----------------------------------------------------------------------
 // File outline helpers
