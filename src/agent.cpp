@@ -37,6 +37,7 @@ void Agent::load_config(const std::string& name)
     LOG_INFO("LLM", cfg.llm.url);
 
     llm_.set_base_url(cfg.llm.url);
+    llm_.set_model(cfg.llm.model);
     LOG_DEBUG("Main", "Log level set to: " + agent::log_level_to_string(agent::parse_log_level(cfg.logging.level)));
 
     // === Safety setup ===
@@ -541,6 +542,7 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
     for (auto it = insertions.rbegin(); it != insertions.rend(); ++it) {
         result.insert(it->pos, it->text);
     }
+    LOG_DEBUG("preprocess_file_references", result);
 
     return result;
 }

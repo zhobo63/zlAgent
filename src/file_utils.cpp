@@ -277,6 +277,8 @@ void EditFile::apply_blocks(EditLines& out_lines) {
     int current_line = 1;
 
     for (const auto& block : sorted_blocks) {
+        if (block.start < 1 || block.start > total_lines + 1)
+            return;
         while (current_line < block.start) {
             result.push_back(lines[current_line - 1]);
             ++current_line;
@@ -286,6 +288,8 @@ void EditFile::apply_blocks(EditLines& out_lines) {
             for (const auto& il : insert_lines)
                 result.push_back(il);
         } else {
+            if (block.end < 1 || block.end > total_lines)
+                return;
             auto replace_lines = split_edit_lines(block.new_content);
             for (const auto& rl : replace_lines)
                 result.push_back(rl);

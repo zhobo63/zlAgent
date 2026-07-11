@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <cstring>
+#include <iostream>
 
 #include "tool.h"
 #include "file_utils.h"
@@ -864,8 +865,7 @@ public:
     std::string description() const override {
         return R"(Edit one or more files in a single call.
 Each operation type is specified as a top-level array property.
-Supported operations: replace_line_range, insert_before_line,
-insert_after_line, delete_lines, replace_text.
+The same file can appear in multiple operation types — all operations on that file are applied together.
 All line numbers are based on the original file before any edits.
 Operations within a file are atomic - if any operation fails (e.g., overlapping ranges),
 that entire file is rolled back. Files are independent of each other.)";
@@ -1009,16 +1009,17 @@ that entire file is rolled back. Files are independent of each other.)";
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
 
-            // Reuse parse_operations to avoid duplicating JSON parsing logic
-            auto file_ops = parse_operations(args);
+            std::map<std::string, agent::EditFile> files;
+            parse_operations(args, files, ReplaceTextMode::All);
 
-            for (auto& [path, ops] : file_ops) {
-                agent::EditFile ef;
-                if (!ef.read_file(path)) continue;
-                for (const auto& block : ops.blocks)
-                    ef.blocks.push_back(block);
-
+            for (auto& [path, ef] : files) {
                 std::string old_content = ef.to_string();
+
+                std::string error;
+                if (!ef.validate_blocks(error)) {
+                    std::cerr << "show_preview validation failed: " << path << " - " << error << '\n';
+                    continue;
+                }
 
                 EditLines result;
                 ef.apply_blocks(result);
@@ -1038,170 +1039,142 @@ that entire file is rolled back. Files are independent of each other.)";
     }
 
 private:
+    enum class ReplaceTextMode { All, Interactive };
+
     static bool is_json_array(const json& obj, const char* key) {
         return obj.contains(key) && obj[key].is_array();
     }
 
-    struct FileOps {
-        std::vector<agent::EditFile::ModifiedBlock> blocks;
-        std::vector<std::pair<std::string, std::string>> text_replacements; // (old_text, new_text) — resolved to blocks after interaction
-    };
+    /// Resolve a single replace_text into blocks on the given EditFile.
+    /// mode == All: replace every occurrence without prompting.
+    /// mode == Interactive: prompt user when multiple occurrences exist.
+    static bool resolve_replace_text(agent::EditFile& ef,
+                                     const std::string& path,
+                                     const std::string& old_text,
+                                     const std::string& new_text,
+                                     ReplaceTextMode mode) {
+        if (old_text.empty()) {
+            ef.error_message = "old_text cannot be empty string.";
+            return false;
+        }
 
-    /// Parse flat JSON args and collect operations grouped by file path.
-    static std::map<std::string, FileOps> parse_operations(const json& args) {
-        std::map<std::string, FileOps> file_ops;
+        size_t first_pos = ef.to_string().find(old_text);
+        if (first_pos == std::string::npos) {
+            ef.error_message = "old_text not found in file: \"" + old_text + "\".";
+            return false;
+        }
 
-        auto add_block = [&](const json& op) {
+        auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
+
+        if (occurrences.size() == 1 || mode == ReplaceTextMode::All) {
+            for (const auto& [ln, cpos] : occurrences) {
+                auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
+                ef.replace_line_range(sl, el, new_text);
+            }
+            if (occurrences.size() > 1)
+                ef.replace_info.push_back("replace_text: user choose replaced all " + std::to_string(occurrences.size()) + " occurrences of \"" + old_text + "\"");
+        } else {
+            // Interactive: prompt user
+            std::ostringstream prompt;
+            prompt << "\n" << path << ": \"" << old_text << "\" found in "
+                   << occurrences.size() << " locations:\n";
+            for (size_t i = 0; i < occurrences.size(); ++i) {
+                int line_num = occurrences[i].first;
+                prompt << "  [" << (i + 1) << "] Line " << line_num
+                       << ": \"" << ef.lines[line_num - 1] << "\"\n";
+            }
+            std::cout << prompt.str();
+
+            std::string choice = KeyWatcher::readline("Choose: [N] skip / [num] replace that one / [A] all:", nullptr);
+
+            if (choice == "N" || choice == "n") {
+                ef.replace_info.push_back("replace_text: user skipped \"" + old_text + "\" (found in " + std::to_string(occurrences.size()) + " locations)");
+            } else if (choice == "A" || choice == "a") {
+                for (const auto& [ln, cpos] : occurrences) {
+                    auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
+                    ef.replace_line_range(sl, el, new_text);
+                }
+                ef.replace_info.push_back("replace_text: user choose replaced all " + std::to_string(occurrences.size()) + " occurrences of \"" + old_text + "\"");
+            } else {
+                int idx = 0;
+                try { idx = std::stoi(choice); } catch (...) {}
+                if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
+                    auto [ln, cpos] = occurrences[idx - 1];
+                    auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
+                    ef.replace_line_range(sl, el, new_text);
+                    ef.replace_info.push_back("replace_text: user choose replaced occurrence " + std::to_string(idx) + "/" + std::to_string(occurrences.size()) + " of \"" + old_text + "\"");
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// Parse flat JSON args and populate files map with EditFile objects.
+    /// Each EditFile is read from disk and populated with blocks.
+    static void parse_operations(const json& args,
+                                 std::map<std::string, agent::EditFile>& files,
+                                 ReplaceTextMode mode) {
+        auto get_ef = [&](const std::string& path) -> agent::EditFile* {
+            if (files.find(path) == files.end()) {
+                files[path].read_file(path);
+            }
+            return &files[path];
+        };
+
+        // Line-based operations: directly add blocks
+        auto process_replace_line_range = [&](const json& op) {
             std::string path = op.value("path", "");
             if (path.empty()) return;
             int start = op.value("start_line", 0);
             int end   = op.value("end_line", 0);
             std::string new_text = op.value("new_text", "");
-            file_ops[path].blocks.push_back({start, end, new_text, false});
+            get_ef(path)->replace_line_range(start, end, new_text);
         };
 
-        auto add_insertion = [&](const json& op) {
+        auto process_insert_before_line = [&](const json& op) {
             std::string path = op.value("path", "");
             if (path.empty()) return;
             int start_line = op.value("start_line", 0);
             std::string new_text = op.value("new_text", "");
-            file_ops[path].blocks.push_back({start_line, -1, new_text, true});
+            get_ef(path)->insert_before_line(start_line, new_text);
         };
 
-        auto add_insert_after = [&](const json& op) {
+        auto process_insert_after_line = [&](const json& op) {
             std::string path = op.value("path", "");
             if (path.empty()) return;
             int start_line = op.value("start_line", 0);
             std::string new_text = op.value("new_text", "");
-            file_ops[path].blocks.push_back({start_line + 1, -1, new_text, true});
+            get_ef(path)->insert_after_line(start_line, new_text);
         };
 
-        auto add_delete = [&](const json& op) {
+        auto process_delete_lines = [&](const json& op) {
             std::string path = op.value("path", "");
             if (path.empty()) return;
             int start = op.value("start_line", 0);
             int end   = op.value("end_line", 0);
-            file_ops[path].blocks.push_back({start, end, "", false});
+            get_ef(path)->delete_lines(start, end);
         };
 
-        auto add_replace_text = [&](const json& op) {
+        auto process_replace_text = [&](const json& op) {
             std::string path = op.value("path", "");
             if (path.empty()) return;
             std::string old_text = op.value("old_text", "");
             std::string new_text = op.value("new_text", "");
-            file_ops[path].text_replacements.push_back({old_text, new_text});
+            auto* ef = get_ef(path);
+            resolve_replace_text(*ef, path, old_text, new_text, mode);
         };
 
         if (is_json_array(args, "replace_line_range"))
-            for (const auto& op : args["replace_line_range"]) add_block(op);
+            for (const auto& op : args["replace_line_range"]) process_replace_line_range(op);
         if (is_json_array(args, "insert_before_line"))
-            for (const auto& op : args["insert_before_line"]) add_insertion(op);
+            for (const auto& op : args["insert_before_line"]) process_insert_before_line(op);
         if (is_json_array(args, "insert_after_line"))
-            for (const auto& op : args["insert_after_line"]) add_insert_after(op);
+            for (const auto& op : args["insert_after_line"]) process_insert_after_line(op);
         if (is_json_array(args, "delete_lines"))
-            for (const auto& op : args["delete_lines"]) add_delete(op);
+            for (const auto& op : args["delete_lines"]) process_delete_lines(op);
         if (is_json_array(args, "replace_text"))
-            for (const auto& op : args["replace_text"]) add_replace_text(op);
-
-        return file_ops;
-    }
-
-    /// Process a single file: validate blocks, apply replace_text interactively (converted to blocks), write back.
-    bool process_file(const std::string& path,
-                      const FileOps& ops,
-                      std::string& error_out,
-                      int& original_lines_out,
-                      int& new_lines_out) {
-        if (path.empty()) {
-            error_out = "No file path provided.";
-            return false;
-        }
-
-        auto check_result = SafetyGuard::get_instance().is_path_ok(path);
-        if (check_result == PathCheckResult::Denied) {
-            error_out = "Path '" + path + "' is outside allowed directories. Operation denied.";
-            return false;
-        }
-
-        agent::EditFile ef;
-        if (!ef.read_file(path)) {
-            error_out = "Cannot open file '" + path + "'.";
-            return false;
-        }
-        original_lines_out = static_cast<int>(ef.lines.size());
-
-        // Add line-based blocks from ops
-        for (const auto& block : ops.blocks)
-            ef.blocks.push_back(block);
-
-        // Resolve replace_text into blocks via interaction
-        std::string content = ef.to_string();
-
-        for (const auto& [old_text, new_text] : ops.text_replacements) {
-            if (old_text.empty()) {
-                error_out = "old_text cannot be empty string.";
-                return false;
-            }
-
-            size_t first_pos = content.find(old_text);
-            if (first_pos == std::string::npos) {
-                error_out = "old_text not found in file: \"" + old_text + "\".";
-                return false;
-            }
-
-            auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
-
-            if (occurrences.size() == 1) {
-                auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, occurrences[0].second, old_text.size());
-                ef.replace_line_range(sl, el, new_text);
-            } else {
-                std::ostringstream prompt;
-                prompt << "\n" << path << ": \"" << old_text << "\" found in "
-                       << occurrences.size() << " locations:\n";
-                for (size_t i = 0; i < occurrences.size(); ++i) {
-                    int line_num = occurrences[i].first;
-                    prompt << "  [" << (i + 1) << "] Line " << line_num
-                           << ": \"" << ef.lines[line_num - 1] << "\"\n";
-                }
-                prompt << "\nChoose: [N] skip / [num] replace that one / [A] all: ";
-                std::cout << prompt.str();
-
-                std::string choice = KeyWatcher::readline("", nullptr);
-
-                if (choice == "N" || choice == "n") {
-                    // Skip this operation
-                } else if (choice == "A" || choice == "a") {
-                    for (const auto& [ln, cpos] : occurrences) {
-                        auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-                        ef.replace_line_range(sl, el, new_text);
-                    }
-                } else {
-                    int idx = 0;
-                    try { idx = std::stoi(choice); } catch (...) {}
-                    if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
-                        auto [ln, cpos] = occurrences[idx - 1];
-                        auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-                        ef.replace_line_range(sl, el, new_text);
-                    }
-                }
-            }
-        }
-
-        // Validate all blocks (including those from replace_text)
-        if (!ef.validate_blocks(error_out))
-            return false;
-
-        // Apply all blocks and write back
-        EditLines result;
-        ef.apply_blocks(result);
-
-        if (!result.write_file(path)) {
-            error_out = "Cannot write to file '" + path + "'.";
-            return false;
-        }
-
-        new_lines_out = static_cast<int>(result.lines.size());
-        return true;
+            for (const auto& op : args["replace_text"]) process_replace_text(op);
     }
 
 public:
@@ -1213,40 +1186,43 @@ public:
                 return "Error: Invalid JSON arguments - not json";
             }
 
-            auto file_ops = parse_operations(args);
-
-            json result_edited  = json::array();
-            json result_failed  = json::array();
-
-            for (auto& [path, ops] : file_ops) {
-                int original_lines = 0, new_lines = 0;
-                std::string error;
-
-                if (process_file(path, ops, error, original_lines, new_lines)) {
-                    json file_result;
-                    file_result["path"] = path;
-                    file_result["original_lines"] = original_lines;
-                    file_result["new_lines"] = new_lines;
-                    result_edited.push_back(file_result);
-                } else {
-                    json file_error;
-                    file_error["path"] = path.empty() ? "(unknown)" : path;
-                    file_error["error"] = error;
-                    result_failed.push_back(file_error);
-                }
-            }
+            std::map<std::string, agent::EditFile> files;
+            parse_operations(args, files, ReplaceTextMode::Interactive);
 
             std::string output;
-            for (auto& file : result_edited) {
-                auto path = file.value("path", "");
-                auto orig = file.value("original_lines", 0);
-                auto newl = file.value("new_lines", 0);
-                output += "edited: " + path + " (" + std::to_string(orig) + " -> " + std::to_string(newl) + " lines)\n";
-            }
-            for (auto& file : result_failed) {
-                auto path = file.value("path", "");
-                auto error = file.value("error", "");
-                output += "failed: " + path + " - " + error + "\n";
+
+            for (auto& [path, ef] : files) {
+                auto check_result = SafetyGuard::get_instance().is_path_ok(path);
+                if (check_result == PathCheckResult::Denied) {
+                    output += "failed: " + path + " - Path '" + path + "' is outside allowed directories. Operation denied.\n";
+                    continue;
+                }
+
+                if (!ef.error_message.empty()) {
+                    output += "failed: " + path + " - " + ef.error_message + "\n";
+                    continue;
+                }
+
+                int original_lines = static_cast<int>(ef.lines.size());
+                std::string error;
+
+                if (!ef.validate_blocks(error)) {
+                    output += "failed: " + path + " - " + error + "\n";
+                    continue;
+                }
+
+                EditLines result;
+                ef.apply_blocks(result);
+
+                if (!result.write_file(path)) {
+                    output += "failed: " + path + " - Cannot write to file '" + path + "'.\n";
+                    continue;
+                }
+
+                int new_lines = static_cast<int>(result.lines.size());
+                output += "edited: " + path + " (" + std::to_string(original_lines) + " -> " + std::to_string(new_lines) + " lines)\n";
+                for (const auto& info : ef.replace_info)
+                    output += "  " + info + "\n";
             }
 
             return output;

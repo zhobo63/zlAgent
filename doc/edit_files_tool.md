@@ -1,8 +1,8 @@
-# edit_files - 編輯檔案工具規劃
+# edit_files - 編輯檔案工具
 
 ## 概述
 
-本文件規劃 `edit_files` 工具，用於一次性修改一個或多個檔案的多個位置，取代現有的 `edit_file`。
+本文件說明 `edit_files` 工具的規格與使用方式。此工具用於一次性修改一個或多個檔案的多個位置。
 
 ---
 
@@ -17,35 +17,30 @@
 
 ## API 格式
 
+使用扁平結構，將同一類型的操作放在同一個陣列中，每個操作都包含 `path` 欄位指定目標檔案：
+
 ```json
 {
-  "tool": "edit_files",
-  "edits": [
+  "replace_line_range": [
     {
       "path": "src/main.cpp",
-      "operations": [
-        {
-          "type": "replace_line_range",
-          "start_line": 10,
-          "end_line": 15,
-          "new_text": "// Replace lines 10-15"
-        },
-        {
-          "type": "insert_before_line",
-          "line_number": 42,
-          "content": "// Insert before line 42"
-        }
-      ]
-    },
+      "start_line": 10,
+      "end_line": 15,
+      "new_text": "// Replace lines 10-15"
+    }
+  ],
+  "insert_before_line": [
+    {
+      "path": "src/main.cpp",
+      "start_line": 42,
+      "new_text": "// Insert before line 42"
+    }
+  ],
+  "replace_text": [
     {
       "path": "include/game.h",
-      "operations": [
-        {
-          "type": "replace_text",
-          "old_text": "#include <stdio.h>",
-          "new_text": "#include <cstdio>"
-        }
-      ]
+      "old_text": "#include <stdio.h>",
+      "new_text": "#include <cstdio>"
     }
   ]
 }
@@ -55,11 +50,17 @@
 
 ## 參數說明
 
-| 參數 | 類型 | 必填 | 說明 |
+頂層物件包含五個可選陣列屬性，每個陣列元素代表一個編輯操作：
+
+| 屬性 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `edits` | array | ✅ | 編輯列表，每個元素包含檔案路徑和該檔案的編輯操作 |
-| `edits[].path` | string | ✅ | 要編輯的檔案路徑（相對於專案根目錄） |
-| `edits[].operations` | array | ✅ | 該檔案的編輯操作列表 |
+| `replace_line_range` | array | ❌ | 替換行範圍的操作列表 |
+| `insert_before_line` | array | ❌ | 在指定行之前的插入操作列表 |
+| `insert_after_line` | array | ❌ | 在指定行之後的插入操作列表 |
+| `delete_lines` | array | ❌ | 刪除行範圍的操作列表 |
+| `replace_text` | array | ❌ | 文字替換操作列表 |
+
+每個操作都必須包含 `path`（檔案路徑，相對於專案根目錄）。
 
 ---
 
@@ -69,10 +70,10 @@
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定值 `"replace_line_range"` |
-| `start_line` | integer | ✅ | 起始行號（1-based） |
+| `path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
+| `start_line` | integer | ✅ | 起始行號（1-based，包含） |
 | `end_line` | integer | ✅ | 結束行號（1-based，包含） |
-| `new_text` | string | ✅ | 替換後的內容 |
+| `new_text` | string | ✅ | 替換後的內容。空字串等同刪除該範圍 |
 
 **行為：** 將 `start_line` 到 `end_line` 的行替換為 `new_text`。如果 `new_text` 有多行，則會改變檔案的總行數。
 
@@ -80,28 +81,28 @@
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定值 `"insert_before_line"` |
-| `line_number` | integer | ✅ | 要插入的行號（1-based） |
-| `content` | string | ✅ | 要插入的內容 |
+| `path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
+| `start_line` | integer | ✅ | 要插入的行號（1-based）。`1` 表示在檔案最開頭插入 |
+| `new_text` | string | ✅ | 要插入的內容 |
 
-**行為：** 在指定行之前插入內容。如果 `content` 有多行，則會改變檔案的總行數。
+**行為：** 在指定行之前插入內容。如果 `new_text` 有多行，則會改變檔案的總行數。
 
 ### 3. insert_after_line - 在指定行之後插入
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定值 `"insert_after_line"` |
-| `line_number` | integer | ✅ | 要插入的行號（1-based） |
-| `content` | string | ✅ | 要插入的內容 |
+| `path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
+| `start_line` | integer | ✅ | 要插入的行號（1-based）。在該行之後插入 |
+| `new_text` | string | ✅ | 要插入的內容 |
 
-**行為：** 在指定行之後插入內容。如果 `content` 有多行，則會改變檔案的總行數。
+**行為：** 在指定行之後插入內容。如果 `new_text` 有多行，則會改變檔案的總行數。
 
 ### 4. delete_lines - 刪除行範圍
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定值 `"delete_lines"` |
-| `start_line` | integer | ✅ | 起始行號（1-based） |
+| `path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
+| `start_line` | integer | ✅ | 起始行號（1-based，包含） |
 | `end_line` | integer | ✅ | 結束行號（1-based，包含） |
 
 **行為：** 刪除指定範圍的行。
@@ -110,15 +111,15 @@
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定值 `"replace_text"` |
-| `old_text` | string | ✅ | 要替換的文字（精確比對） |
+| `path` | string | ✅ | 檔案路徑（相對於專案根目錄） |
+| `old_text` | string | ✅ | 要替換的文字（精確比對，不可為空字串） |
 | `new_text` | string | ✅ | 替換後的文字 |
 
 **行為：** 使用**精確字串比對**，在檔案中尋找所有出現的 `old_text`。
 
 - **1 處相符**：直接替換，無需確認。
 - **多處相符**：顯示 diff 並列出順序編號，由使用者選擇：
-  - `[N]` — 不替換（取消操作）
+  - `[N]` — 不替換（跳過此操作）
   - `[num]` — 只替換指定編號的那一處
   - `[A]` — 全部替換
 
@@ -165,54 +166,33 @@
 
 ## 回應格式
 
-成功（部分檔案可能失敗，每個檔案獨立）：
+工具回傳純文字字串，列出每個檔案的處理結果：
 
-```json
-{
-  "edited_files": [
-    {
-      "path": "src/main.cpp",
-      "original_lines": 100,
-      "new_lines": 95,
-      "operations_applied": [
-        {"type": "replace_line_range", "start_line": 10, "end_line": 15},
-        {"type": "insert_before_line", "line_number": 42}
-      ]
-    }
-  ],
-  "failed_files": [
-    {
-      "path": "include/game.h",
-      "error": "Overlapping line operations detected: replace_line_range(5-10) overlaps with insert_before_line(7)",
-      "operations_applied": []
-    }
-  ]
-}
+成功：
+```
+edited: src/main.cpp (100 -> 95 lines)
 ```
 
-全部失敗：
-
-```json
-{
-  "edited_files": [],
-  "failed_files": [
-    {
-      "path": "src/main.cpp",
-      "error": "Line number out of range: insert_before_line at line 150 (file has only 100 lines)",
-      "operations_applied": []
-    }
-  ]
-}
+失敗：
+```
+failed: include/game.h - Cannot open file 'include/game.h'.
 ```
 
-**`replace_text` 常見錯誤訊息：**
+混合（部分成功、部分失敗）：
+```
+edited: src/main.cpp (100 -> 95 lines)
+failed: include/game.h - Overlapping line operations detected
+```
 
-| 錯誤類型 | 範例 | 說明 |
-|----------|------|------|
-| **文字不存在** | `old_text not found in file: "printf("` | 檔案中找不到要替換的文字 |
-| **空文字** | `old_text cannot be empty string` | `old_text` 不能為空 |
+**常見錯誤訊息：**
 
-> **注意**：如果 `old_text` 在檔案中出現多次，會顯示 diff 並由使用者選擇替換哪些位置。
+| 錯誤類型 | 範例 |
+|----------|------|
+| **檔案無法開啟** | `Cannot open file 'src/main.cpp'.` |
+| **路徑不允許** | `Path 'src/main.cpp' is outside allowed directories. Operation denied.` |
+| **行號超出範圍** | （由 `validate_blocks` 回傳的錯誤訊息） |
+| **文字不存在** | `old_text not found in file: "printf("`. |
+| **空文字** | `old_text cannot be empty string.` |
 
 ---
 
@@ -221,28 +201,26 @@
 ### 複雜的重構（單一檔案多個修改點）
 ```json
 {
-  "tool": "edit_files",
-  "edits": [
+  "replace_line_range": [
     {
       "path": "src/main.cpp",
-      "operations": [
-        {
-          "type": "replace_line_range",
-          "start_line": 10,
-          "end_line": 25,
-          "new_text": "// New function definition\nvoid process() {\n    // Implementation\n}"
-        },
-        {
-          "type": "insert_before_line",
-          "line_number": 30,
-          "content": "#include \"new_header.h\""
-        },
-        {
-          "type": "delete_lines",
-          "start_line": 50,
-          "end_line": 55
-        }
-      ]
+      "start_line": 10,
+      "end_line": 25,
+      "new_text": "// New function definition\nvoid process() {\n    // Implementation\n}"
+    }
+  ],
+  "insert_before_line": [
+    {
+      "path": "src/main.cpp",
+      "start_line": 30,
+      "new_text": "#include \"new_header.h\""
+    }
+  ],
+  "delete_lines": [
+    {
+      "path": "src/main.cpp",
+      "start_line": 50,
+      "end_line": 55
     }
   ]
 }
@@ -251,22 +229,16 @@
 ### 替換多個文字（單一檔案）
 ```json
 {
-  "tool": "edit_files",
-  "edits": [
+  "replace_text": [
     {
       "path": "src/main.cpp",
-      "operations": [
-        {
-          "type": "replace_text",
-          "old_text": "printf(\"Hello\")",
-          "new_text": "std::cout << \"Hello\""
-        },
-        {
-          "type": "replace_text",
-          "old_text": "#include <stdio.h>",
-          "new_text": "#include <iostream>"
-        }
-      ]
+      "old_text": "printf(\"Hello\")",
+      "new_text": "std::cout << \"Hello\""
+    },
+    {
+      "path": "src/main.cpp",
+      "old_text": "#include <stdio.h>",
+      "new_text": "#include <iostream>"
     }
   ]
 }
@@ -275,28 +247,19 @@
 ### 修改多個檔案
 ```json
 {
-  "tool": "edit_files",
-  "edits": [
+  "replace_text": [
     {
       "path": "src/main.cpp",
-      "operations": [
-        {
-          "type": "replace_text",
-          "old_text": "printf(\"Hello\")",
-          "new_text": "std::cout << \"Hello\""
-        }
-      ]
-    },
+      "old_text": "printf(\"Hello\")",
+      "new_text": "std::cout << \"Hello\""
+    }
+  ],
+  "replace_line_range": [
     {
       "path": "include/game.h",
-      "operations": [
-        {
-          "type": "replace_line_range",
-          "start_line": 5,
-          "end_line": 10,
-          "new_text": "// Updated header"
-        }
-      ]
+      "start_line": 5,
+      "end_line": 10,
+      "new_text": "// Updated header"
     }
   ]
 }
@@ -305,17 +268,11 @@
 ### 單一檔案的簡單修改（取代現有的 edit_file）
 ```json
 {
-  "tool": "edit_files",
-  "edits": [
+  "replace_text": [
     {
       "path": "src/main.cpp",
-      "operations": [
-        {
-          "type": "replace_text",
-          "old_text": "int x = 0;",
-          "new_text": "int x = 1;"
-        }
-      ]
+      "old_text": "int x = 0;",
+      "new_text": "int x = 1;"
     }
   ]
 }
@@ -342,10 +299,14 @@
   行號編輯（需要知道在第幾行）：
   ```json
   {
-    "type": "replace_line_range",
-    "start_line": 10,
-    "end_line": 10,
-    "new_text": "std::cout << \"Hello\""
+    "replace_line_range": [
+      {
+        "path": "src/main.cpp",
+        "start_line": 10,
+        "end_line": 10,
+        "new_text": "std::cout << \"Hello\""
+      }
+    ]
   }
   ```
 
@@ -354,9 +315,13 @@
   文字替換（不需要知道在哪幾行）：
   ```json
   {
-    "type": "replace_text",
-    "old_text": "printf(\"Hello\")",
-    "new_text": "std::cout << \"Hello\""
+    "replace_text": [
+      {
+        "path": "src/main.cpp",
+        "old_text": "printf(\"Hello\")",
+        "new_text": "std::cout << \"Hello\""
+      }
+    ]
   }
   ```
 
@@ -382,72 +347,43 @@
 | 原子性操作 | ✅（每檔獨立） | ❌ |
 | Token 效率 | ✅（一次請求） | ❌（多次請求） |
 
-# 未來調整方向 [ ]
+---
 
-- 現在同檔都在記憶體裡面操作 一樣可以把同檔邏輯放在一起處理 如果失敗 直接不寫回就可以了
+## 內部實作架構
 
-{
-  type: object,
-  properties: {
-    replace_line_range: [
-      type: array,
-      required: [path, start_line, end_line, new_text],
-      properties: {
-        path: string,
-        start_line: number,
-        end_line: number,
-        new_text: string,
-      }
-    ],
-    insert_before_line: [
-      type: array,
-      required: [path, start_line, new_text],
-      properties: {
-        path: string,
-        start_line: number,
-        new_text: string,
-      }
-    ],
-    insert_after_line: [
-      type: array,
-      required: [path, start_line, new_text],
-      properties: {
-        path: string,
-        start_line: number,
-        new_text: string,
-      }
-    ],
-    delete_lines: [
-      type: array,
-      required: [path, start_line, end_line],
-      properties: {
-        path: string,
-        start_line: number,
-        end_line: number,    
-      }
-    ],
-    replace_text: [
-      type: array,
-      required: [path, old_text, new_text],
-      properties: {
-        path: string,
-        old_text: string,
-        new_text: string,
-      }
-    ]    
-  }
-}
+### 資料結構
 
-## execute, show_preview 提出相同邏輯 共用函式
+```cpp
+struct FileOps {
+    std::vector<agent::EditFile::ModifiedBlock> blocks;
+    std::vector<std::pair<std::string, std::string>> text_replacements; // (old_text, new_text)
+};
+```
 
-struct FileEdit
-{
-  EditLines file;
-  std::vector<ModifiedBlock> blocks;
-  std::vector<std::pair<std::string, std::string>> text_replacements;
-}
+### 處理流程
 
-- 蒐集該檔案所有操作 放入blocks
-- 從 blocks 找到最小 start_line, 最大 end_line
-- 如果 blocks 非法 標記錯誤 不執行本檔案操作
-- 使用 EditLines 讀取檔案
+1. **`parse_operations(args)`**：將扁平 JSON 參數解析為按檔案分組的 `FileOps`。
+   - 行號操作（`replace_line_range`、`insert_before_line`、`insert_after_line`、`delete_lines`）→ 轉換為 `ModifiedBlock` 加入 `blocks`
+   - 文字替換（`replace_text`）→ 加入 `text_replacements`
+
+2. **`process_file(path, ops)`**：處理單一檔案。
+   - 讀取檔案 → `agent::EditFile`
+   - 將 `blocks` 加入 `ef.blocks`
+   - 對每個 `replace_text`：
+     - 尋找 `old_text` 在檔案中的出現位置
+     - 1 處：直接替換為 `ModifiedBlock`
+     - 多處：互動式選擇（N / num / A）後轉換為 `ModifiedBlock`
+   - 驗證所有 blocks → `ef.validate_blocks()`
+   - 套用所有變更 → `ef.apply_blocks(result)`
+   - 寫回檔案 → `result.write_file(path)`
+
+3. **`execute(args)`**：主入口。
+   - 解析 JSON → `parse_operations`
+   - 遍歷每個檔案的 `FileOps`，呼叫 `process_file`
+   - 收集成功/失敗結果，回傳純文字摘要
+
+### show_preview / execute 共用邏輯
+
+- `show_preview()` 和 `execute()` 都使用 `parse_operations()` 來解析 JSON 參數。
+- `show_preview()` 讀取檔案、套用 blocks、產生 diff 輸出（不寫入）。
+- `execute()` 讀取檔案、套用 blocks、驗證後寫回檔案。

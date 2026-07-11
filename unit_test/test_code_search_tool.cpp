@@ -33,6 +33,7 @@ void test_code_search_tools(UnitReport& parent)
         out.close();
 
         auto tool = create_code_search_tool();
+        UNIT_TEST("name_is_search_code", tool->name() == "search_code");
         json args;
         args["pattern"] = "main";
         args["directory"] = dir;
@@ -355,6 +356,21 @@ void test_code_search_tools(UnitReport& parent)
         auto tool = create_code_search_tool();
         std::string result = tool->execute("");
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
+    }
+
+    // non-existent directory — no matches (not an error, just empty)
+    {
+        LOG_INFO("code_search", "non_existent_directory");
+        auto tool = create_code_search_tool();
+        json args;
+        args["pattern"] = ".*";
+        args["directory"] = "test_cs_nonexistent_dir_temp_xyz";
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("non_existent_directory_no_matches", result.find("No matches found") != std::string::npos);
     }
 
     parent.report.push_back(unit);

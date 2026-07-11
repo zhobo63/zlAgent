@@ -47,6 +47,12 @@ struct EditFile: EditLines {
 
     std::vector<ModifiedBlock> blocks;
 
+    /// Error message set during replace_text resolution (e.g. old_text not found).
+    std::string error_message;
+
+    /// Info messages from replace_text operations (e.g. "replaced 3 of 5 occurrences").
+    std::vector<std::string> replace_info;
+
     void replace_line_range(int start, int end, const std::string &new_text);
     void insert_before_line(int start, const std::string &new_text);
     void insert_after_line(int start, const std::string &new_text);

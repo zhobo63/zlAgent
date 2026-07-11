@@ -1,0 +1,38 @@
+{
+  "replace_line_range": [
+    {
+      "path": "tmp/test_edit.cpp",
+      "start_line": 28,
+      "end_line": 31,
+      "new_text": "    void sort_array() { /* sorted */ }"
+    }
+  ],
+  "insert_before_line": [
+    {
+      "path": "tmp/test_edit.cpp",
+      "start_line": 45,
+      "new_text": "// Test: Inserted before line 45\nvoid test_function() {\n    std::cout << \"Test function\" << std::endl;\n}\n"
+    }
+  ],
+  "insert_after_line": [
+    {
+      "path": "tmp/test_edit.cpp",
+      "start_line": 10,
+      "new_text": "// === Test: Inserted after line 10 ==="
+    }
+  ],
+  "delete_lines": [
+    {
+      "path": "tmp/test_edit.cpp",
+      "start_line": 67,
+      "end_line": 73
+    }
+  ],
+  "replace_text": [
+    {
+      "path": "tmp/test_edit.cpp",
+      "old_text": "// TODO: implement sorting",
+      "new_text": "// SORTING_ALGORITHM_V1"
+    }
+  ]
+}
