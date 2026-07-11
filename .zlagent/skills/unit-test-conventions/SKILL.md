@@ -4,6 +4,20 @@ description: Conventions for writing unit tests in the zlAgent project. Use when
 ---
 # 單元測試規範
 
+`test_<category>` - category: filename without extension, e.g. `config.cpp` → `test_config()`
+  - `test_<class_name>`: 每個 class 的測試拆成獨立子函式
+    - 測試區塊：用 `{}` 包起來，`UNIT_TEST("描述性名稱", condition)`
+
+e.g.  `config.cpp` →
+test_config()
+  - test_ini_parser()
+    - { UNIT_TEST("parse_success", ...) }
+    - { UNIT_TEST("update_key_success", ...) }
+  - test_config_class()
+    - { UNIT_TEST("parse_bool_true", ...) }
+    - { UNIT_TEST("load_success", ...) }
+    - { UNIT_TEST("save_success", ...) }
+
 ## 檔案結構
 
 每個測試檔案的標準結構：
@@ -11,8 +25,8 @@ description: Conventions for writing unit tests in the zlAgent project. Use when
 ```cpp
 #include "pch.h"
 #include "unit_test.h"
-#include "tools.h"
-// #include "safety_guard.h"  // 如果需要 Disable SafetyGuard
+// #include "tools.h"
+// #include "safety_guard.h"  // 如果需要設定 SafetyGuard 白名單
 
 using namespace agent;
 namespace fs = std::filesystem;
@@ -28,41 +42,45 @@ static void safe_remove_all(const std::string& path)
 
 ## 入口函式（Entry Point）
 
-每個測試檔案必須有一個入口函式，名稱格式為 `test_<category>_tool`：
+每個測試檔案必須有一個入口函式，名稱格式為 `test_<category>`：
+
+- category: filename without extension, e.g. `config.cpp` → `test_config()`
+- 實作檔案 `config.cpp`: 測試檔案 `test_config.cpp` → 入口函式 `test_config()`
 
 ```cpp
-void test_fs_tool(UnitReport& parent)
+void test_config(UnitReport& parent)
 {
-    // Disable SafetyGuard for tests.
+    // Ensure SafetyGuard whitelist contains current path for tests.
     auto& sg = SafetyGuard::get_instance();
-    sg.reset_path_whitelist();
-    sg.set_working_directory("");
+    sg.set_path_whitelist({fs::current_path().string()});
 
-    UnitReport unit("fs_tools");
-    LOG_INFO("test_fs_tools", "fs_tools");
+    UnitReport unit("config");
+    LOG_INFO("config", "entry");
 
-    test_create_directory_tool(unit);
-    test_delete_path_tool(unit);
-    test_copy_path_tool(unit);
+    test_ini_parser(unit);
+    test_config_class(unit);
 
     parent.report.push_back(unit);
 }
 ```
 
 **注意：**
-- 如果測試涉及檔案系統操作，必須 Disable SafetyGuard
-- `LOG_INFO` 的第一個參數要跟函式名稱一致（包含 `_tool` 結尾）
-- 每個 tool 的測試拆成獨立子函式，方便維護
+- 如果測試涉及檔案系統操作，必須確保 SafetyGuard 白名單包含當前路徑
+- `LOG_INFO` 第一個參數是 class/tool 名稱，第二個參數用描述性名稱
+- 如果測試檔案裡面有不同 class，每個 class 的測試拆成獨立子函式 `test_<class_name>`
+
+
 
 ## 子測試函式
 
-每個 tool 一個子函式，格式為 `test_<tool_name>_tool`：
+- 如果一個測試檔案包含多個 class，則每個 class 的測試需拆成獨立子函式，命名格式為 `test_<class_name>`（例如 `test_ini_parser`、`test_config_class`）。如果只有一個 class，則直接在入口函式中撰寫即可。
+- **注意：** 當 class name 和 category name 相同時（如 `config.cpp` 中的 `Config`），子函式命名為 `test_<class_name>_class` 以避免與入口函式衝突。
 
 ```cpp
-void test_create_directory_tool(UnitReport& parent)
+void test_ini_parser(UnitReport& parent)
 {
-    UnitReport unit("create_directory");
-    LOG_INFO("test_create_directory", "create_directory");
+    UnitReport unit("ini_parser");
+    LOG_INFO("ini_parser", "entry");
 
     // ... tests ...
 
@@ -70,7 +88,19 @@ void test_create_directory_tool(UnitReport& parent)
 }
 ```
 
-**注意：** `LOG_INFO` 的第一個參數要跟函式名稱一致（包含 `_tool` 結尾）。
+當 class name 與 category 衝突時：
+
+```cpp
+void test_config_class(UnitReport& parent)
+{
+    UnitReport unit("config_class");
+    LOG_INFO("config_class", "entry");
+
+    // ... tests for Config class ...
+
+    parent.report.push_back(unit);
+}
+```
 
 ## 測試區塊
 
@@ -78,26 +108,9 @@ void test_create_directory_tool(UnitReport& parent)
 
 ```cpp
 {
-    LOG_INFO("tool_name", "test_case_name");
-    std::string dir = "test_<abbrev>_<case>_temp";
-    if (fs::exists(dir)) fs::remove_all(dir);
-    fs::create_directories(dir);
-
-    // 建立測試檔案/環境
-    {
-        std::ofstream f(fs::path(dir) / "file.txt");
-        f << "content";
-    }
-
-    auto tool = create_<tool_name>_tool();
-    json args;
-    args["key"] = "value";
-    auto args_str = args.dump();
-    tool->show_arguments(args_str);
-    tool->show_preview(args_str);
-    std::string result = tool->execute(args_str);
-    tool->show_result(result);
-    UNIT_TEST("test_case_name", condition);
+    LOG_INFO("ini_parser", "parse_success");
+    ...
+    UNIT_TEST("parse_success", condition);
 
     safe_remove_all(dir);  // 清理
 }
@@ -105,7 +118,7 @@ void test_create_directory_tool(UnitReport& parent)
 
 ### 必要元素
 
-1. **`safe_remove_all`** — 每個測試檔案都要有，參數名稱必須是 `path`（不是 `dir`）：
+1. **`safe_remove_all`** — 每個測試檔案都要有，參數名稱必須是 `path`：
 ```cpp
 static void safe_remove_all(const std::string& path)
 {
@@ -115,27 +128,29 @@ static void safe_remove_all(const std::string& path)
 }
 ```
 
-2. **臨時目錄命名** — 用 `test_<abbrev>_<case>_temp`，測試結束一定要清理：
+2. **臨時目錄命名** — 格式為 `test_<簡寫>_<測試項目>_temp`，例如 `test_ip_basic_temp`（ip = ini_parser），測試結束一定要清理：
 ```cpp
-std::string dir = "test_cd_basic_temp";  // cd = create_directory, basic = case name
-if (fs::exists(dir)) fs::remove_all(dir);
+std::string dir = "test_ip_basic_temp";  // ip = ini_parser, basic = 基本解析
+safe_remove_all(dir);
 fs::create_directories(dir);
 // ... test ...
 safe_remove_all(dir);
 ```
 
-3. **`UNIT_TEST`** — 測試名稱要有描述性，不要重複：
+3. **`UNIT_TEST`** — 測試名稱用描述性字串，不要重複：
 ```cpp
 UNIT_TEST("basic_success", result.find("Successfully created") != std::string::npos);
 UNIT_TEST("dir_exists", fs::exists(fs::path(dir) / "new_folder"));
 ```
 
-4. **`LOG_INFO`** — 每個測試區塊開頭記錄：
+4. **`LOG_INFO`** — 每個測試區塊開頭記錄，第一個參數是 class/tool 名稱，第二個參數用描述性名稱：
 ```cpp
-LOG_INFO("tool_name", "test_case_name");
+LOG_INFO("ini_parser", "parse_success");
 ```
 
-5. **Tool 執行流程** — 正常測試要呼叫完整流程：
+### Tool 類型測試
+
+- **class Tool 執行流程** — 正常測試要呼叫完整流程：
 ```cpp
 auto args_str = args.dump();
 tool->show_arguments(args_str);
@@ -144,7 +159,7 @@ std::string result = tool->execute(args_str);
 tool->show_result(result);
 ```
 
-6. **Tool name 驗證** — 第一個測試要驗證 tool 的 `name()`：
+- **class Tool name 驗證** — 第一個測試要驗證 tool 的 `name()`：
 ```cpp
 auto tool = create_create_directory_tool();
 UNIT_TEST("name_is_create_directory", tool->name() == "create_directory");
@@ -152,21 +167,22 @@ UNIT_TEST("name_is_create_directory", tool->name() == "create_directory");
 
 ## JSON array 賦值規則（重要）
 
-**一律用 `json::array(...)`，不要用 `{...}`。**
+- **`{...}` 會被 nlohmann::json 的型別推導誤判為 object，所以要用 `json::array(...)` 明確指定型別。**
+- 這不是絕對禁止 `{}`，而是當你要建立 array 時必須用 `json::array()` 避免被推導成 object。
 
 ```cpp
-// ❌ 錯誤 — {obj1, obj2} 會被推導為 object
+// ❌ 錯誤 — {obj1, obj2} 會被型別推導為 object（而非 array）
 args["files"] = {f1, f2};
 args["edits"] = {edit_obj};
 edit_obj["operations"] = {op};
 
-// ✅ 正確
+// ✅ 正確 — 用 json::array() 明確指定型別為 array
 args["files"] = json::array({f1, f2});
 args["edits"] = json::array({edit_obj});
 edit_obj["operations"] = json::array({op});
 ```
 
-**例外：已經用 push_back 建立的 array，直接賦值即可。**
+**例外：已經用 push_back 建立的 array，型別已確定，直接賦值即可。**
 ```cpp
 json ops;
 ops.push_back(op1);
@@ -200,38 +216,6 @@ edit_obj["operations"] = ops;  // ✅ 不需要 json::array()
 | C | **空 source_path** | `args["source_path"] = ""` → Error |
 | D | **空 destination_path** | `args["destination_path"] = ""` → Error |
 | E | **內容一致性驗證** | 複製/移動後比對檔案內容相同 |
-
-### 錯誤處理三件套（每個 tool 都要有）
-
-以下三個測試區塊是**強制要求**，不可省略：
-
-```cpp
-// empty required field
-{
-    LOG_INFO("tool_name", "empty_param_error");
-    auto tool = create_<tool_name>_tool();
-    json args;
-    args["<required_field>"] = "";
-    std::string result = tool->execute(args.dump());
-    UNIT_TEST("empty_param_returns_error", result.find("Error") != std::string::npos);
-}
-
-// invalid JSON
-{
-    LOG_INFO("tool_name", "invalid_json_returns_error");
-    auto tool = create_<tool_name>_tool();
-    std::string result = tool->execute("not json");
-    UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
-}
-
-// empty input
-{
-    LOG_INFO("tool_name", "empty_input_returns_error");
-    auto tool = create_<tool_name>_tool();
-    std::string result = tool->execute("");
-    UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
-}
-```
 
 ## 常見驗證模式
 
@@ -269,9 +253,9 @@ UNIT_TEST("file_not_exist", !fs::exists(fs::path(dir) / "file.txt"));
 
 | 錯誤 | 說明 |
 |------|------|
-| `safe_remove_all` 參數用 `dir` 但函式宣告是 `path` | 編譯錯誤，參數名稱要一致 |
-| `LOG_INFO` 第一個參數跟函式名不一致 | 例如函式叫 `test_overview_tool` 但寫成 `"test_overview_tools"` |
+| `safe_remove_all` 參數名與呼叫端不一致 | 命名不統一容易混淆，參數名必須是 `path` |
+| `LOG_INFO` 第一個參數不是 class/tool 名稱 | 應該用 class/tool 名稱，不要用函式名稱（如寫成 `"test_ini_parser"`） |
 | 忘記清理臨時目錄 | 測試結束後一定要 `safe_remove_all(dir)` |
-| 沒有 Disable SafetyGuard | 涉及檔案操作的測試必須 Disable |
+| 沒有設定 SafetyGuard 白名單 | 涉及檔案操作的測試必須確保白名單包含當前路徑 |
 | `{...}` 賦值給 JSON array | 要用 `json::array({ ... })` |
-| 缺少錯誤處理測試 | 每個 tool 都要有 empty/invalid/empty input 測試 |
+| 缺少錯誤處理測試 | 每個 tool 都要有 empty / invalid / null input 測試 |

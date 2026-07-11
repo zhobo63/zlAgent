@@ -79,6 +79,7 @@ include/tui.h → TUI_tui
 - [ ] 支援更複雜的 class 宣告（繼承、模板參數）
 - [ ] 精確註解統計（區分 doc comment vs code comment）
 - [ ] 圖形化依賴關係展示
+- [ ] VCS
 - [ ] 支援其他語言（Python、JavaScript、TypeScript、Rust、Go）
 
 ## 檔案結構

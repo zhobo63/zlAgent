@@ -5,6 +5,8 @@ add_executable(unit_test
     test_file_tool.cpp
     test_overview_tool.cpp
     test_fs_tool.cpp
+    test_skill_tool.cpp
+    test_config.cpp
 )
 
 target_include_directories(unit_test PRIVATE ../include)

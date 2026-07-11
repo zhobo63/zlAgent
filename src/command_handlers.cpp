@@ -10,6 +10,9 @@
 #include "json.hpp"
 #include "key_watcher.h"
 #include "file_utils.h"
+#include "project_summary/summary_tool.h"
+#include <iostream>
+#include <string>
 
 namespace agent {
 
@@ -26,7 +29,7 @@ void register_command_handlers(
         "/model",
         "/facts", "/sessions", "/summary", "/new", "/save",
         "/search-kb", "/add-doc",
-        "/view", "/outline",
+        "/view", "/outline", "/scan"
         "/reply",
         "/quit", "/exit"
     });
@@ -42,6 +45,7 @@ void register_command_handlers(
             "  /tool <name>       Show details for a specific tool\n"
             "  /view <path>       Overview project directory and generate code summary\n"
             "  /outline <file>    Show file outline (symbol names and line numbers)\n"
+            "  /scan <path>       Scan project directory and generate code summary\n"
             "\nModel commands:\n"
             "  /model             List available models and switch interactively\n"
             "\nMemory commands:\n"
@@ -512,6 +516,28 @@ void register_command_handlers(
         LOG_INFO("Command", result.c_str());
 
 
+    });
+
+    // ── /scan [path] ────────────────────────────────────────
+    dispatcher.register_command("scan", [](const std::vector<std::string>& args, std::string&) {
+        std::string path = ".";
+        if (!args.empty()) {
+            path = args[0];
+            try {
+                if (!std::filesystem::is_directory(path)) {
+                    LOG_ERROR("Command", "Path is not a directory: '" + path + "'");
+                    return;
+                }
+            } catch (...) {
+                LOG_ERROR("Command", "Failed to check path: '" + path + "'");
+                return;
+            }
+        }
+
+        std::ostringstream out;
+        generate_report(path, out);
+        std::cout << out.str();
+        //quick_summary(path);
     });
 
     // ── /outline <file> ─────────────────────────────────────

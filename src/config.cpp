@@ -137,8 +137,8 @@ static void read_csv_list(const std::map<std::string, std::string>& s,
     if (it == s.end()) return;
 
     std::string str = it->second;
-    size_t pos = 0;
-    while ((pos = str.find(',', pos)) != std::string::npos) {
+    size_t pos;
+    while ((pos = str.find(',')) != std::string::npos) {
         std::string item = str.substr(0, pos);
         ltrim(item);
         rtrim(item);
@@ -157,8 +157,8 @@ static void read_csv_int_list(const std::map<std::string, std::string>& s,
     if (it == s.end()) return;
 
     std::string str = it->second;
-    size_t pos = 0;
-    while ((pos = str.find(',', pos)) != std::string::npos) {
+    size_t pos;
+    while ((pos = str.find(',')) != std::string::npos) {
         std::string item = str.substr(0, pos);
         ltrim(item);
         rtrim(item);
@@ -436,8 +436,10 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
             }
             kvs["path_whitelist"] = wl;
         }
-        kvs["skill_content_check"] = cfg.safety.skill_content_check ? "true" : "false";
-        kvs["input_filter"]        = cfg.safety.input_filter ? "true" : "false";
+        kvs["working_directory"]           = cfg.safety.working_directory;
+        kvs["strict_mode"]                 = cfg.safety.strict_mode ? "true" : "false";
+        kvs["skill_content_check"]         = cfg.safety.skill_content_check ? "true" : "false";
+        kvs["input_filter"]                = cfg.safety.input_filter ? "true" : "false";
         write_section("safety", kvs);
     }
 
