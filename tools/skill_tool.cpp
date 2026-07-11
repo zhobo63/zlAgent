@@ -26,7 +26,7 @@ class CreateSkillTool : public Tool {
 public:
     std::string name() const override { return "create_skill"; }
     std::string description() const override {
-        return "Create a new agent skill dynamically. The skill will be written to zlagent/skills/<name>/SKILL.md and registered immediately.";
+        return "Create a new agent skill dynamically. The skill will be written to .zlagent/skills/<name>/SKILL.md and registered immediately.";
     }
     std::string parameters_schema() const override {
         json schema;
@@ -92,7 +92,7 @@ public:
             }
 
             // Write to zlagent/skills/<name>/SKILL.md.
-            std::string skill_dir = "zlagent/skills/" + name;
+            std::string skill_dir = DEFAULT_SKILL_DIR "/" + name;
             fs::create_directories(skill_dir);
 
             std::string md_path = skill_dir + "/SKILL.md";
@@ -158,7 +158,7 @@ public:
             }
 
             // Remove SKILL.md file.
-            std::string skill_dir = "zlagent/skills/" + name;
+            std::string skill_dir = DEFAULT_SKILL_DIR "/" + name;
             std::string md_path = skill_dir + "/SKILL.md";
             if (fs::exists(md_path)) {
                 fs::remove(md_path);
@@ -176,20 +176,87 @@ public:
 };
 
 // -----------------------------------------------------------------------
+// GetSkillTool - retrieve full content of a registered skill on demand
+// -----------------------------------------------------------------------
+class GetSkillTool : public Tool {
+public:
+    std::string name() const override { return "get_skill"; }
+    std::string description() const override {
+        return "Retrieve the full content of a registered agent skill, including its step-by-step instructions. Use this when you need to follow a specific skill's workflow. The system prompt lists available skills with brief descriptions; call this tool to get the detailed instructions before executing the task.";
+    }
+    std::string parameters_schema() const override {
+        json schema;
+        schema["type"] = "object";
+        schema["properties"]["name"]["type"] = "string";
+        schema["properties"]["name"]["description"] = "Name of the skill to retrieve (e.g. 'code_review', 'unit_test_conventions')";
+        schema["required"] = {"name"};
+        return schema.dump();
+    }
+
+    std::string execute(const std::string& json_args) override {
+        try {
+            if (!g_skill_registry) {
+                return "Error: Skill registry not initialized.";
+            }
+
+            if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+            auto args = json::parse(json_args);
+            if (args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
+            std::string name = args.value("name", "");
+
+            if (name.empty()) return "Error: Skill name is required.";
+
+            auto skill = g_skill_registry->find_skill(name);
+            if (!skill) {
+                // List available skills to help the caller.
+                std::ostringstream oss;
+                oss << "Error: Skill '" << name << "' not found.\n";
+                oss << "Available skills:\n";
+                for (const auto& s : g_skill_registry->get_skills()) {
+                    if (!s->enabled) continue;
+                    oss << "  - " << s->name << ": " << s->description << "\n";
+                }
+                return oss.str();
+            }
+
+            // Read the raw SKILL.md file from disk.
+            std::string md_path = skill->source_path + "/SKILL.md";
+            if (!fs::exists(md_path)) {
+                return "Error: SKILL.md not found at '" + md_path + "'.";
+            }
+
+            std::ifstream file(md_path);
+            if (!file.is_open()) {
+                return "Error: Failed to open '" + md_path + "'.";
+            }
+
+            std::ostringstream oss;
+            oss << file.rdbuf();
+            return oss.str();
+
+        } catch (const json::parse_error& e) {
+            return "Error: Invalid JSON arguments - " + std::string(e.what());
+        }
+    }
+};
+
+// -----------------------------------------------------------------------
 // ReloadSkillsTool - hot-reload native skills from disk
 // -----------------------------------------------------------------------
 class ReloadSkillsTool : public Tool {
 public:
     std::string name() const override { return "reload_skills"; }
     std::string description() const override {
-        return "Hot-reload native skills by scanning zlagent/skills/ for changes. Detects file modifications via mtime, re-parses changed SKILL.md files in-place, and removes deleted ones.";
+        return "Hot-reload native skills by scanning .zlagent/skills/ for changes. Detects file modifications via mtime, re-parses changed SKILL.md files in-place, and removes deleted ones.";
     }
     std::string parameters_schema() const override {
         json schema;
         schema["type"] = "object";
         schema["properties"]["scan_dirs"]["type"] = "array";
         schema["properties"]["scan_dirs"]["items"]["type"] = "string";
-        schema["properties"]["scan_dirs"]["description"] = "Optional list of directories to scan. Defaults to zlagent/skills/.";
+        schema["properties"]["scan_dirs"]["description"] = "Optional list of directories to scan. Defaults to .zlagent/skills/.";
         return schema.dump();
     }
 
@@ -229,6 +296,10 @@ public:
         }
     }
 };
+
+ToolPtr create_get_skill_tool() {
+    return std::make_shared<GetSkillTool>();
+}
 
 ToolPtr create_create_skill_tool() {
     return std::make_shared<CreateSkillTool>();

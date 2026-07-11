@@ -862,7 +862,7 @@ class EditFilesTool : public Tool {
 public:
     std::string name() const override { return "edit_files"; }
     std::string description() const override {
-        return R"(Edit one or more files in a single call. 
+        return R"(Edit one or more files in a single call.
 Each operation type is specified as a top-level array property.
 Supported operations: replace_line_range, insert_before_line,
 insert_after_line, delete_lines, replace_text.
@@ -1004,6 +1004,7 @@ that entire file is rolled back. Files are independent of each other.)";
     }
 
     void show_preview(const std::string& json_args) override {
+        LOG_INFO(u8"🛠️Tool", name() + " [preview]");
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
@@ -1235,13 +1236,20 @@ public:
                 }
             }
 
-            json response;
-            bool any_success = !result_edited.empty();
-            response["success"] = any_success;
-            response["edited_files"]  = result_edited;
-            response["failed_files"]  = result_failed;
+            std::string output;
+            for (auto& file : result_edited) {
+                auto path = file.value("path", "");
+                auto orig = file.value("original_lines", 0);
+                auto newl = file.value("new_lines", 0);
+                output += "edited: " + path + " (" + std::to_string(orig) + " -> " + std::to_string(newl) + " lines)\n";
+            }
+            for (auto& file : result_failed) {
+                auto path = file.value("path", "");
+                auto error = file.value("error", "");
+                output += "failed: " + path + " - " + error + "\n";
+            }
 
-            return response.dump(2);
+            return output;
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }

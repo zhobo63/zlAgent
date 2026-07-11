@@ -860,7 +860,400 @@ void test_edit_file_tools(UnitReport& parent)
 
 void test_edit_files_tools(UnitReport& parent)
 {
+    UnitReport unit("edit_files");
+    LOG_INFO("test_edit_files_tools", "edit_files");
 
+    // tool name check
+    {
+        LOG_INFO("edit_files", "name_is_edit_files");
+        auto tool = create_edit_files_tool();
+        UNIT_TEST("name_is_edit_files", tool->name() == "edit_files");
+    }
+
+    // replace_line_range: basic replacement
+    {
+        LOG_INFO("edit_files", "test_replace_line_range_temp");
+        std::string dir = "test_replace_line_range_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "a.txt");
+        out << "line1\nline2\nline3\nline4\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/a.txt";
+        op["start_line"] = 2;
+        op["end_line"] = 3;
+        op["new_text"] = "replaced";
+        args["replace_line_range"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("replace_line_range_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "a.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("replace_line_range_has_replaced", content.find("replaced") != std::string::npos);
+        UNIT_TEST("replace_line_range_no_line2", content.find("line2") == std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // insert_before_line: basic insertion
+    {
+        LOG_INFO("edit_files", "test_insert_before_temp");
+        std::string dir = "test_insert_before_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "b.txt");
+        out << "line1\nline2\nline3\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/b.txt";
+        op["start_line"] = 2;
+        op["new_text"] = "inserted before line2";
+        args["insert_before_line"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("insert_before_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "b.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("insert_before_has_text", content.find("inserted before line2") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // insert_after_line: basic insertion after
+    {
+        LOG_INFO("edit_files", "test_insert_after_temp");
+        std::string dir = "test_insert_after_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "c.txt");
+        out << "line1\nline2\nline3\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/c.txt";
+        op["start_line"] = 1;
+        op["new_text"] = "inserted after line1";
+        args["insert_after_line"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("insert_after_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "c.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("insert_after_has_text", content.find("inserted after line1") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // delete_lines: basic deletion
+    {
+        LOG_INFO("edit_files", "test_delete_lines_temp");
+        std::string dir = "test_delete_lines_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "d.txt");
+        out << "line1\nline2\nline3\nline4\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/d.txt";
+        op["start_line"] = 2;
+        op["end_line"] = 3;
+        args["delete_lines"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("delete_lines_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "d.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("delete_lines_no_line2", content.find("line2") == std::string::npos);
+        UNIT_TEST("delete_lines_has_line1", content.find("line1") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // replace_text: single match auto-replaces
+    {
+        LOG_INFO("edit_files", "test_replace_text_single_temp");
+        std::string dir = "test_replace_text_single_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "e.txt");
+        out << "hello world\nfoo bar\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/e.txt";
+        op["old_text"] = "hello world";
+        op["new_text"] = "goodbye world";
+        args["replace_text"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("replace_text_single_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "e.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("replace_text_has_goodbye", content.find("goodbye world") != std::string::npos);
+        UNIT_TEST("replace_text_no_hello", content.find("hello world") == std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // multiple operations on the same file in one call
+    {
+        LOG_INFO("edit_files", "test_multi_ops_same_file_temp");
+        std::string dir = "test_multi_ops_same_file_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "multi.txt");
+        out << "line1\nline2\nline3\nline4\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        // replace lines 2-3, then insert before line 5 (original)
+        {
+            json op1;
+            op1["path"] = dir + "/multi.txt";
+            op1["start_line"] = 2;
+            op1["end_line"] = 3;
+            op1["new_text"] = "replaced";
+            args["replace_line_range"] = json::array({op1});
+        }
+        {
+            json op2;
+            op2["path"] = dir + "/multi.txt";
+            op2["start_line"] = 4;
+            op2["new_text"] = "inserted before line4";
+            args["insert_before_line"] = json::array({op2});
+        }
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("multi_ops_same_file_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "multi.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("multi_ops_has_replaced", content.find("replaced") != std::string::npos);
+        UNIT_TEST("multi_ops_has_inserted", content.find("inserted before line4") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // operations across multiple files in one call
+    {
+        LOG_INFO("edit_files", "test_multi_file_temp");
+        std::string dir = "test_multi_file_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out1(fs::path(dir) / "f1.txt");
+        out1 << "aaa\nbbb\nccc\n";
+        out1.close();
+
+        std::ofstream out2(fs::path(dir) / "f2.txt");
+        out2 << "xxx\nyyy\nzzz\n";
+        out2.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        // replace_line_range on f1
+        {
+            json op1;
+            op1["path"] = dir + "/f1.txt";
+            op1["start_line"] = 2;
+            op1["end_line"] = 2;
+            op1["new_text"] = "BBB";
+            args["replace_line_range"] = json::array({op1});
+        }
+        // delete_lines on f2
+        {
+            json op2;
+            op2["path"] = dir + "/f2.txt";
+            op2["start_line"] = 3;
+            op2["end_line"] = 3;
+            args["delete_lines"] = json::array({op2});
+        }
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("multi_file_no_error", result.find("Error") == std::string::npos);
+
+        // verify f1
+        {
+            std::ifstream in(fs::path(dir) / "f1.txt");
+            std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            UNIT_TEST("multi_file_f1_has_BBB", content.find("BBB") != std::string::npos);
+        }
+        // verify f2
+        {
+            std::ifstream in(fs::path(dir) / "f2.txt");
+            std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            UNIT_TEST("multi_file_f2_no_zzz", content.find("zzz") == std::string::npos);
+        }
+
+        safe_remove_all(dir);
+    }
+
+    // nonexistent file returns error in failed_files
+    {
+        LOG_INFO("edit_files", "nonexistent_file_error");
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = "/nonexistent/file.txt";
+        op["start_line"] = 1;
+        op["end_line"] = 1;
+        op["new_text"] = "test";
+        args["replace_line_range"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("nonexistent_file_has_failed", result.find("failed:") != std::string::npos);
+    }
+
+    // empty path operations are skipped (no file affected)
+    {
+        LOG_INFO("edit_files", "empty_path_skipped");
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = "";
+        op["start_line"] = 1;
+        op["end_line"] = 1;
+        op["new_text"] = "test";
+        args["replace_line_range"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("empty_path_no_files_edited", result.empty());
+    }
+
+    // replace_text: old_text not found returns error
+    {
+        LOG_INFO("edit_files", "test_replace_notfound_temp");
+        std::string dir = "test_replace_notfound_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "nf.txt");
+        out << "hello world\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/nf.txt";
+        op["old_text"] = "not found text";
+        op["new_text"] = "replacement";
+        args["replace_text"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("replace_notfound_has_error", result.find("Error") != std::string::npos || result.find("not found") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // replace_text: empty old_text returns error
+    {
+        LOG_INFO("edit_files", "test_replace_empty_old_temp");
+        std::string dir = "test_replace_empty_old_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "eo.txt");
+        out << "hello world\n";
+        out.close();
+
+        auto tool = create_edit_files_tool();
+        json args;
+        json op;
+        op["path"] = dir + "/eo.txt";
+        op["old_text"] = "";
+        op["new_text"] = "replacement";
+        args["replace_text"] = json::array({op});
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("replace_empty_old_has_error", result.find("Error") != std::string::npos || result.find("empty") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // invalid JSON returns error
+    {
+        LOG_INFO("edit_files", "invalid_json_returns_error");
+        auto tool = create_edit_files_tool();
+        std::string args_str = "not json";
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
+    }
+
+    // empty input returns error
+    {
+        LOG_INFO("edit_files", "empty_input_returns_error");
+        auto tool = create_edit_files_tool();
+        std::string args_str = "";
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
+        UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
+    }
+
+    parent.report.push_back(unit);
 }
 
 // ── ListDirectoryTool ──────────────────────────────────────────

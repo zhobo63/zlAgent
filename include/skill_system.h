@@ -7,6 +7,8 @@
 #include <set>
 #include <filesystem>
 
+#define DEFAULT_SKILL_DIR ".zlagent/skills"
+
 namespace agent {
 
 /**

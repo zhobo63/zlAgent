@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "unit_test.h"
 #include "tools.h"
 
@@ -18,9 +18,9 @@ static void safe_remove_all(const std::string& path)
 void test_overview_tool(UnitReport& parent)
 {
     UnitReport unit("overview_tools");
-    LOG_INFO("test_overview_tools", "overview_tools");
+    LOG_INFO("test_overview_tool", "overview_tools");
 
-    // basic overview returns header
+    // basic overview returns header + tool name verification
     {
         LOG_INFO("overview", "basic_header");
         std::string dir = "test_ov_basic_temp";
@@ -28,9 +28,15 @@ void test_overview_tool(UnitReport& parent)
         fs::create_directories(dir);
 
         auto tool = create_project_overview_tool();
+        UNIT_TEST("name_is_project_overview", tool->name() == "project_overview");
+
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("basic_header", result.find("PROJECT OVERVIEW") != std::string::npos);
 
         safe_remove_all(dir);
@@ -50,7 +56,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("detect_cmake", result.find("CMake") != std::string::npos);
 
         safe_remove_all(dir);
@@ -70,7 +80,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("detect_make", result.find("Make") != std::string::npos);
 
         safe_remove_all(dir);
@@ -90,7 +104,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("detect_npm", result.find("Node.js") != std::string::npos);
 
         safe_remove_all(dir);
@@ -106,7 +124,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("no_build_system", result.find("No known build system detected") != std::string::npos);
 
         safe_remove_all(dir);
@@ -135,7 +157,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("metrics_has_cpp", result.find(".cpp") != std::string::npos);
         UNIT_TEST("metrics_has_h", result.find(".h") != std::string::npos);
 
@@ -152,13 +178,17 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("no_source_files", result.find("No source files found") != std::string::npos);
 
         safe_remove_all(dir);
     }
 
-    // directory summary: lists subdirectories
+    // directory summary: lists subdirectories (nested operation)
     {
         LOG_INFO("overview", "directory_summary");
         std::string dir = "test_ov_dirsum_temp";
@@ -172,7 +202,11 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("dirsum_has_src", result.find("src") != std::string::npos);
 
         safe_remove_all(dir);
@@ -188,18 +222,26 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         json args;
         args["directory"] = dir;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("vcs_status_section", result.find("CURRENT STATUS") != std::string::npos);
 
         safe_remove_all(dir);
     }
 
-    // default directory when not specified
+    // default directory when not specified (already exists behavior)
     {
         LOG_INFO("overview", "default_directory");
         auto tool = create_project_overview_tool();
         json args;
-        std::string result = tool->execute(args.dump());
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        tool->show_result(result);
         UNIT_TEST("default_directory", result.find("PROJECT OVERVIEW") != std::string::npos);
     }
 
@@ -209,6 +251,14 @@ void test_overview_tool(UnitReport& parent)
         auto tool = create_project_overview_tool();
         std::string result = tool->execute("not json");
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
+    }
+
+    // empty input returns error
+    {
+        LOG_INFO("overview", "empty_input_returns_error");
+        auto tool = create_project_overview_tool();
+        std::string result = tool->execute("");
+        UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
     parent.report.push_back(unit);

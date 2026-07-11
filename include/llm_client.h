@@ -114,6 +114,7 @@ public:
 
     // Get the base URL.
     const std::string& get_base_url() const { return base_url_; }
+    void set_base_url(const std::string& url) { base_url_ = url; }
 
     // Query /v1/models API to list available models. Returns empty on failure.
     struct ModelInfo {

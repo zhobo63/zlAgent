@@ -27,8 +27,8 @@ TEST_CASE("SkillLoader: parse nonexistent file returns null", "[skills]") {
 }
 
 TEST_CASE("SkillLoader: scan_directory finds skills", "[skills]") {
-    // zlagent/skills/ should exist with at least one SKILL.md.
-    auto skills = SkillLoader::scan_directory("zlagent/skills", "native");
+    // .zlagent/skills/ should exist with at least one SKILL.md.
+    auto skills = SkillLoader::scan_directory(DEFAULT_SKILL_DIR, "native");
     // May be empty if no skills installed - just check it doesn't crash.
     CHECK(skills.size() >= 0);
 }

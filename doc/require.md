@@ -661,7 +661,7 @@ TerminalCommandDetector.detect()
          └─ NotACommand → 送 LLM（正常流程）
 ```
 
-### 3.10 技能系統 (`skill_system.h/cpp`, `zlagent/skills/`)
+### 3.10 技能系統 (`skill_system.h/cpp`, `.zlagent/skills/`)
 
 **核心概念：**
 
@@ -736,7 +736,7 @@ check_style: true
 
 | Agent | 專案路徑 | 全域路徑 | ZL Agent 對應 |
 |-------|----------|----------|---------------|
-| **ZL Agent** | `zlagent/skills/` | N/A | ✅ 原生支援 |
+| **ZL Agent** | `.zlagent/skills/` | N/A | ✅ 原生支援 |
 | Claude Code | `.claude/skills/` | `~/.claude/skills/` | 🔄 可導入 |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` | 🔄 可導入 |
 | Gemini CLI | `.gemini/skills/` | `~/.gemini/skills/` | 🔄 可導入 |
@@ -752,7 +752,7 @@ ZL Agent 啟動時會自動掃描當前工作目錄和全域路徑，偵測其�
 
 1. **專案層級** — 掃描當前工作目錄下的 `.claude/skills/`、`.cursor/skills/`、`.gemini/skills/`、`.github/skills/`、`.windsurf/skills/`、`.agents/skills/`
 2. **全域層級** — 掃描 `~/.claude/skills/`、`~/.cursor/skills/`、`~/.copilot/skills/`、`~/.codeium/windsurf/skills/`、`~/.agents/skills/`
-3. **ZL Agent 原生** — 最後載入 `zlagent/skills/`
+3. **ZL Agent 原生** — 最後載入 `.zlagent/skills/`
 
 **自動導入流程：**
 
@@ -779,17 +779,17 @@ zlagent --rescan-skills
 | 情況 | 行為 |
 |------|------|
 | 同名稱技能，內容相同 | 跳過（不重複註冊） |
-| 同名稱技能，內容不同 | 優先使用原生 `zlagent/skills/`，其他來源標記為 `[imported]` |
+| 同名稱技能，內容不同 | 優先使用原生 `.zlagent/skills/`，其他來源標記為 `[imported]` |
 | 工具依賴缺失 | 記錄警告但不阻止啟動，該技能不可用但可被發現 |
 
 **日誌輸出範例：**
 
 ```
 Loading skills...
-  ✓ code_review          (zlagent/skills/code_review/)
-  ✓ project_setup        (zlagent/skills/project_setup/)
+  ✓ code_review          (.zlagent/skills/code_review/)
+  ✓ project_setup        (.zlagent/skills/project_setup/)
   ⚠ debug_build          [imported from .claude/skills/] — tool 'run_build' not found, disabled
-  ✓ refactor_helper      (zlagent/skills/refactor_helper/)
+  ✓ refactor_helper      (.zlagent/skills/refactor_helper/)
   + code_review          [imported from .cursor/skills/] — skipped (duplicate)
 4 skills loaded, 1 imported (disabled), 1 duplicate skipped
 ```
@@ -809,7 +809,7 @@ Loading skills...
 
 #### SkillLoader
 
-- **原生掃描**：掃描 `zlagent/skills/` 目錄，載入每個子目錄下的 `SKILL.md`
+- **原生掃描**：掃描 `.zlagent/skills/` 目錄，載入每個子目錄下的 `SKILL.md`
 - **跨 Agent 掃描**：自動偵測 `.claude/skills/`、`.cursor/skills/`、`.gemini/skills/`、`.github/skills/`、`.windsurf/skills/`、`.agents/skills/`（專案層級 + 全域層級）
 - **解析**：從 Markdown 結構提取 Description、Instructions、Tools Required、Configuration
 - **驗證**：檢查工具依賴是否滿足（缺失時記錄警告，技能標記為 disabled）
@@ -836,7 +836,7 @@ Loading skills...
 #### 技能擴展方式
 
 1. **內建技能**：編譯進主程序，在 `main.cpp` 中註冊
-2. **外部技能目錄**：放入 `zlagent/skills/` 的子目錄（含 SKILL.md），啟動時自動載入
+2. **外部技能目錄**：放入 `.zlagent/skills/` 的子目錄（含 SKILL.md），啟動時自動載入
 3. **從其他 Agent 導入**：使用 `--import-skill` 命令導入 `.claude/skills/`、`.cursor/skills/` 等格式的技能
 4. **程式化註冊**：通過 API 動態新增（類似工具外掛）
 5. **Agent 動態創建** — LLM 可在對話中自動生成新技能並立即生效
@@ -861,7 +861,7 @@ LLM 可以通過 `create_skill` 工具在運行時動態創建新技能，無需
 ```
 LLM 調用 create_skill(name, description, when_to_use, instructions, ...)
 → SkillRegistry 驗證名稱唯一性 + 工具依賴
-→ 寫入 zlagent/skills/<name>/SKILL.md
+→ 寫入 .zlagent/skills/<name>/SKILL.md
 → 自動註冊到 SkillRegistry（立即可用）
 → 返回創建結果
 ```
@@ -888,7 +888,7 @@ Agent: [調用 create_skill]
     4. Report potential leak locations with severity levels
   tools_required: [read_file, grep_with_context]
 
-Skill 'memory_leak_check' created successfully at zlagent/skills/memory_leak_check/SKILL.md
+Skill 'memory_leak_check' created successfully at .zlagent/skills/memory_leak_check/SKILL.md
 The skill is now available for use.
 ```
 
@@ -1120,7 +1120,7 @@ void add_doc_arg_completions(const char *text, int start, int end) {
 | 能力 | 說明 | 你的專案狀態 |
 |------|------|:---:|
 | **技能註冊** | SkillRegistry 管理可複用的工作流單元 | ✅ 已完成 |
-| **技能自動載入** | 掃描 `zlagent/skills/` + 相容目錄，自動解析 SKILL.md | ✅ 已完成 |
+| **技能自動載入** | 掃描 `.zlagent/skills/` + 相容目錄，自動解析 SKILL.md | ✅ 已完成 |
 | **跨 Agent 技能導入** | 自動偵測 `.claude/skills/`、`.cursor/skills/` 等格式並導入 | ✅ 已完成 |
 | **技能依賴驗證** | 檢查 Tools Required 是否滿足，缺失時標記 disabled | ✅ 已完成 |
 | **內建技能** | code_review / project_setup / debug_build / refactor_helper | ✅ 已完成 |

@@ -3,8 +3,14 @@
 #include <string>
 #include "llm_client.h"
 #include "tool.h"
+#include "skill_system.h"
 #include "memory.h"
 #include "user_reply.h"
+#include "config.h"
+#include "telegram_client.h"
+#include "terminal_command_detector.h"
+#include "long_term_memory.h"
+#include "command_dispatcher.h"
 
 namespace agent {
 
@@ -22,8 +28,19 @@ namespace agent {
  */
 class Agent {
 public:
-    Agent(const std::string& llm_url = "http://127.0.0.1:1234",
-          const std::string& model = "local");
+    Agent();
+
+    // Load configuration from zlagent.ini (falls back to defaults if not found).
+    void load_config(const std::string& name = "zlagent.ini");
+    Config& get_config() { return config_; }
+
+    CommandDispatcher& get_dispatcher() { return dispatcher_; }
+
+    // Register built-in tools
+    void register_tools();
+
+    void register_skills();
+    void load_plugins();
 
     // Register a tool the agent can use
     void add_tool(ToolPtr tool);
@@ -100,13 +117,24 @@ public:
     // Discover local tools from a project overview string, excluding already-registered ones.
     void discover_local_tools_from_overview(const std::string& overview);
 
+    std::unique_ptr<LongTermMemory>& get_long_term_memory() { return long_term_memory_; }
+    std::unique_ptr<TelegramClient>& get_telegram_client() { return telegram_client_; }
+
+    TerminalCommandDetector* get_terminal_detector() { return terminal_detector_; }
 private:
     // Preprocess user_input: detect file references and inject content (outline or line ranges).
     // Only runs on first iteration. Original text is preserved; content is appended after each reference.
     std::string preprocess_file_references(const std::string& user_input);
     LLMClient llm_;
     ToolRegistry registry_;
+    SkillRegistry skill_registry_;
     Memory memory_;
+    Config config_;
+    std::string system_prompt_;
+    std::unique_ptr<LongTermMemory> long_term_memory_;
+    CommandDispatcher dispatcher_;
+    std::unique_ptr<TelegramClient> telegram_client_;
+    TerminalCommandDetector* terminal_detector_ = nullptr;
 
 	int current_iteration_ = 0;     // tracks reasoning loop iterations
     int max_iterations_ = 10;       // safety limit for tool-call loops

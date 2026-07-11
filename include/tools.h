@@ -38,6 +38,7 @@ ToolPtr create_edit_files_tool();
 ToolPtr create_project_overview_tool();
 
 // Skill tools
+ToolPtr create_get_skill_tool();
 ToolPtr create_create_skill_tool();
 ToolPtr create_delete_skill_tool();
 ToolPtr create_reload_skills_tool();

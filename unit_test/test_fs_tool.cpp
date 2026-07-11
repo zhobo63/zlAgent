@@ -272,13 +272,13 @@ void test_copy_path_tool(UnitReport& parent)
         if (fs::exists(dir)) fs::remove_all(dir);
         
         // create source directory with files
-        fs::create_directories(fs::path(dir) / "src_subdir");
+        fs::create_directories(fs::path(dir) / "src_dir" / "src_subdir");
         {
-            std::ofstream f(fs::path(dir) / "src_file.txt");
+            std::ofstream f(fs::path(dir) / "src_dir" / "src_file.txt");
             f << "content1";
         }
         {
-            std::ofstream f(fs::path(dir) / "src_subdir" / "nested_file.txt");
+            std::ofstream f(fs::path(dir) / "src_dir" / "src_subdir" / "nested_file.txt");
             f << "content2";
         }
 
