@@ -152,7 +152,7 @@ void Agent::load_config(const std::string& name)
     }
 
     // === Long-Term Memory ===
-    
+
     if (cfg.memory.long_term_enabled) {
         LOG_INFO("Memory", "\nInitializing long-term memory...");
 
@@ -224,7 +224,7 @@ void Agent::load_config(const std::string& name)
         tg_cfg.allowed_chat_ids = cfg.telegram.allowed_chat_ids;
 
         telegram_client_ = std::make_unique<agent::TelegramClient>(tg_cfg);
-    }    
+    }
     else if (cfg.telegram.enabled) {
         LOG_WARN("Telegram", "Telegram is enabled but bot_token is empty — skipping.");
     }
@@ -269,7 +269,7 @@ void Agent::register_skills()
     agent::SkillRegistry& skill_registry = skill_registry_;
     agent::set_global_skill_registry(&skill_registry);
 
-    LOG_INFO("Main", "\nLoading skills...");
+    LOG_INFO("Agent", "\nLoading skills...");
 
     // 1. Load native skills from .zlagent/skills/.
     auto native_skills = agent::SkillLoader::scan_directory(DEFAULT_SKILL_DIR, "native");
@@ -321,6 +321,45 @@ void Agent::register_skills()
         if (skill->enabled) ++enabled_count; else ++disabled_count;
     }
     LOG_INFO("Main", std::to_string(enabled_count) + " skills loaded" + (disabled_count > 0 ? ", " + std::to_string(disabled_count) + " disabled" : "") + ".");
+}
+
+void Agent::reload_skills()
+{
+    agent::SkillRegistry& skill_registry = skill_registry_;
+    // 1. Hot-reload native skills from disk.
+    std::string result = skill_registry_.reload_skills();
+
+    // 2. Re-validate dependencies against available tools.
+    {
+        std::vector<std::string> tool_names = get_tool_names();
+        for (auto& skill : skill_registry_.get_skills()) {
+            agent::SkillLoader::validate_dependencies(skill, tool_names);
+        }
+    }
+
+    // 2.5 Validate skill dependencies against available tools.
+    {
+        std::vector<std::string> tool_names = get_tool_names();
+        for (auto& skill : skill_registry.get_skills()) {
+            agent::SkillLoader::validate_dependencies(skill, tool_names);
+        }
+    }
+
+    // 3. Re-inject skill summary into system prompt.
+    {
+        std::string skill_summary = skill_registry_.build_skill_summary();
+        if (!skill_summary.empty()) {
+            // Remove old skill summary from system prompt and append new one.
+            auto pos = system_prompt_.rfind("\n\nAvailable skills:");
+            if (pos != std::string::npos) {
+                system_prompt_ = system_prompt_.substr(0, pos);
+            }
+            system_prompt_ += "\n\n" + skill_summary;
+            set_system_prompt(system_prompt_);
+        }
+    }
+
+    LOG_INFO("Agent", "Skill reload: " + result);
 }
 
 void Agent::load_plugins()
@@ -540,7 +579,8 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
 
     // Apply insertions in reverse order so positions remain valid
     for (auto it = insertions.rbegin(); it != insertions.rend(); ++it) {
-        result.insert(it->pos, it->text);
+        //result.insert(it->pos, it->text);
+        result += it->text;
     }
     LOG_DEBUG("preprocess_file_references", result);
 

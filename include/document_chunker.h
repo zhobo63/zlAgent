@@ -42,18 +42,17 @@ public:
         const std::string& dir,
         const std::vector<std::string>& extensions = {}) const;
 
-private:
-    Config cfg_;
-
-    // Default supported file extensions.
-    static const std::vector<std::string>& default_extensions();
-
     // Check if a file extension is supported.
     static bool is_supported(const std::string& path,
-                             const std::vector<std::string>& extensions);
+        const std::vector<std::string>& extensions);
 
     // Read file content as string; returns empty on failure.
     static std::string read_file_content(const std::string& path);
+    // Default supported file extensions.
+
+    static const std::vector<std::string>& default_extensions();
+private:
+    Config cfg_;
 };
 
 } // namespace agent

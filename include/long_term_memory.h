@@ -81,6 +81,8 @@ public:
     // semantically searched via search_knowledge_base tool.
     void integrate_with_rag(RAGManager* rag_manager);
 
+    // Current timestamp as ISO-8601 string (local time).
+    static std::string current_timestamp();
 private:
     Config cfg_;
     std::vector<SessionSummary> sessions_;   // newest first
@@ -94,8 +96,6 @@ private:
     static std::vector<std::pair<std::string, std::string>> extract_facts(
         const std::vector<ChatMessage>& messages, LLMClient& llm);
 
-    // Current timestamp as ISO-8601 string (local time).
-    static std::string current_timestamp();
 };
 
 // Global long-term memory accessor (set by main.cpp, used by memory tools).

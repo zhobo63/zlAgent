@@ -128,8 +128,8 @@ void RemoteLog::SendWorker() {
     addr.sin_port        = htons(UDP_PORT);
     addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 
+    std::deque<std::string> localBuffer;
     while (_running.load(std::memory_order_acquire)) {
-        std::deque<std::string> localBuffer;
 
         {
             std::unique_lock<std::mutex> lock(_mtx);
@@ -157,18 +157,18 @@ void RemoteLog::SendWorker() {
                    reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
 #endif
         }
+        localBuffer.clear();
     }
 
     // Drain remaining messages after _running is false.
-    std::deque<std::string> drainBuffer;
     {
         std::unique_lock<std::mutex> lock(_mtx);
         if (!_buffer.empty()) {
-            drainBuffer.swap(_buffer);
+            localBuffer.swap(_buffer);
         }
     }
 
-    for (const auto& data : drainBuffer) {
+    for (const auto& data : localBuffer) {
         if (_socket < 0) break;
 
 #if defined(_WIN32) || defined(_WIN64)

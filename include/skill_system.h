@@ -82,7 +82,6 @@ public:
         const std::string& project_dir,
         const std::map<std::string, SkillPtr>& existing_skills);
 
-private:
     SkillLoader() = default;
 
     // Extract a section from SKILL.md content (e.g., "## Description" → text).

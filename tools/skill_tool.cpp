@@ -2,6 +2,7 @@
 
 #include "tool.h"
 #include "skill_system.h"
+#include "agent.h"
 #include "json.hpp"
 
 namespace agent {
@@ -188,7 +189,7 @@ public:
         json schema;
         schema["type"] = "object";
         schema["properties"]["name"]["type"] = "string";
-        schema["properties"]["name"]["description"] = "Name of the skill to retrieve (e.g. 'code_review', 'unit_test_conventions')";
+        schema["properties"]["name"]["description"] = "Name of the skill to retrieve";
         schema["required"] = {"name"};
         return schema.dump();
     }
@@ -266,28 +267,26 @@ public:
                 return "Error: Skill registry not initialized.";
             }
 
-            std::vector<std::string> dirs;
-            if (!json_args.empty()) {
-                auto args = json::parse(json_args);
-                if (args.is_discarded()) {
-                    return "Error: Invalid JSON arguments - not json";
-                }
-                if (args.contains("scan_dirs") && args["scan_dirs"].is_array()) {
-                    for (const auto& d : args["scan_dirs"]) {
-                        dirs.push_back(d.get<std::string>());
+            // Use Agent::reload_skills() for the full reload flow:
+            // hot-reload + re-validate dependencies + re-inject system prompt.
+            auto* ag = get_global_agent();
+            if (ag) {
+                ag->reload_skills();
+            } else {
+                // Fallback: direct registry reload only.
+                std::vector<std::string> dirs;
+                if (!json_args.empty()) {
+                    auto args = json::parse(json_args);
+                    if (!args.is_discarded() && args.contains("scan_dirs") && args["scan_dirs"].is_array()) {
+                        for (const auto& d : args["scan_dirs"]) {
+                            dirs.push_back(d.get<std::string>());
+                        }
                     }
                 }
+                g_skill_registry->reload_skills(dirs);
             }
 
-            std::string result = g_skill_registry->reload_skills(dirs);
-
-            // Re-validate dependencies after reload.
-            if (g_skill_registry) {
-                // Note: we don't have access to the tool registry here,
-                // but validate_dependencies is available for callers that need it.
-            }
-
-            return result;
+            return "Skills reloaded successfully.";
 
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());

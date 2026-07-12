@@ -40,6 +40,7 @@ public:
     void register_tools();
 
     void register_skills();
+    void reload_skills();
     void load_plugins();
 
     // Register a tool the agent can use

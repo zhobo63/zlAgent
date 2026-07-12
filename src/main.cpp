@@ -223,6 +223,8 @@ int main(int argc, char* argv[]) {
     set_global_agent(&ag);
     ag.load_config();
 
+    LOG_DEBUG("Build:", __DATE__ " "  __TIME__);
+
     if (!cli_model.empty()) {
         ag.set_llm_model(cli_model);
     }

@@ -267,6 +267,9 @@ bool LongTermMemory::load() {
         }
     }
 
+    // Sessions are stored newest-first; reverse after loading from file.
+    std::reverse(sessions_.begin(), sessions_.end());
+
     return !sessions_.empty() || !facts_.empty();
 }
 

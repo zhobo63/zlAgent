@@ -2,13 +2,19 @@
 add_executable(unit_test
     main.cpp
     test_code_search_tool.cpp
-    test_file_tool.cpp
-    test_overview_tool.cpp
-    test_fs_tool.cpp
-    test_skill_tool.cpp
     test_config.cpp
+    test_file_tool.cpp
+    test_fs_tool.cpp
+    test_long_term_memory.cpp
+    test_memory_tool.cpp
+    test_memory.cpp
+    test_overview_tool.cpp
+    test_rag_tool.cpp
+    test_skill_system.cpp
+    test_skill_tool.cpp
+    test_vector_store.cpp
+    test_document_chunker.cpp
 )
-
 target_include_directories(unit_test PRIVATE ../include)
 target_precompile_headers(unit_test PRIVATE ../include/pch.h)
 

@@ -15,23 +15,19 @@ static void safe_remove_all(const std::string& path)
 }
 
 // ============================================================
-// IniParser::parse() tests
+// IniParser tests
 // ============================================================
 
-void test_ini_parser_parse_tool(UnitReport& parent)
+void test_ini_parser(UnitReport& parent)
 {
-    auto& sg = SafetyGuard::get_instance();
-    sg.reset_path_whitelist();
-    sg.set_working_directory("");
-
     UnitReport unit("ini_parser");
-    LOG_INFO("test_ini_parser_parse", "ini_parser_parse");
+    LOG_INFO("ini_parser", "entry");
 
     // --- Test 1: Basic parse - section and key-value pairs ---
     {
         LOG_INFO("ini_parser", "basic_parse");
         std::string dir = "test_ip_basic_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create test INI file
@@ -59,7 +55,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_with_comments_and_whitespace");
         std::string dir = "test_ip_ws_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -85,7 +81,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_empty_section");
         std::string dir = "test_ip_es_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -107,7 +103,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_nonexistent_file");
         std::string dir = "test_ip_nf_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         auto result = IniParser::parse((fs::path(dir) / "nonexistent.ini").string());
@@ -120,7 +116,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_no_sections");
         std::string dir = "test_ip_ns_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -142,7 +138,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_special_chars");
         std::string dir = "test_ip_sc_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -165,7 +161,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_empty_value");
         std::string dir = "test_ip_ev_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -186,7 +182,7 @@ void test_ini_parser_parse_tool(UnitReport& parent)
     {
         LOG_INFO("ini_parser", "parse_duplicate_keys");
         std::string dir = "test_ip_dk_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -202,27 +198,11 @@ void test_ini_parser_parse_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    parent.report.push_back(unit);
-}
-
-// ============================================================
-// IniParser::update_key() tests
-// ============================================================
-
-void test_ini_parser_update_key_tool(UnitReport& parent)
-{
-    auto& sg = SafetyGuard::get_instance();
-    sg.reset_path_whitelist();
-    sg.set_working_directory("");
-
-    UnitReport unit("ini_parser");
-    LOG_INFO("ini_parser", "ini_parser_update_key");
-
-    // --- Test 1: Update existing key in existing section ---
+    // --- Test 9: Update existing key in existing section ---
     {
         LOG_INFO("ini_parser", "update_existing_key");
         std::string dir = "test_ipuk_ek_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create test INI file
@@ -244,11 +224,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 2: Add new key to existing section ---
+    // --- Test 10: Add new key to existing section ---
     {
         LOG_INFO("ini_parser", "add_new_key");
         std::string dir = "test_ipuk_nk_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -268,11 +248,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 3: Add new section with key ---
+    // --- Test 11: Add new section with key ---
     {
         LOG_INFO("ini_parser", "add_new_section");
         std::string dir = "test_ipuk_ns_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -292,11 +272,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 4: Update key in non-existent file (creates new file) ---
+    // --- Test 12: Update key in non-existent file (creates new file) ---
     {
         LOG_INFO("ini_parser", "update_nonexistent_file_creates_new");
         std::string dir = "test_ipuk_nf_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         bool result = IniParser::update_key((fs::path(dir) / "new.ini").string(), "section", "key", "value");
@@ -309,11 +289,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 5: Update key in file that cannot be opened for writing (read-only) ---
+    // --- Test 13: Update key in file that cannot be opened for writing (read-only) ---
     {
         LOG_INFO("ini_parser", "update_readonly_file_fails");
         std::string dir = "test_ipuk_ro_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create a file and make it read-only (on Windows)
@@ -334,11 +314,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 6: Update key with empty section name ---
+    // --- Test 14: Update key with empty section name ---
     {
         LOG_INFO("ini_parser", "update_empty_section_name");
         std::string dir = "test_ipuk_es_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         bool result = IniParser::update_key((fs::path(dir) / "test.ini").string(), "", "key", "value");
@@ -351,11 +331,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 7: Update key with empty value ---
+    // --- Test 15: Update key with empty value ---
     {
         LOG_INFO("ini_parser", "update_empty_value");
         std::string dir = "test_ipuk_ev_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -373,11 +353,11 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 8: Update key with special characters in value ---
+    // --- Test 16: Update key with special characters in value ---
     {
         LOG_INFO("ini_parser", "update_special_chars_value");
         std::string dir = "test_ipuk_sc_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         {
@@ -400,17 +380,17 @@ void test_ini_parser_update_key_tool(UnitReport& parent)
 }
 
 // ============================================================
-// Config::parse_bool() tests
+// Config class tests (parse_bool, load, save)
 // ============================================================
 
-void test_config_parse_bool_tool(UnitReport& parent)
+void test_config_class(UnitReport& parent)
 {
-    UnitReport unit("config");
-    LOG_INFO("config", "config_parse_bool");
+    UnitReport unit("config_class");
+    LOG_INFO("config_class", "entry");
 
-    // --- Test 1: Parse true values ---
+    // --- parse_bool: Test 1: Parse true values ---
     {
-        LOG_INFO("config", "parse_true_values");
+        LOG_INFO("config_class", "parse_true_values");
         UNIT_TEST("true_string", Config::parse_bool("true") == true);
         UNIT_TEST("True_string", Config::parse_bool("True") == true);
         UNIT_TEST("TRUE_string", Config::parse_bool("TRUE") == true);
@@ -419,9 +399,9 @@ void test_config_parse_bool_tool(UnitReport& parent)
         UNIT_TEST("Yes_string", Config::parse_bool("Yes") == true);
     }
 
-    // --- Test 2: Parse false values ---
+    // --- parse_bool: Test 2: Parse false values ---
     {
-        LOG_INFO("config", "parse_false_values");
+        LOG_INFO("config_class", "parse_false_values");
         UNIT_TEST("false_string", Config::parse_bool("false") == false);
         UNIT_TEST("False_string", Config::parse_bool("False") == false);
         UNIT_TEST("FALSE_string", Config::parse_bool("FALSE") == false);
@@ -430,73 +410,57 @@ void test_config_parse_bool_tool(UnitReport& parent)
         UNIT_TEST("No_string", Config::parse_bool("No") == false);
     }
 
-    // --- Test 3: Parse invalid values with default true ---
+    // --- parse_bool: Test 3: Parse invalid values with default true ---
     {
-        LOG_INFO("config", "parse_invalid_default_true");
+        LOG_INFO("config_class", "parse_invalid_default_true");
         UNIT_TEST("invalid_returns_default_true", Config::parse_bool("maybe", true) == true);
         UNIT_TEST("empty_string_returns_default_true", Config::parse_bool("", true) == true);
         UNIT_TEST("number_2_returns_default_true", Config::parse_bool("2", true) == true);
     }
 
-    // --- Test 4: Parse invalid values with default false ---
+    // --- parse_bool: Test 4: Parse invalid values with default false ---
     {
-        LOG_INFO("config", "parse_invalid_default_false");
+        LOG_INFO("config_class", "parse_invalid_default_false");
         UNIT_TEST("invalid_returns_default_false", Config::parse_bool("maybe", false) == false);
         UNIT_TEST("empty_string_returns_default_false", Config::parse_bool("", false) == false);
     }
 
-    // --- Test 5: Parse with whitespace in value ---
+    // --- parse_bool: Test 5: Parse with whitespace in value ---
     {
-        LOG_INFO("config", "parse_with_whitespace");
+        LOG_INFO("config_class", "parse_with_whitespace");
         // Note: parse_bool does NOT trim, so " true" is not recognized as true
         UNIT_TEST("whitespace_before_true_returns_default_false", Config::parse_bool(" true") == false);
         UNIT_TEST("whitespace_after_true_returns_default_false", Config::parse_bool("true ") == false);
     }
 
-    // --- Test 6: Parse with default value parameter ---
+    // --- parse_bool: Test 6: Parse with default value parameter ---
     {
-        LOG_INFO("config", "parse_with_default_parameter");
+        LOG_INFO("config_class", "parse_with_default_parameter");
         UNIT_TEST("default_true_when_invalid", Config::parse_bool("invalid", true) == true);
         UNIT_TEST("default_false_when_invalid", Config::parse_bool("invalid", false) == false);
     }
 
-    // --- Test 7: Parse empty string with default ---
+    // --- parse_bool: Test 7: Parse empty string with default ---
     {
-        LOG_INFO("config", "parse_empty_string_with_default");
+        LOG_INFO("config_class", "parse_empty_string_with_default");
         UNIT_TEST("empty_with_true_default", Config::parse_bool("", true) == true);
         UNIT_TEST("empty_with_false_default", Config::parse_bool("", false) == false);
     }
 
-    // --- Test 8: Parse case-insensitive values ---
+    // --- parse_bool: Test 8: Parse case-insensitive values ---
     {
-        LOG_INFO("config", "parse_case_insensitive");
+        LOG_INFO("config_class", "parse_case_insensitive");
         UNIT_TEST("TRUE_all_caps", Config::parse_bool("TRUE") == true);
         UNIT_TEST("FALSE_all_caps", Config::parse_bool("FALSE") == false);
         UNIT_TEST("YES_all_caps", Config::parse_bool("YES") == true);
         UNIT_TEST("NO_all_caps", Config::parse_bool("NO") == false);
     }
 
-    parent.report.push_back(unit);
-}
-
-// ============================================================
-// Config::load() tests
-// ============================================================
-
-void test_config_load_tool(UnitReport& parent)
-{
-    auto& sg = SafetyGuard::get_instance();
-    sg.reset_path_whitelist();
-    sg.set_working_directory("");
-
-    UnitReport unit("config");
-    LOG_INFO("config", "config_load");
-
-    // --- Test 1: Load from non-existent file returns defaults ---
+    // --- load: Test 1: Load from non-existent file returns defaults ---
     {
-        LOG_INFO("config", "load_nonexistent_file_returns_defaults");
+        LOG_INFO("config_class", "load_nonexistent_file_returns_defaults");
         std::string dir = "test_cl_nf_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         auto cfg = Config::load((fs::path(dir) / "nonexistent.ini").string());
@@ -510,11 +474,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 2: Load from empty file returns defaults ---
+    // --- load: Test 2: Load from empty file returns defaults ---
     {
-        LOG_INFO("config", "load_empty_file_returns_defaults");
+        LOG_INFO("config_class", "load_empty_file_returns_defaults");
         std::string dir = "test_cl_ef_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create empty file
@@ -529,11 +493,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 3: Load with all sections populated ---
+    // --- load: Test 3: Load with all sections populated ---
     {
-        LOG_INFO("config", "load_with_all_sections");
+        LOG_INFO("config_class", "load_with_all_sections");
         std::string dir = "test_cl_as_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with all sections
@@ -687,11 +651,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 4: Load with partial sections (only some sections present) ---
+    // --- load: Test 4: Load with partial sections (only some sections present) ---
     {
-        LOG_INFO("config", "load_partial_sections");
+        LOG_INFO("config_class", "load_partial_sections");
         std::string dir = "test_cl_ps_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with only llm and agent sections
@@ -724,11 +688,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 5: Load with boolean values in various formats ---
+    // --- load: Test 5: Load with boolean values in various formats ---
     {
-        LOG_INFO("config", "load_boolean_various_formats");
+        LOG_INFO("config_class", "load_boolean_various_formats");
         std::string dir = "test_cl_bf_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with various boolean formats
@@ -750,11 +714,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 6: Load with CSV list values ---
+    // --- load: Test 6: Load with CSV list values ---
     {
-        LOG_INFO("config", "load_csv_list_values");
+        LOG_INFO("config_class", "load_csv_list_values");
         std::string dir = "test_cl_cv_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with CSV values
@@ -781,11 +745,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 7: Load with CSV int list values (telegram) ---
+    // --- load: Test 7: Load with CSV int list values (telegram) ---
     {
-        LOG_INFO("config", "load_csv_int_list_values");
+        LOG_INFO("config_class", "load_csv_int_list_values");
         std::string dir = "test_cl_cil_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with CSV int values
@@ -812,11 +776,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 8: Load with invalid boolean values (should use defaults) ---
+    // --- load: Test 8: Load with invalid boolean values (should use defaults) ---
     {
-        LOG_INFO("config", "load_invalid_boolean_uses_default");
+        LOG_INFO("config_class", "load_invalid_boolean_uses_default");
         std::string dir = "test_cl_ib_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         // Create INI file with invalid boolean values
@@ -839,27 +803,11 @@ void test_config_load_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    parent.report.push_back(unit);
-}
-
-// ============================================================
-// Config::save() tests
-// ============================================================
-
-void test_config_save_tool(UnitReport& parent)
-{
-    auto& sg = SafetyGuard::get_instance();
-    sg.reset_path_whitelist();
-    sg.set_working_directory("");
-
-    UnitReport unit("config");
-    LOG_INFO("config", "config_save");
-
-    // --- Test 1: Save default config and verify file exists ---
+    // --- save: Test 1: Save default config and verify file exists ---
     {
-        LOG_INFO("config", "save_default_config_creates_file");
+        LOG_INFO("config_class", "save_default_config_creates_file");
         std::string dir = "test_cs_dc_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg; // all defaults
@@ -875,11 +823,11 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 2: Save custom config and verify values round-trip ---
+    // --- save: Test 2: Save custom config and verify values round-trip ---
     {
-        LOG_INFO("config", "save_custom_config_roundtrip");
+        LOG_INFO("config_class", "save_custom_config_roundtrip");
         std::string dir = "test_cs_cc_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -906,11 +854,11 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 3: Save config with CSV lists and verify round-trip ---
+    // --- save: Test 3: Save config with CSV lists and verify round-trip ---
     {
-        LOG_INFO("config", "save_csv_lists_roundtrip");
+        LOG_INFO("config_class", "save_csv_lists_roundtrip");
         std::string dir = "test_cs_cl_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -932,13 +880,13 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 4: Save to non-writable location (should fail) ---
+    // --- save: Test 4: Save to non-writable location (should fail) ---
     {
-        LOG_INFO("config", "save_to_nonwritable_location_fails");
+        LOG_INFO("config_class", "save_to_nonwritable_location_fails");
 #ifdef _WIN32
         // On Windows, try saving to a read-only directory or invalid path
         std::string dir = "test_cs_nw_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -953,11 +901,11 @@ void test_config_save_tool(UnitReport& parent)
 #endif
     }
 
-    // --- Test 5: Save config with boolean values and verify round-trip ---
+    // --- save: Test 5: Save config with boolean values and verify round-trip ---
     {
-        LOG_INFO("config", "save_boolean_values_roundtrip");
+        LOG_INFO("config_class", "save_boolean_values_roundtrip");
         std::string dir = "test_cs_bv_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -982,11 +930,11 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 6: Save config with numeric values and verify round-trip ---
+    // --- save: Test 6: Save config with numeric values and verify round-trip ---
     {
-        LOG_INFO("config", "save_numeric_values_roundtrip");
+        LOG_INFO("config_class", "save_numeric_values_roundtrip");
         std::string dir = "test_cs_nv_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -1009,11 +957,11 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 7: Save config with empty string values and verify round-trip ---
+    // --- save: Test 7: Save config with empty string values and verify round-trip ---
     {
-        LOG_INFO("config", "save_empty_string_values_roundtrip");
+        LOG_INFO("config_class", "save_empty_string_values_roundtrip");
         std::string dir = "test_cs_es_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -1032,11 +980,11 @@ void test_config_save_tool(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 8: Save and verify file format (sections are written correctly) ---
+    // --- save: Test 8: Save and verify file format (sections are written correctly) ---
     {
-        LOG_INFO("config", "save_file_format_verification");
+        LOG_INFO("config_class", "save_file_format_verification");
         std::string dir = "test_cs_ff_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
+        safe_remove_all(dir);
         fs::create_directories(dir);
 
         Config cfg;
@@ -1064,11 +1012,14 @@ void test_config_save_tool(UnitReport& parent)
 
 void test_config(UnitReport& parent)
 {
-    LOG_INFO("config", "config");
+    auto& sg = SafetyGuard::get_instance();
+    sg.set_path_whitelist({fs::current_path().string()});
 
-    test_ini_parser_parse_tool(parent);
-    test_ini_parser_update_key_tool(parent);
-    test_config_parse_bool_tool(parent);
-    test_config_load_tool(parent);
-    test_config_save_tool(parent);
+    UnitReport unit("config");
+    LOG_INFO("config", "entry");
+
+    test_ini_parser(unit);
+    test_config_class(unit);
+
+    parent.report.push_back(unit);
 }

@@ -10,10 +10,10 @@ description: Conventions for writing unit tests in the zlAgent project. Use when
 
 e.g.  `config.cpp` →
 test_config()
-  - test_ini_parser()
+  - static test_ini_parser()
     - { UNIT_TEST("parse_success", ...) }
     - { UNIT_TEST("update_key_success", ...) }
-  - test_config_class()
+  - static test_config_class()
     - { UNIT_TEST("parse_bool_true", ...) }
     - { UNIT_TEST("load_success", ...) }
     - { UNIT_TEST("save_success", ...) }
@@ -75,9 +75,10 @@ void test_config(UnitReport& parent)
 
 - 如果一個測試檔案包含多個 class，則每個 class 的測試需拆成獨立子函式，命名格式為 `test_<class_name>`（例如 `test_ini_parser`、`test_config_class`）。如果只有一個 class，則直接在入口函式中撰寫即可。
 - **注意：** 當 class name 和 category name 相同時（如 `config.cpp` 中的 `Config`），子函式命名為 `test_<class_name>_class` 以避免與入口函式衝突。
+- **獨立子函式使用靜態** — 所有被入口函式呼叫的子測試函式必須宣告為 `static`，限制其連結範圍於該翻譯單元。
 
 ```cpp
-void test_ini_parser(UnitReport& parent)
+static void test_ini_parser(UnitReport& parent)
 {
     UnitReport unit("ini_parser");
     LOG_INFO("ini_parser", "entry");
@@ -91,7 +92,7 @@ void test_ini_parser(UnitReport& parent)
 當 class name 與 category 衝突時：
 
 ```cpp
-void test_config_class(UnitReport& parent)
+static void test_config_class(UnitReport& parent)
 {
     UnitReport unit("config_class");
     LOG_INFO("config_class", "entry");
@@ -259,3 +260,4 @@ UNIT_TEST("file_not_exist", !fs::exists(fs::path(dir) / "file.txt"));
 | 沒有設定 SafetyGuard 白名單 | 涉及檔案操作的測試必須確保白名單包含當前路徑 |
 | `{...}` 賦值給 JSON array | 要用 `json::array({ ... })` |
 | 缺少錯誤處理測試 | 每個 tool 都要有 empty / invalid / null input 測試 |
+| 子函式沒有宣告為 static | 獨立子測試函式必須使用 `static`，限制連結範圍於該翻譯單元 |

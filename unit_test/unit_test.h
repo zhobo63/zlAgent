@@ -32,15 +32,31 @@ inline void log_unit_test(const std::string& name, bool result) {
     }
 }
 
+inline void print_indent(int depth) {
+    for (int i = 0; i < depth * 2; ++i) std::cout << ' ';
+}
+
 inline void print_uint_test(UnitReport &r, int depth = 0) {
     if (!r.name.empty()) {
-        for (int i = 0; i < depth * 2; ++i) std::cout << ' ';
+        print_indent(depth);
         log_unit_test(r.name, r.result);
     }
     if(r.report.size()>0) {
         for(auto &cr : r.report) {
             print_uint_test(cr, depth+1);
         }
+    }
+}
+
+inline void print_uint_test_fail(UnitReport& r, int depth = 0)
+{
+    if (r.result) {
+        return;
+    }    
+    print_indent(depth);
+    log_unit_test(r.name, r.result);
+    for (auto& cr : r.report) {
+        print_uint_test_fail(cr, depth + 1);
     }
 }
 

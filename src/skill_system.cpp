@@ -10,27 +10,44 @@ namespace fs = std::filesystem;
 // SkillRegistry
 // ============================================================================
 
+// Normalize a skill name by replacing hyphens with underscores for fuzzy matching.
+static std::string normalize_skill_name(const std::string& name) {
+    std::string result = name;
+    std::replace(result.begin(), result.end(), '-', '_');
+    return result;
+}
+
 void SkillRegistry::register_skill(SkillPtr skill) {
     if (skill && !skill->name.empty()) {
+        skill->name = normalize_skill_name(skill->name);
         skills_[skill->name] = skill;
     }
 }
 
-void SkillRegistry::unregister_skill(const std::string& name) {
+void SkillRegistry::unregister_skill(const std::string& _name) {
+    auto name = normalize_skill_name(_name);
     skills_.erase(name);
 }
 
 std::vector<SkillPtr> SkillRegistry::get_skills() const {
     std::vector<SkillPtr> result;
     for (const auto& [name, skill] : skills_) {
+        if (!skill->enabled) continue;
         result.push_back(skill);
     }
     return result;
 }
 
-SkillPtr SkillRegistry::find_skill(const std::string& name) const {
+SkillPtr SkillRegistry::find_skill(const std::string& _name) const {
+    auto name = normalize_skill_name(_name);
+    // Exact match first.
     auto it = skills_.find(name);
     if (it != skills_.end()) return it->second;
+
+    // Fuzzy match: treat hyphens and underscores as equivalent.
+    for (const auto& [key, skill] : skills_) {
+        if (key == name) return skill;
+    }
     return nullptr;
 }
 
@@ -267,6 +284,7 @@ std::vector<SkillPtr> SkillLoader::scan_directory(const std::string& dir, const 
 
     for (const auto& entry : fs::directory_iterator(dir)) {
         if (!entry.is_directory()) continue;
+        LOG_DEBUG("SkillLoader", "scan_directory:" + entry.path().string());
 
         std::string skill_md = entry.path().string() + "/SKILL.md";
         if (!fs::exists(skill_md)) continue;
@@ -361,9 +379,14 @@ std::string SkillRegistry::reload_skills(const std::vector<std::string>& scan_di
     }
 
     // Remove skills that no longer exist on disk.
+    std::set<std::string> removed_paths;
     for (const auto& name : to_remove) {
+        auto it = skills_.find(name);
+        if (it != skills_.end()) {
+            skill_mtime_.erase(it->second->source_path);
+            removed_paths.insert(it->second->source_path);
+        }
         skills_.erase(name);
-        skill_mtime_.erase(name);
         ++removed;
         LOG_INFO("Skill", u8"  \u2718 removed: " + name);
     }
@@ -371,6 +394,21 @@ std::string SkillRegistry::reload_skills(const std::vector<std::string>& scan_di
     // Update tracked mtimes.
     for (const auto& [dir_path, md_path] : disk_skills) {
         skill_mtime_[dir_path] = fs::last_write_time(md_path.string());
+    }
+
+    // 2. Discover new skills on disk that are not yet in the registry.
+    for (const auto& [dir_path, md_path] : disk_skills) {
+        if (removed_paths.count(dir_path)) continue;
+        if (skill_mtime_.count(dir_path)) continue;  // already tracked
+
+        auto new_skill = SkillLoader::parse_skill_md(md_path.string());
+        if (new_skill && !new_skill->name.empty()) {
+            new_skill->source_type = "native";
+            register_skill(new_skill);
+            skill_mtime_[dir_path] = fs::last_write_time(md_path.string());
+            ++updated;
+            LOG_INFO("Skill", u8"  \u2714 added: " + new_skill->name);
+        }
     }
 
     oss << u8"Skill hot-reload complete: "
