@@ -24,6 +24,9 @@ public:
 
     // Return the dimensionality of produced vectors.
     virtual int dimension() const = 0;
+
+    // Fit the provider on a corpus. No-op by default; overridden by TF-IDF.
+    virtual void fit(const std::vector<std::string>& documents) {}
 };
 
 using EmbeddingProviderPtr = std::shared_ptr<EmbeddingProvider>;
@@ -57,13 +60,18 @@ public:
     explicit TfidfEmbeddingProvider(int max_features = 500);
 
     // Fit the vocabulary and IDF weights on a corpus of texts.
-    void fit(const std::vector<std::string>& documents);
+    void fit(const std::vector<std::string>& documents) override;
 
     std::vector<float> embed(const std::string& text) const override;
     std::vector<std::vector<float>> embed_batch(
         const std::vector<std::string>& texts) const override;
-    int dimension() const override { return max_features_; }
+    int dimension() const override { return static_cast<int>(vocabulary_.size()); }
 
+    // Tokenize text into lowercase words (simple whitespace + punctuation split).
+    static std::vector<std::string> tokenize(const std::string& text);
+
+    // L2-normalize a vector in-place.
+    static void l2_normalize(std::vector<float>& vec);
 private:
     int max_features_ = 500;
 
@@ -75,12 +83,6 @@ private:
     std::vector<std::string> vocabulary_;
     std::map<std::string, int> vocab_index_;
     std::vector<float> idf_weights_;
-
-    // Tokenize text into lowercase words (simple whitespace + punctuation split).
-    static std::vector<std::string> tokenize(const std::string& text);
-
-    // L2-normalize a vector in-place.
-    static void l2_normalize(std::vector<float>& vec);
 };
 
 } // namespace agent

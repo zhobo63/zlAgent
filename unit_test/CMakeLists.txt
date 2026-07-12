@@ -10,10 +10,12 @@ add_executable(unit_test
     test_memory.cpp
     test_overview_tool.cpp
     test_rag_tool.cpp
+    test_rag_manager.cpp
     test_skill_system.cpp
     test_skill_tool.cpp
     test_vector_store.cpp
     test_document_chunker.cpp
+    test_embedding_provider.cpp
 )
 target_include_directories(unit_test PRIVATE ../include)
 target_precompile_headers(unit_test PRIVATE ../include/pch.h)

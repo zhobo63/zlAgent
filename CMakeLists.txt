@@ -11,6 +11,46 @@ endif()
 
 # Core source files
 set(CORE_SOURCES
+    include/agent.h
+    include/command_dispatcher.h
+    include/command_handlers.h
+    include/config.h
+    include/document_chunker.h
+    include/embedding_provider.h
+    include/event.h
+    include/file_utils.h
+    include/key_watcher.h
+    include/language_detector.h
+    include/llm_client.h
+    include/local_tools.h
+    include/logger.h
+    include/long_term_memory.h
+    include/memory.h
+    include/multi_agent.h
+    include/pch.h
+    include/plugin_loader.h
+    include/rag_manager.h
+    include/remote_log.h
+    include/safety_guard.h
+    include/self_reflector.h
+    include/skill_system.h
+    include/system_prompt.h
+    include/task_planner.h
+    include/telegram_client.h
+    include/terminal_command_detector.h
+    include/token_counter.h
+    include/tool.h
+    include/tool_sdk.h
+    include/tools.h
+    include/tui.h
+    include/utf8.h
+    include/user_reply.h
+    include/vector_store.h
+    include/wide_string.h
+)
+
+# Core implementation files
+set(CORE_IMPL
     src/config.cpp
     src/safety_guard.cpp
     src/system_prompt.cpp
@@ -82,6 +122,7 @@ endif()
 # Shared core static library
 add_library(zlagent_core STATIC
     ${CORE_SOURCES}
+    ${CORE_IMPL}
     ${TOOL_SOURCES}
 )
 target_include_directories(zlagent_core PRIVATE include)

@@ -12,11 +12,11 @@ void RAGManager::add_document(const std::string& content,
     if (!content.empty() && provider_) {
         auto chunks = chunker_.chunk(content);
 
-        // For TF-IDF: collect all text first to fit the vocabulary.
+        // Fit the provider on the corpus if needed (TF-IDF only).
         if (needs_fit_) {
             std::vector<std::string> corpus;
             for (const auto& ck : chunks) corpus.push_back(ck.text);
-            static_cast<TfidfEmbeddingProvider*>(provider_)->fit(corpus);
+            provider_->fit(corpus);
             needs_fit_ = false;
         }
 
@@ -44,11 +44,11 @@ void RAGManager::add_file(const std::string& path) {
     auto fc = chunker_.chunk_file(path);
     if (fc.chunks.empty()) return;
 
-    // For TF-IDF: fit on this file's chunks.
+    // Fit the provider on the corpus if needed (TF-IDF only).
     if (needs_fit_) {
         std::vector<std::string> corpus;
         for (const auto& ck : fc.chunks) corpus.push_back(ck.text);
-        static_cast<TfidfEmbeddingProvider*>(provider_)->fit(corpus);
+        provider_->fit(corpus);
         needs_fit_ = false;
     }
 
@@ -76,13 +76,13 @@ void RAGManager::add_directory(const std::string& dir,
     auto files = chunker_.chunk_directory(dir, extensions);
     if (files.empty()) return;
 
-    // For TF-IDF: collect all chunks across all files to fit the vocabulary.
+    // Fit the provider on the corpus if needed (TF-IDF only).
     if (needs_fit_) {
         std::vector<std::string> corpus;
         for (const auto& fc : files) {
             for (const auto& ck : fc.chunks) corpus.push_back(ck.text);
         }
-        static_cast<TfidfEmbeddingProvider*>(provider_)->fit(corpus);
+        provider_->fit(corpus);
         needs_fit_ = false;
     }
 
