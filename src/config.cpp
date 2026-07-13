@@ -186,6 +186,29 @@ bool Config::parse_bool(const std::string& s, bool default_val) {
     return default_val;
 }
 
+std::vector<std::string> Config::split_csv(const std::string& s) {
+    std::vector<std::string> result;
+    size_t pos = 0, start = 0;
+    while ((pos = s.find(',', start)) != std::string::npos) {
+        std::string item = s.substr(start, pos - start);
+        // Trim
+        auto ltrim = [](std::string& str) { size_t p = str.find_first_not_of(" \t"); return (p == std::string::npos) ? "" : str.substr(p); };
+        auto rtrim = [](std::string& str) { size_t p = str.find_last_not_of(" \t"); return (p == std::string::npos) ? "" : str.substr(0, p + 1); };
+        item = ltrim(item);
+        item = rtrim(item);
+        if (!item.empty()) result.push_back(item);
+        start = pos + 1;
+    }
+    // Last segment
+    std::string last = s.substr(start);
+    auto ltrim2 = [](std::string& str) { size_t p = str.find_first_not_of(" \t"); return (p == std::string::npos) ? "" : str.substr(p); };
+    auto rtrim2 = [](std::string& str) { size_t p = str.find_last_not_of(" \t"); return (p == std::string::npos) ? "" : str.substr(0, p + 1); };
+    last = ltrim2(last);
+    last = rtrim2(last);
+    if (!last.empty()) result.push_back(last);
+    return result;
+}
+
 Config Config::load(const std::string& ini_path) {
     Config cfg; // all defaults.
 
@@ -327,6 +350,40 @@ Config Config::load(const std::string& ini_path) {
             read_if_exists(s, "poll_timeout_sec",  cfg.telegram.poll_timeout_sec);
             read_if_exists(s, "max_updates_per_poll", cfg.telegram.max_updates_per_poll);
             read_csv_int_list(s, "allowed_chat_ids", cfg.telegram.allowed_chat_ids);
+        }
+    }
+
+    // --- [llm_agent] section ---
+    {
+        auto it = data.find("llm_agent");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled", cfg.llm_agent.enabled, false);
+            std::string workdirs_str;
+            read_if_exists(s, "workdirs", workdirs_str);
+            if (!workdirs_str.empty()) {
+                cfg.llm_agent.workdirs = Config::split_csv(workdirs_str);
+            }
+        }
+    }
+
+    // --- [net_agent] section ---
+    {
+        auto it = data.find("net_agent");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled", cfg.net_agent.enabled, false);
+            read_if_exists(s, "url", cfg.net_agent.url);
+        }
+    }
+
+    // --- [multi_agent] section ---
+    {
+        auto it = data.find("multi_agent");
+        if (it != data.end()) {
+            const auto& s = it->second;
+            read_bool(s, "enabled", cfg.multi_agent_config.enabled, false);
+            read_if_exists(s, "listen_port", cfg.multi_agent_config.listen_port);
         }
     }
 
@@ -503,6 +560,37 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
             kvs["allowed_chat_ids"] = ids;
         }
         write_section("telegram", kvs);
+    }
+
+    // [llm_agent]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"] = cfg.llm_agent.enabled ? "true" : "false";
+        if (!cfg.llm_agent.workdirs.empty()) {
+            std::string dirs;
+            for (const auto& d : cfg.llm_agent.workdirs) {
+                if (!dirs.empty()) dirs += ", ";
+                dirs += d;
+            }
+            kvs["workdirs"] = dirs;
+        }
+        write_section("llm_agent", kvs);
+    }
+
+    // [net_agent]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"] = cfg.net_agent.enabled ? "true" : "false";
+        kvs["url"]     = cfg.net_agent.url;
+        write_section("net_agent", kvs);
+    }
+
+    // [multi_agent]
+    {
+        std::map<std::string, std::string> kvs;
+        kvs["enabled"]     = cfg.multi_agent_config.enabled ? "true" : "false";
+        kvs["listen_port"] = std::to_string(cfg.multi_agent_config.listen_port);
+        write_section("multi_agent", kvs);
     }
 
     out.close();

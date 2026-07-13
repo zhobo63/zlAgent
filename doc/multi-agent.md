@@ -19,7 +19,7 @@
 - **name_**：專屬名稱（同時作為 tool name）
 - **description_**：描述文字（同時作為 tool description，供 LLM 判斷路由）
 - **execute(task)**：統一的執行介面，外部呼叫者不需知道是哪種 agent
-- **run_loop(task)**：虛擬函數，預設回傳空 `ChatResponse`，允許子智能體進行最多 5 次的 mini reasoning loop
+- **run_loop(task)**：虛擬函數，預設回傳空 `ChatResponse`
 
 ### 2. SubAgentLLM — LLM 推理型任務
 
@@ -92,6 +92,13 @@ listen_port = 8766
      SubAgentLLM::execute(task) — 獨立推理循環
 ```
 
+### 流程
+1. Client 啟動，透過 WebSocket 連接到 Server
+2. Client 向 Server 註冊自己（name + description），Server 將其加入 ToolRegistry
+3. Server 的 LLM 看到所有 tool definitions（包含遠端 client agent）
+4. 當 LLM 決定呼叫遠端 client agent 時，Server 透過 WebSocket 把任務發給 Client
+5. Client 處理後回傳結果
+
 ## 設計原則
 
 1. **職責分離**：不同類型的任務由專門的 agent 處理
@@ -141,7 +148,7 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 | # | 項目 | 內容 |
 |---|------|------|
 | 4 | set_workdir() 實作 | 建立內部 `agent_`、讀取該目錄下的 zlagent.ini、產生 project overview 作為 description |
-| 5 | run_loop() 迭代邏輯 | 最多 5 次的 mini reasoning loop |
+| 5 | run_loop() 迭代邏輯 | `agent_` run_stream |
 
 ### Phase 3: Config + Agent 整合
 

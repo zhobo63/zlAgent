@@ -121,6 +121,24 @@ struct Config {
         std::vector<int64_t> allowed_chat_ids;      // empty = allow all
     } telegram;
 
+    // ── LLM Agent (SubAgentLLM workdirs) ───────────
+    struct LlmAgent {
+        bool enabled = false;
+        std::vector<std::string> workdirs;          // comma-separated in INI
+    } llm_agent;
+
+    // ── Net Agent (WebSocket client to remote server) ─
+    struct NetAgent {
+        bool enabled = false;
+        std::string url;                            // e.g. "ws://127.0.0.1:8766/ws"
+    } net_agent;
+
+    // ── Multi Agent (WebSocket server for remote clients) ─
+    struct MultiAgentConfig {
+        bool enabled = false;
+        int listen_port = 0;                        // 0 = disabled
+    } multi_agent_config;
+
     // Load from an INI file path. Returns false on error (keeps defaults).
     static Config load(const std::string& ini_path);
 
@@ -129,6 +147,9 @@ struct Config {
 
     // Helper: parse a boolean string ("true"/"false", "1"/"0", "yes"/"no").
     static bool parse_bool(const std::string& s, bool default_val = false);
+
+    // Helper: split a comma-separated string into a vector of trimmed strings.
+    static std::vector<std::string> split_csv(const std::string& s);
 };
 
 } // namespace agent

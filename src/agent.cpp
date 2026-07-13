@@ -226,6 +226,38 @@ void Agent::load_config(const std::string& name)
     else if (cfg.telegram.enabled) {
         LOG_WARN("Telegram", "Telegram is enabled but bot_token is empty — skipping.");
     }
+
+    // === Multi-Agent System ===
+
+    // Initialize MultiAgent server if configured.
+    if (cfg.multi_agent_config.enabled && cfg.multi_agent_config.listen_port > 0) {
+        LOG_INFO("MultiAgent", "Initializing MultiAgent server on port " + std::to_string(cfg.multi_agent_config.listen_port));
+        multi_agent_ = std::make_shared<agent::MultiAgent>(registry_);
+        multi_agent_->start(cfg.multi_agent_config.listen_port);
+    }
+
+    // Initialize SubAgentLLM instances for each workdir.
+    if (cfg.llm_agent.enabled) {
+        LOG_INFO("LlmAgent", "Initializing LLM sub-agents");
+        for (const auto& workdir : cfg.llm_agent.workdirs) {
+            std::string basename = std::filesystem::path(workdir).filename().string();
+            std::string agent_name = "llm_agent_" + basename;
+
+            LOG_INFO("LlmAgent", "Creating sub-agent: " + agent_name + " (workdir: " + workdir + ")");
+
+            auto sub_agent = std::make_shared<agent::SubAgentLLM>(agent_name);
+            sub_agent->set_workdir(workdir);
+
+            // Register with MultiAgent if available, otherwise register directly.
+            if (multi_agent_) {
+                multi_agent_->register_agent(sub_agent);
+            }
+            else {
+                auto tool = std::make_shared<agent::SubAgentTool>(sub_agent);
+                registry_.register_tool(tool);
+            }
+        }
+    }
 }
 
 void Agent::register_tools()
