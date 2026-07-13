@@ -117,6 +117,16 @@ void EditLines::parse(const std::string& text) {
     lines.clear();
     if (text.empty()) return;
 
+    // If the entire content is newlines, each newline represents one empty line
+    bool all_newlines = true;
+    for (char c : text) {
+        if (c != '\n') { all_newlines = false; break; }
+    }
+    if (all_newlines) {
+        lines.resize(text.size());
+        return;
+    }
+
     // Remove trailing newline so getline doesn't produce an extra empty element
     std::string trimmed = text;
     if (!trimmed.empty() && trimmed.back() == '\n')
@@ -213,7 +223,7 @@ int EditFile::pos_to_line(const std::vector<std::string>& lines, size_t pos) {
     // Find which 1-based line the content position falls on.
     size_t offset = 0;
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-        if (pos <= offset + lines[i].size())
+        if (pos < offset + lines[i].size())
             return i + 1;
         offset += lines[i].size() + 1; // +1 for newline
     }
@@ -684,7 +694,7 @@ static void parse_go_outline(const std::vector<std::string>& lines,
         if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
         // package name
-        if (trimmed.substr(0, 7) == "package ") {
+        if (trimmed.substr(0, 8) == "package ") {
             std::string name = trim_outline(trimmed.substr(8));
             if (!name.empty()) {
                 out.push_back({i + 1, "package", name, 0});
@@ -692,7 +702,7 @@ static void parse_go_outline(const std::vector<std::string>& lines,
         }
 
         // func Name(...)
-        if (trimmed.substr(0, 4) == "func ") {
+        if (trimmed.substr(0, 5) == "func ") {
             size_t paren = trimmed.find('(');
             std::string name;
             if (paren != std::string::npos && paren > 5) {
@@ -706,7 +716,7 @@ static void parse_go_outline(const std::vector<std::string>& lines,
         }
 
         // type Name struct / interface
-        if (trimmed.substr(0, 4) == "type ") {
+        if (trimmed.substr(0, 5) == "type ") {
             size_t pos = trimmed.find(' ', 5);
             std::string name;
             if (pos != std::string::npos && pos > 5) {
@@ -736,7 +746,7 @@ static void parse_rust_outline(const std::vector<std::string>& lines,
         if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
         // mod name { or mod name;
-        if (trimmed.substr(0, 3) == "mod ") {
+        if (trimmed.substr(0, 4) == "mod ") {
             size_t end = trimmed.find_first_of("{;", 4);
             if (end != std::string::npos && end > 4) {
                 std::string name = trim_outline(trimmed.substr(4, end - 4));
@@ -747,7 +757,7 @@ static void parse_rust_outline(const std::vector<std::string>& lines,
         }
 
         // fn name(...)
-        if (trimmed.substr(0, 2) == "fn ") {
+        if (trimmed.substr(0, 3) == "fn ") {
             size_t paren = trimmed.find('(');
             std::string name;
             if (paren != std::string::npos && paren > 3) {
@@ -1008,6 +1018,7 @@ bool match_glob(const std::string& filename, const std::string& pattern) {
     // Handle wildcard at end: file.*
     if (star != std::string::npos && star + 1 == pattern.size()) {
         std::string prefix = pattern.substr(0, star);
+        if (prefix.empty()) return true; // "*" matches anything
         return filename.rfind(prefix) == 0;
     }
 

@@ -4,6 +4,7 @@ add_executable(unit_test
     test_code_search_tool.cpp
     test_config.cpp
     test_file_tool.cpp
+    test_file_utils.cpp
     test_fs_tool.cpp
     test_long_term_memory.cpp
     test_memory_tool.cpp

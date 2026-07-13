@@ -5,6 +5,7 @@ void test_config(UnitReport& parent);
 void test_document_chunker(UnitReport& parent);
 void test_embedding_provider(UnitReport& parent);
 void test_file_tool(UnitReport& parent);
+void test_file_utils(UnitReport& parent);
 void test_fs_tool(UnitReport& parent);
 void test_long_term_memory(UnitReport& parent);
 void test_memory(UnitReport& parent);
@@ -34,6 +35,7 @@ void main() {
         test_document_chunker(main);
         test_embedding_provider(main);
         test_file_tool(main);
+        test_file_utils(main);
         test_fs_tool(main);
         test_long_term_memory(main);
         test_memory(main);
@@ -59,6 +61,7 @@ void main() {
         log_unit_test("all", true);
     }
     else {
+        std::cout << "Failed:" << std::endl;
         print_uint_test_fail(main);
     }
 }

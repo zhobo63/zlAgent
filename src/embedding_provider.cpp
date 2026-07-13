@@ -84,6 +84,7 @@ std::vector<std::vector<float>> LLMEmbeddingProvider::embed_batch(
 
     // Use plain HTTP - local LM Studio typically runs on HTTP.
     httplib::Client client(parts.host, parts.port);
+    client.set_connection_timeout(1, 0);
 
     auto res = client.Post("/v1/embeddings", json.str(), "application/json");
     if (!res || res->status != 200) {
