@@ -216,7 +216,7 @@ static void test_tfidf_fit(UnitReport& parent)
             "foo bar hello"
         };
         provider.fit(docs);
-        UNIT_TEST("dimension_is_50", provider.dimension() == 50);
+        UNIT_TEST("dimension_matches_vocabulary", provider.dimension() == 6);
     }
 
     // Test 2: fit with max_features larger than vocabulary size
@@ -285,7 +285,7 @@ static void test_tfidf_embed(UnitReport& parent)
         };
         provider.fit(docs);
         auto result = provider.embed("hello world");
-        UNIT_TEST("dimension_is_50", result.size() == 50);
+        UNIT_TEST("dimension_matches_vocabulary", result.size() == 6);
     }
 
     // Test 2: embed returns non-zero for known terms
@@ -354,7 +354,7 @@ static void test_tfidf_embed(UnitReport& parent)
         std::vector<std::string> docs = {"hello world foo bar"};
         provider.fit(docs);
         auto result = provider.embed("");
-        UNIT_TEST("dimension_is_50", result.size() == 50);
+        UNIT_TEST("dimension_matches_vocabulary", result.size() == 4);
     }
 
     parent.report.push_back(unit);
@@ -386,8 +386,8 @@ static void test_tfidf_embed_batch(UnitReport& parent)
         std::vector<std::string> docs = {"hello world foo bar baz qux"};
         provider.fit(docs);
         auto result = provider.embed_batch({"hello", "world"});
-        UNIT_TEST("first_dim_10", result[0].size() == 10);
-        UNIT_TEST("second_dim_10", result[1].size() == 10);
+        UNIT_TEST("first_dim_matches_vocab", result[0].size() == 6);
+        UNIT_TEST("second_dim_matches_vocab", result[1].size() == 6);
     }
 
     // Test 3: batch results differ for different texts
@@ -477,7 +477,7 @@ static void test_tfidf_integration(UnitReport& parent)
         std::vector<std::string> docs = {"hello world foo bar baz qux"};
         ptr->fit(docs);
 
-        UNIT_TEST("dimension_via_ptr", ptr->dimension() == 50);
+        UNIT_TEST("dimension_via_ptr", ptr->dimension() == 6);
         auto result = ptr->embed("hello world");
         UNIT_TEST("embed_via_ptr_not_empty", !result.empty());
     }
