@@ -94,20 +94,14 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
 
 bool run_interactive(
     const std::string &input,
-	agent::Config& cfg,
     agent::CommandDispatcher &dispatcher,
     agent::TerminalCommandDetector* terminal_detector,
     agent::Agent& ag, 
-    std::unique_ptr<agent::LongTermMemory>& long_term_memory,
     std::string &response)
 {
 
     if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
         // Save session to long-term memory before exiting.
-        if (long_term_memory) {
-            TUI::out("\nSaving session to long-term memory...\n");
-            long_term_memory->save_session(ag.get_memory(), ag.get_llm());
-        }
         TUI::out(u8"\nGoodbye!\n");
         return false;
     }
@@ -123,6 +117,7 @@ bool run_interactive(
     }
 
     // Safety: input filter - detect prompt injection attempts.
+    auto& cfg = ag.get_config();
     if (cfg.safety.input_filter && agent::SafetyGuard::is_prompt_injection(input)) {
         LOG_WARN("Safety", "Possible prompt injection detected. Input rejected.");
         return true;
@@ -255,7 +250,7 @@ int main(int argc, char* argv[]) {
                 LOG_INFO("Telegram", "Processing message from chat " + std::to_string(chat_id));
 
 				std::string response;
-				run_interactive(text, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
+				run_interactive(text, dispatcher, terminal_detector, ag, response);
 
                 // Send the Agent's reply back to Telegram.
                 if (!response.empty()) {
@@ -313,15 +308,12 @@ int main(int argc, char* argv[]) {
         }
 
 			std::string response;
-        running = run_interactive(input, cfg, dispatcher, terminal_detector, ag, long_term_memory, response);
+        running = run_interactive(input, dispatcher, terminal_detector, ag, response);
     }
     agent::KeyWatcher::stop();
 
     // === Cleanup on exit ===
-    if (long_term_memory) {
-        long_term_memory->save();
-        LOG_INFO("Memory", "Long-term memory saved.");
-    }
+    ag.save_session();
     if (agent::get_global_rag_manager() && !cfg.rag.store_path.empty()) {
         agent::get_global_rag_manager()->save(cfg.rag.store_path);
         LOG_INFO("RAG", "Knowledge base saved.");

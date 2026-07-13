@@ -11,6 +11,7 @@
 #include "terminal_command_detector.h"
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
+#include "multi_agent.h"
 
 namespace agent {
 
@@ -75,10 +76,6 @@ public:
     void set_self_reflection(bool enabled) { self_reflection_ = enabled; }
     bool self_reflection_enabled() const { return self_reflection_; }
 
-    // Multi-Agent: use specialized sub-agents for step execution (default: false)
-    void set_multi_agent(bool enabled) { multi_agent_ = enabled; }
-    bool multi_agent_enabled() const { return multi_agent_; }
-
     // Maximum iterations for the reasoning loop (default: 10)
     void set_max_iterations(int n) { max_iterations_ = n; }
 
@@ -122,6 +119,10 @@ public:
     std::unique_ptr<TelegramClient>& get_telegram_client() { return telegram_client_; }
 
     TerminalCommandDetector* get_terminal_detector() { return terminal_detector_; }
+
+    bool multi_agent_enabled() const { return multi_agent_ != nullptr && multi_agent_->is_enable(); }
+
+    void save_session();
 private:
     // Preprocess user_input: detect file references and inject content (outline or line ranges).
     // Only runs on first iteration. Original text is preserved; content is appended after each reference.
@@ -137,6 +138,9 @@ private:
     std::unique_ptr<TelegramClient> telegram_client_;
     TerminalCommandDetector* terminal_detector_ = nullptr;
 
+    std::shared_ptr<MultiAgent> multi_agent_;
+    std::shared_ptr<SubAgentNet> sub_agent_;
+
 	int current_iteration_ = 0;     // tracks reasoning loop iterations
     int max_iterations_ = 10;       // safety limit for tool-call loops
 	int tokens_used_ = 0;          // tracks tokens used in reasoning loop
@@ -145,7 +149,6 @@ private:
     // Advanced feature flags
     bool task_planning_   = true;
     bool self_reflection_ = true;
-    bool multi_agent_     = false;
 
     // Lazy local tool discovery — discover on first chat instead of at startup.
     bool local_tools_enabled_    = true;

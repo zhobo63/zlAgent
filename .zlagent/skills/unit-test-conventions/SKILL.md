@@ -4,11 +4,15 @@ description: Conventions for writing unit tests in the zlAgent project. Use when
 ---
 # 單元測試規範
 
-`test_<category>` - category: filename without extension, e.g. `config.cpp` → `test_config()`
-  - `test_<class_name>`: 每個 class 的測試拆成獨立子函式
+- `test_<category>` - category: filename without extension, e.g. `config.cpp` → `test_config()`
+- `test_<class_name>`: 每個 class 的測試拆成獨立子函式
     - 測試區塊：用 `{}` 包起來，`UNIT_TEST("描述性名稱", condition)`
 
-e.g.  `config.cpp` →
+- filename define:  `<category>.cpp` → `test_<category>.cpp`
+
+```
+# source file for config.cpp
+# test file for test_config.cpp
 test_config()
   - static test_ini_parser()
     - { UNIT_TEST("parse_success", ...) }
@@ -17,7 +21,7 @@ test_config()
     - { UNIT_TEST("parse_bool_true", ...) }
     - { UNIT_TEST("load_success", ...) }
     - { UNIT_TEST("save_success", ...) }
-
+```
 ## 檔案結構
 
 每個測試檔案的標準結構：

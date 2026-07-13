@@ -4,45 +4,71 @@
 #include <vector>
 #include <memory>
 #include "llm_client.h"
-#include "tool.h"
-#include "memory.h"
 
 namespace agent {
 
 /**
- * Role of a sub-agent in the multi-agent system.
- */
-enum class AgentRole {
-    Coder,      // Writes and modifies code
-    Reviewer,   // Reviews code for quality/correctness
-    Tester      // Runs builds/tests and validates results
-};
-
-std::string agent_role_to_string(AgentRole role);
-
-/**
  * A specialized sub-agent with a focused system prompt.
  */
+
 class SubAgent {
 public:
-    SubAgent(const std::string& llm_url, AgentRole role, ToolRegistry* shared_registry);
+    SubAgent(const std::string& name);
+
+    const std::string& get_name() const { return name_; }
+    const std::string& description() const {return description_; }
 
     // Execute a task and return the result string.
     std::string execute(const std::string& task);
 
-    AgentRole role() const { return role_; }
+    // Run a mini reasoning loop (max 5 iterations per sub-agent).
+    virtual ChatResponse run_loop(const std::string& task) { return ChatResponse{}; }
+protected:
+    std::string name_;
+    std::string description_;
+};
+
+/**
+ * A specialized sub-agent with LLM.
+ */
+
+class Agent;
+
+class SubAgentLLM: public SubAgent {
+public:
+    SubAgentLLM(const std::string& name);
+
+    void set_workdir(const std::string workdir);
+
+    ChatResponse run_loop(const std::string& task) override;
+private:
+    mutable std::unique_ptr<Agent> agent_;
+};
+
+/**
+ * A specialized sub-agent with network
+ */
+
+class SubAgentNet : public SubAgent {
+public:
+    SubAgentNet(const std::string& name);
 
 private:
-    LLMClient llm_;
-    Memory memory_;
-    ToolRegistry* registry_ = nullptr;
-    AgentRole role_;
+    // Cached HTTP clients for connection reuse (keep-alive).
+    // Lazily initialized on first use.
+    mutable std::unique_ptr<httplib::Client> client_;
+};
 
-    // Return the system prompt for this agent's role.
-    std::string system_prompt();
+/**
+ * A specialized sub-agent with CLI
+ */
 
-    // Run a mini reasoning loop (max 5 iterations per sub-agent).
-    ChatResponse run_loop(const std::string& task);
+class SubAgentCLI : public SubAgent {
+public:
+    SubAgentCLI(const std::string& name);
+
+private:
+
 };
 
 /**
@@ -51,20 +77,19 @@ private:
  */
 class MultiAgent {
 public:
-    explicit MultiAgent(const std::string& llm_url, ToolRegistry* shared_registry);
+    MultiAgent();
 
-    // Execute a single task using the appropriate sub-agent(s).
-    // For coding tasks: Coder → Reviewer → Tester pipeline.
-    // For simple tasks: direct execution by the most suitable agent.
-    std::string execute_task(const std::string& task_description);
+    bool is_enable() const;
+
+    // Register a sub-agent and automatically wrap it as a Tool in the Agent's ToolRegistry.
+    void register_agent(std::shared_ptr<SubAgent> agent);
 
 private:
-    std::shared_ptr<SubAgent> coder_;
-    std::shared_ptr<SubAgent> reviewer_;
-    std::shared_ptr<SubAgent> tester_;
+    // Cached HTTP clients for connection reuse (keep-alive).
+    // Lazily initialized on first use.
+    mutable std::unique_ptr<httplib::Server> server_;
 
-    // Decide which agent(s) to use for a given step.
-    AgentRole route_step(const std::string& step_description);
+    std::vector<std::shared_ptr<SubAgent>> agents_;
 };
 
 } // namespace agent

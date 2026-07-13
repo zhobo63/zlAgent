@@ -4,7 +4,6 @@
 #include "local_tools.h"
 #include "task_planner.h"
 #include "self_reflector.h"
-#include "multi_agent.h"
 #include "logger.h"
 #include "tools.h"
 #include "plugin_loader.h"
@@ -93,7 +92,6 @@ void Agent::load_config(const std::string& name)
     // Apply feature toggles from config.
     set_task_planning(cfg.features.task_planning);
     set_self_reflection(cfg.features.self_reflection);
-    set_multi_agent(cfg.features.multi_agent);
     set_max_iterations(cfg.agent_.max_iterations);
     set_max_reflection_retries(cfg.features.max_reflection_retries);
     set_local_tools_enabled(cfg.local_tools.enabled);
@@ -479,6 +477,15 @@ static std::vector<LineRange> parse_line_ranges(const std::string& spec) {
     return ranges;
 }
 
+void Agent::save_session()
+{
+    if (long_term_memory_) {
+        TUI::out("\nSaving session to long-term memory...\n");
+        long_term_memory_->save_session(memory_, llm_);
+    }
+
+}
+
 std::string Agent::preprocess_file_references(const std::string& user_input) {
     // Regex: match "filepath line_spec" where line_spec is optional.
     // Filepath: at least one char of [a-zA-Z0-9_./\-] ending with .ext
@@ -816,7 +823,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 std::string Agent::run_planned(const std::string& user_input, ChatResponse& resp, TokenCallback on_token) {
     TaskPlanner planner(llm_);
     SelfReflector reflector(llm_);
-    MultiAgent multi_agent(llm_.get_base_url(), &registry_);
+    //MultiAgent multi_agent(llm_.get_base_url());
 
     // Step 1: Generate a plan
     LOG_INFO("Planner", "\nGenerating task plan...");
@@ -849,24 +856,20 @@ std::string Agent::run_planned(const std::string& user_input, ChatResponse& resp
 
         // Execute the step using multi-agent or direct agent.
         std::string step_output;
-        if (multi_agent_) {
-            step_output = multi_agent.execute_task(step.description);
-        } else {
-            // Use the main agent's reasoning loop for this step.
-            ChatMessage user_msg{"user", step.description, ""};
-            memory_.add(user_msg);
+        // Use the main agent's reasoning loop for this step.
+        ChatMessage user_msg{"user", step.description, ""};
+        memory_.add(user_msg);
 
-            std::string step_result;
-            auto step_callback = [&step_result, &on_token](const std::string& token, bool is_reasoning) -> bool {
-                step_result += token;
-                if (on_token) return on_token(token, is_reasoning);
-                return true;
-            };
+        std::string step_result;
+        auto step_callback = [&step_result, &on_token](const std::string& token, bool is_reasoning) -> bool {
+            step_result += token;
+            if (on_token) return on_token(token, is_reasoning);
+            return true;
+        };
 
-            ChatResponse resp = reasoning_loop_stream(step.description, step_callback);
-            step_output = resp.content;
-            memory_.add(ChatMessage{"assistant", step_output, ""});
-        }
+        ChatResponse resp = reasoning_loop_stream(step.description, step_callback);
+        step_output = resp.content;
+        memory_.add(ChatMessage{"assistant", step_output, ""});        
 
         // Self-Reflection: review the output and retry if needed.
         bool step_success = true;
@@ -886,15 +889,11 @@ std::string Agent::run_planned(const std::string& user_input, ChatResponse& resp
                     std::string correction_task = step.description +
                         "\n\nPrevious attempt had issues. Fix the following:\n" + reflection.feedback;
 
-                    if (multi_agent_) {
-                        step_output = multi_agent.execute_task(correction_task);
-                    } else {
-                        ChatMessage fix_msg{"user", correction_task, ""};
-                        memory_.add(fix_msg);
-                        ChatResponse fix_resp = reasoning_loop_stream(user_input, on_token);
-                        step_output = fix_resp.content;
-                        memory_.add(ChatMessage{"assistant", step_output, ""});
-                    }
+                    ChatMessage fix_msg{"user", correction_task, ""};
+                    memory_.add(fix_msg);
+                    ChatResponse fix_resp = reasoning_loop_stream(user_input, on_token);
+                    step_output = fix_resp.content;
+                    memory_.add(ChatMessage{"assistant", step_output, ""});
 
                     // Re-review after correction.
                     auto re_reflection = reflector.review(step.description, step_output);
