@@ -330,9 +330,7 @@ void register_command_handlers(
     // ── /new ───────────────────────────────────────────
     dispatcher.register_command("new", [ag](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
-        ag->get_memory().clear();
-        ag->reset_iteration_count();
-        ag->reset_tokens_used();
+        ag->new_session();
         LOG_INFO("Command", "  New conversation started.");
     });
 

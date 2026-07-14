@@ -3,6 +3,7 @@
 #include "safety_guard.h"
 #include "logger.h"
 #include "key_watcher.h"
+#include "agent.h"
 #include <cstring>
 #include <regex>
 
@@ -53,6 +54,21 @@ bool SafetyGuard::is_command_dangerous(const std::string& command) {
 
 bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
     LOG_WARN("Safety", "Dangerous operation detected: " + operation);
+    TUI::out(u8"⚠  Dangerous operation: %s\n", operation.c_str());
+    return ask_user_confirm("Confirm this dangerous operation?", 60);
+}
+
+bool SafetyGuard::ask_user_confirm(const std::string& message, int timeout_seconds) {
+    // Check if we are running inside a SubAgentNet client.
+    Agent* g_agent = get_global_agent();
+    if (g_agent) {
+        std::shared_ptr<SubAgentNet> sub_agent = g_agent->get_sub_agent();
+        if (sub_agent && sub_agent->is_connected())
+            return sub_agent->ask_confirm(message, timeout_seconds);
+    }
+
+    // Local confirmation via KeyWatcher.
+    TUI::out("   %s\n", message.c_str());
     TUI::out("   Type 'y' to confirm, anything else to cancel: ");
 
     auto k = KeyWatcher::read_key();
@@ -135,16 +151,10 @@ PathCheckResult SafetyGuard::is_path_ok(const std::string& path) {
     }
 
     // ConfirmMode: ask the user.
-    TUI::out("   [Safety] Path outside working directory/whitelist: %s\n", path.c_str());
-    TUI::out("   Type 'y' to confirm, anything else to cancel: ");
+    bool confirmed = SafetyGuard::ask_user_confirm(
+        "[Safety] Path outside working directory/whitelist: " + path, 60);
 
-    auto k = KeyWatcher::read_key();
-    char ch = 0;
-    if (k.size > 0) ch = static_cast<char>(k.code[0]);
-
-    std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
-
-    if (lower == "y") {
+    if (confirmed) {
         // Remember this path so we don't ask again.
         // Add the parent directory to the whitelist rather than the file itself,
         // so that sibling files under the same directory are also allowed.

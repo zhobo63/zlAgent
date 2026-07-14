@@ -131,6 +131,11 @@ struct Config {
     struct NetAgent {
         bool enabled = false;
         std::string url;                            // e.g. "ws://127.0.0.1:8766/ws"
+        /// How to handle user confirmation requests.
+        /// "ask_server" — forward to server terminal (default)
+        /// "auto_yes"   — always confirm
+        /// "auto_no"    — always cancel
+        std::string confirm_mode = "ask_server";
     } net_agent;
 
     // ── Multi Agent (WebSocket server for remote clients) ─

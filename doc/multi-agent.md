@@ -46,6 +46,7 @@ workdir = path1/ path2/ # 可以設定多組工作目錄
 [net_agent]
 enable=true
 url = ws://127.0.0.1:8765/ws
+confirm_mode = ask_server   # auto_yes | auto_no | ask_server
 ```
 
 - 設定項 enable=true && url 時候啟用
@@ -54,6 +55,11 @@ url = ws://127.0.0.1:8765/ws
   - 使用 httplib WebSocket API 開始連線流程
 
 類似 Telegram Bot 的事件驅動模式：接收遠端指令 → 處理 → 回報結果。
+
+**使用者確認機制**：當 Client 執行任務觸發安全檢查時，根據 `confirm_mode` 決定行為：
+- `ask_server`（預設）— 透過 WebSocket 將確認請求轉發給 Server，由 Server 端的使用者確認
+- `auto_yes` — 自動確認所有操作
+- `auto_no` — 自動取消所有需要確認的操作
 
 ### 4. SubAgentCLI — 命令列工具任務
 
@@ -183,23 +189,24 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨立確認
 ```
 
-#### 情境分析
+#### 情境分析（已實作 B + C 組合方案）
 
 | 情境 | sub-agent 類型 | 使用者確認方式 |
 |------|---------------|----------------|
 | SubAgentLLM 在本機執行危險操作 | SubAgentLLM（本地） | 共用 Server 的 KeyWatcher，直接詢問終端 |
-| SubAgentNet 接收遠端指令需要確認 | SubAgentNet（Client） | Client 有自己的終端，獨立處理確認 |
+| SubAgentNet 接收遠端指令需要確認 | SubAgentNet（Client） | **透過 WebSocket 轉發給 Server**，由 Server 端使用者確認 |
 | Server 的 LLM 呼叫 sub-agent tool，tool 內部觸發安全檢查 | SubAgentLLM / SubAgentCLI | 共用 Server 的 KeyWatcher |
 
-#### 設計決策
+#### 設計決策（已實作）
 
 1. **SubAgentLLM（本地）**：與主 Agent 共享同一個終端和 `KeyWatcher`。使用者確認直接在當前終端進行，無需額外機制。
 
-2. **SubAgentNet（遠端 Client）**：擁有獨立的終端和 `KeyWatcher`。使用者確認在 Client 自己的終端上處理，不影響 Server。
+2. **SubAgentNet（遠端 Client）**：透過 WebSocket 將確認請求轉發給 Server。Server 在其終端詢問使用者，再把答案傳回 Client。Client 可設定 `confirm_mode = auto_yes | auto_no` 跳過互動。
 
 3. **主 Agent readline 阻塞問題**：當主 Agent 正在等待使用者輸入（`readline()`）時，sub-agent 的確認提示會與主迴圈的 prompt 衝突。**解決方式**：
    - sub-agent 透過 `execute(task)` 同步執行，不會在 `readline()` 期間觸發
-   - 若未來需要非同步 sub-agent，需實作「確認訊息佇列」機制，將確認請求排入佇列，等主迴圈空閒時再顯示
+   - Server 端收到 `confirm_request` 後以獨立 thread 處理，不阻塞 WebSocket read loop
+   - 若未來需要非同步 sub-agent，需實作「確認訊息佇列」機制
 
 4. **EditFilesTool 替換衝突**：`readline()` 用於選擇替換項目。在 sub-agent 情境下，若 `replace_text_mode=ask`，同樣會阻塞等待使用者輸入。
 
@@ -212,22 +219,34 @@ SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨�
 └──────┬──────┘
        │
        ▼
-┌─────────────┐     是      ┌──────────────┐
-│ 需要確認？   │────────────→│ 執行操作      │
-└──────┬──────┘             └──────────────┘
+┌──────────────────┐     是      ┌──────────────┐
+│ ask_user_confirm()│────────────→│ 執行操作      │
+│ (統一介面)        │              └──────────────┘
+└──────┬───────────┘
        │ 否
        ▼
-┌─────────────┐     y/yes    ┌──────────────┐
-│ 顯示 Prompt  │────────────→│ 執行操作      │
-│ read_key()   │              └──────────────┘
-│ readline()   │
-└──────┬──────┘
-       │ n/no / 其他
+┌──────────────────┐     本地      ┌──────────────┐
+│ 是否為遠端 Client？│────────────→│ KeyWatcher    │
+└──────┬───────────┘              │ read_key()   │
+       │ 是                       └──────────────┘
        ▼
-┌─────────────┐
-│ 跳過 / 取消  │
-│ 回傳錯誤     │
-└─────────────┘
+┌──────────────────┐     auto_yes ┌──────────────┐
+│ confirm_mode？    │────────────→│ 回傳 true     │
+└──────┬───────────┘              └──────────────┘
+       │ auto_no
+       ▼
+┌──────────────┐
+│ 回傳 false   │
+└──────────────┘
+       │ ask_server
+       ▼
+┌──────────────────┐
+│ send_confirm_    │
+│ request()        │
+│ → WebSocket      │
+│ → Server         │
+│ ← confirm_resp   │
+└──────────────────┘
 ```
 
 ### 實作計畫
@@ -260,10 +279,60 @@ SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨�
 |---|------|------|
 | 8 | SubAgentNet WebSocket 連線 | 使用 httplib 的 WebSocket API，類似 Telegram Bot 的事件驅動模式 |
 
-### Phase 5: Multi-Agent 使用者確認機制（待規劃）
+### Phase 5: Multi-Agent 使用者確認機制 ✅
+
+已實作的 B + C 組合方案：Client 轉發確認請求給 Server + Config 自動模式。
 
 | # | 項目 | 內容 |
 |---|------|------|
 | 9 | SubAgentLLM 共用 KeyWatcher | 本地 sub-agent 直接使用 Server 的 `KeyWatcher`，無需額外機制 |
-| 10 | SubAgentNet 獨立確認 | Client 擁有自己的終端和 `KeyWatcher`，確認在 Client 側處理 |
-| 11 | 非同步確認佇列（未來） | 若 sub-agent 需非同步執行，實作確認訊息佇列，避免與主迴圈 readline 衝突 |
+| 10 | SubAgentNet ask_confirm() | Client 端統一確認介面：檢查 `confirm_mode` → auto_yes/auto_no/呼叫 `send_confirm_request()` |
+| 11 | WebSocket confirm_request / confirm_response | Client → Server 發送確認請求，Server 在終端詢問使用者，回傳答案給 Client |
+| 12 | Config confirm_mode | `[net_agent]` 區段加入 `confirm_mode = ask_server \| auto_yes \| auto_no`，預設 `ask_server` |
+| 13 | SafetyGuard::ask_user_confirm() | 統一的使用者確認函式：自動判斷是否為遠端 Client，選擇本地或轉發模式 |
+
+#### WebSocket 通訊協定
+
+新增兩種訊息類型：
+
+| type | 方向 | 欄位 |
+|------|------|------|
+| `confirm_request` | Client → Server | `chat_id`, `request_id`, `message`, `timeout_seconds` |
+| `confirm_response` | Server → Client | `chat_id`, `request_id`, `answer` (`"y"` / `"n"`) |
+
+#### Config 設定
+
+```ini
+[net_agent]
+enable=true
+url = ws://127.0.0.1:8765/ws
+confirm_mode = ask_server   # auto_yes | auto_no | ask_server
+```
+
+#### 流程圖
+
+```
+Client (SubAgentNet) → SafetyGuard::ask_user_confirm()
+    ↓
+檢查 confirm_mode:
+    auto_yes  → 回傳 true
+    auto_no   → 回傳 false
+    ask_server → send_confirm_request() → WebSocket → Server
+        ↓
+Server: KeyWatcher::read_key() — 顯示 prompt，等待使用者輸入
+    ↓
+confirm_response ← WebSocket ← Client
+```
+
+#### 已更新的呼叫點
+
+| 位置 | 情境 | 更新方式 |
+|------|------|----------|
+| `safety_guard.cpp:56` | 危險操作確認 | 改用 `ask_user_confirm()` |
+| `safety_guard.cpp:158` | 路徑白名單外確認 | 改用 `ask_user_confirm()` |
+| `terminal_command_detector.cpp:260` | 終端指令低信心確認 | 改用 `ask_user_confirm()` |
+| `user_reply.cpp:89` | Tool 需要使用者回覆 | 改用 `ask_user_confirm()` |
+
+#### 非同步確認佇列（未來）
+
+若 sub-agent 需非同步執行，實作確認訊息佇列，避免與主迴圈 readline 衝突。

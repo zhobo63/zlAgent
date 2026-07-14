@@ -11,6 +11,7 @@
 #include "user_reply.h"
 #include "file_utils.h"
 #include "key_watcher.h"
+#include "safety_guard.h"
 
 namespace agent {
 using json = nlohmann::json;
@@ -88,13 +89,10 @@ UserReplyResult prompt_user_reply(
 
     std::cout << "\n    Reply: ";
 
-    auto k = KeyWatcher::read_key();
-    char ch = 0;
-    if (k.size > 0) ch = static_cast<char>(k.code[0]);
+    bool confirmed = SafetyGuard::ask_user_confirm(
+        is_error ? ("Retry tool call? (y=retry, n=skip)") : ("Proceed with tool call? (y=yes, n=no)"), 60);
 
-    std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
-
-    if (lower == "y") {
+    if (confirmed) {
         result.action = ReplyAction::Yes;
     } else {
         result.action = ReplyAction::No;

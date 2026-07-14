@@ -243,6 +243,7 @@ void Agent::load_config(const std::string& name)
         SubAgentNet::Config net_cfg;
         net_cfg.enabled = true;
         net_cfg.url = cfg.net_agent.url;
+        net_cfg.confirm_mode = cfg.net_agent.confirm_mode;
         sub_agent_->start(net_cfg);
     }
 
@@ -519,6 +520,14 @@ static std::vector<LineRange> parse_line_ranges(const std::string& spec) {
     return ranges;
 }
 
+void Agent::new_session()
+{
+    get_memory().clear();
+    reset_iteration_count();
+    reset_tokens_used();
+    processed_file_keys_.clear();
+}
+
 void Agent::save_session()
 {
     if (long_term_memory_) {
@@ -577,6 +586,11 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
         std::ostringstream content_oss;
         for (const auto& r : ranges) {
             if (r.start <= 0 || r.end < r.start) continue;
+            // Skip if this filepath+range has already been processed
+            std::string key = filepath + ":" + std::to_string(r.start) + "-" + std::to_string(r.end);
+            if (processed_file_keys_.count(key)) continue;
+            processed_file_keys_.insert(key);
+
             std::string lines_content = ReadFileLinesAsString(filepath, r.start, r.end);
             if (!lines_content.empty()) {
                 content_oss << "--- File: " << filepath << " (lines "
@@ -614,6 +628,11 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
                 }
             }
             if (dominated) continue;
+
+            // Skip if this filepath outline has already been processed
+            std::string key = filepath + ":outline";
+            if (processed_file_keys_.count(key)) continue;
+            processed_file_keys_.insert(key);
 
             namespace fs = std::filesystem;
             if (!fs::exists(filepath)) continue;

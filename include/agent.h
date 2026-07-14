@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <set>
 #include <string>
 #include "llm_client.h"
 #include "tool.h"
@@ -123,6 +124,9 @@ public:
     bool multi_agent_enabled() const { return multi_agent_ != nullptr && multi_agent_->is_enable(); }
 
     void save_session();
+    void new_session();
+
+    std::shared_ptr<SubAgentNet> get_sub_agent() { return sub_agent_; }
 private:
     // Preprocess user_input: detect file references and inject content (outline or line ranges).
     // Only runs on first iteration. Original text is preserved; content is appended after each reference.
@@ -158,6 +162,9 @@ private:
 
     // User Reply mode — controls when the Agent pauses for user input.
     UserReplyMode user_reply_mode_ = UserReplyMode::Off;
+
+    // Track "filepath:start-end" keys already injected to avoid duplicate content.
+    std::set<std::string> processed_file_keys_;
 
     // Internal streaming loop: same logic but uses chat_stream with token callback
     ChatResponse reasoning_loop_stream(const std::string& user_input, TokenCallback on_token);

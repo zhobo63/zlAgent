@@ -32,6 +32,11 @@ public:
     // Ask the user to confirm a dangerous operation. Returns true if confirmed.
     bool confirm_dangerous_operation(const std::string& operation);
 
+    /// Unified user confirmation interface.
+    /// If running inside a SubAgentNet client, forwards to server via WebSocket.
+    /// Otherwise asks locally via KeyWatcher::read_key().
+    static bool ask_user_confirm(const std::string& message, int timeout_seconds = 60);
+
     // Check if a command string contains destructive patterns (rm -rf, del /f, etc.).
     static bool is_command_dangerous(const std::string& command);
 

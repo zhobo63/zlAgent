@@ -2,6 +2,8 @@
 
 #include "terminal_command_detector.h"
 #include "logger.h"
+#include "key_watcher.h"
+#include "safety_guard.h"
 #include <iostream>
 
 namespace agent {
@@ -261,12 +263,10 @@ bool TerminalCommandDetector::detect_and_execute(const std::string& input, std::
             << input << "\n"
             << u8"   Execute directly? [y/N]: ";
 
-        auto k = KeyWatcher::read_key();
-        char ch = 0;
-        if (k.size > 0) ch = static_cast<char>(k.code[0]);
+        bool confirmed = SafetyGuard::ask_user_confirm(
+            "Execute this terminal command?", 30);
 
-        std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
-        if (lower == "y") {
+        if (confirmed) {
             return execute_directly(input, response);
         }
         // User declined — fall through to LLM.

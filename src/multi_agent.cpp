@@ -221,6 +221,85 @@ void SubAgentNet::handle_message(const nlohmann::json& msg) {
         // Heartbeat response — connection is alive.
         last_pong_received_.store(true);
     }
+    else if (type == "confirm_response") {
+        std::string request_id = msg.value("request_id", "");
+        std::string answer_str = msg.value("answer", "n");
+        char answer = !answer_str.empty() ? answer_str[0] : 'n';
+
+        // Resolve the pending confirmation.
+        {
+            std::lock_guard<std::mutex> lock(confirm_mutex_);
+            auto it = pending_confirms_.find(request_id);
+            if (it != pending_confirms_.end()) {
+                it->second.promise.set_value(answer);
+                pending_confirms_.erase(it);
+            }
+        }
+    }
+}
+
+bool SubAgentNet::ask_confirm(const std::string& message, int timeout_seconds) {
+    // Respect confirm_mode setting.
+    if (cfg_.confirm_mode == "auto_yes") return true;
+    if (cfg_.confirm_mode == "auto_no")  return false;
+
+    // ask_server: forward to server terminal.
+    char answer = send_confirm_request(message, timeout_seconds);
+    return (answer == 'y');
+}
+
+char SubAgentNet::send_confirm_request(const std::string& message, int timeout_seconds) {
+    if (!client_ || !connected_.load()) {
+        LOG_WARN("SubAgentNet", "Not connected — cannot ask server for confirmation. Defaulting to 'n'.");
+        return 'n';
+    }
+
+    // Generate a unique request_id.
+    std::string request_id;
+    {
+        std::lock_guard<std::mutex> lock(confirm_mutex_);
+        confirm_counter_++;
+        request_id = "confirm_" + name_ + "_" + std::to_string(confirm_counter_);
+    }
+
+    // Create promise and get future before moving.
+    std::promise<char> promise;
+    auto result = promise.get_future();
+
+    // Store the pending confirmation.
+    {
+        std::lock_guard<std::mutex> lock(confirm_mutex_);
+        pending_confirms_.emplace(request_id, PendingConfirm{
+            std::move(promise),
+            std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds)
+        });
+    }
+
+    // Send the confirmation request to the server.
+    nlohmann::json req;
+    req["type"] = "confirm_request";
+    req["request_id"] = request_id;
+    req["message"] = message;
+    req["timeout_seconds"] = timeout_seconds;
+
+    if (!client_->send(req.dump())) {
+        LOG_WARN("SubAgentNet", "Failed to send confirm_request. Defaulting to 'n'.");
+        // Clean up pending entry.
+        std::lock_guard<std::mutex> lock(confirm_mutex_);
+        pending_confirms_.erase(request_id);
+        return 'n';
+    }
+
+    auto status = result.wait_for(std::chrono::seconds(timeout_seconds));
+    if (status == std::future_status::ready) {
+        return result.get();
+    }
+
+    LOG_WARN("SubAgentNet", "Confirmation request timed out. Defaulting to 'n'.");
+    // Clean up on timeout.
+    std::lock_guard<std::mutex> lock(confirm_mutex_);
+    pending_confirms_.erase(request_id);
+    return 'n';
 }
 
 // ── SubAgentTool ─────────────────────────────────────
@@ -371,6 +450,35 @@ void MultiAgent::start(int listen_port) {
                                 it->second.result_ready.store(true);
                             }
                         }
+                    }
+                    else if (type == "confirm_request") {
+                        // Client needs user confirmation — ask on server terminal.
+                        std::string request_id = j.value("request_id", "");
+                        std::string message = j.value("message", "Confirm?");
+                        int timeout_seconds = j.value("timeout_seconds", 60);
+
+                        LOG_INFO("MultiAgent", "Confirmation request from client: " + chat_id);
+
+                        // Handle in a separate thread so we don't block the WebSocket read loop.
+                        std::thread([this, &ws, chat_id, request_id, message, timeout_seconds]() {
+                            TUI::out(u8"\n⏸  [Remote Confirm] Client: %s\n", chat_id.c_str());
+                            TUI::out("   %s\n", message.c_str());
+                            TUI::out("   Type 'y' to confirm, anything else to cancel: ");
+
+                            auto k = KeyWatcher::read_key();
+                            char ch = 0;
+                            if (k.size > 0) ch = static_cast<char>(k.code[0]);
+                            std::string lower(1, ::tolower(static_cast<unsigned char>(ch)));
+                            char answer = (lower == "y") ? 'y' : 'n';
+
+                            nlohmann::json resp;
+                            resp["type"] = "confirm_response";
+                            resp["request_id"] = request_id;
+                            resp["answer"] = std::string(1, answer);
+
+                            ws.send(resp.dump());
+                            LOG_INFO("MultiAgent", "Sent confirm_response: " + std::string(1, answer));
+                        }).detach();
                     }
                 } catch (const std::exception& e) {
                     LOG_WARN("MultiAgent", "Failed to parse message from client: " + chat_id + ": " + std::string(e.what()));
