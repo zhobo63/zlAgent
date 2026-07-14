@@ -55,9 +55,14 @@ url = ws://127.0.0.1:8765/ws
 
 類似 Telegram Bot 的事件驅動模式：接收遠端指令 → 處理 → 回報結果。
 
-### 4. SubAgentCLI — 命令列工具任務（待實作）
+### 4. SubAgentCLI — 命令列工具任務
 
 執行 shell command、檔案操作等命令列操作。
+
+```
+cd workdir1/
+zlAgent -p task
+```
 
 ### 5. MultiAgent — 協調者（Coordinator / Server）
 
@@ -82,17 +87,28 @@ listen_port = 8766
 
 ## 整體流程
 
+zlAgent [multi_agent] Server
+  - Need Enable and listen_port
+  - Wait for client connect
+  - When client connected regist name, description as tool
+
+zlAgent [net_agent] Client
+  - Need Enable and url
+  - Create name and description
+  - Connect to server
+
 ```
-使用者任務 → Agent reasoning_loop
+使用者任務 → Agent reasoning_loop [multi_agent]
                 ↓
-          LLM 看到所有 tool definitions（包含 sub-agents）
+            LLM 看到所有 tool definitions（包含 sub-agents）
                 ↓
-          LLM 決定呼叫哪個 agent (function call)
+            LLM 決定呼叫哪個 agent (function call) [sub_agent]
                 ↓
-     SubAgentLLM::execute(task) — 獨立推理循環
+            SubAgentLLM::execute(task) — 獨立推理循環
+                ↓
+                Response (async)
 ```
 
-### 流程
 1. Client 啟動，透過 WebSocket 連接到 Server
 2. Client 向 Server 註冊自己（name + description），Server 將其加入 ToolRegistry
 3. Server 的 LLM 看到所有 tool definitions（包含遠端 client agent）
@@ -132,8 +148,89 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 - `[multi_agent]` 設定項只有 `enable` + `listen_port`
 - 使用 httplib Server 監聽 WebSocket 連線
 - 路由由 LLM 透過 Tool function calling 處理
+- 可註冊 sub_agent: SubAgentLLM, SubAgentNet, SubAgentCLI
 
-## 實作計畫
+## 使用者確認流程
+
+### 現有互動點總覽
+
+系統在執行過程中會在以下情境要求使用者回覆。分為兩種輸入方式：
+
+**`read_key()` — 單鍵確認（y/N）**
+
+| # | 位置 | 情境 | Prompt |
+|---|------|------|--------|
+| 1 | `safety_guard.cpp:56` | **危險操作確認** — 偵測到 `rm -rf`、`del /f` 等破壞性指令 | `Type 'y' to confirm, anything else to cancel:` |
+| 2 | `safety_guard.cpp:139` | **路徑白名單外確認** — 寫入路徑超出 working directory / whitelist（非 strict mode） | `Type 'y' to confirm, anything else to cancel:` |
+| 3 | `terminal_command_detector.cpp:260` | **終端指令低信心確認** — 偵測到可能的 shell 命令但信心不足 | `Execute directly? [y/N]:` |
+| 4 | `user_reply.cpp:89` | **Tool 需要使用者回覆** — Tool 執行失敗或設定為需確認模式（exec/edit/always） | `Reply:` → y=重試, n=跳過 |
+
+**`readline()` — 完整行輸入**
+
+| # | 位置 | 情境 | Prompt |
+|---|------|------|--------|
+| 5 | `main.cpp:295` | **主迴圈** — 等待使用者輸入指令 | `You:[model]>` |
+| 6 | `command_handlers.cpp:220` | **切換模型** — 選擇 LLM 編號 | `Select Model>` |
+| 7 | `file_tool.cpp:1088` | **EditFilesTool 替換衝突** — `old_text` 出現多次，詢問跳過/替換單一/全部 | `Choose: [N] skip / [num] replace that one / [A] all:` |
+
+### Multi-Agent 下的使用者確認問題
+
+在 Multi-Agent 架構中，sub-agent 執行時可能需要使用者確認（例如危險操作、路徑檢查）。這產生以下問題：
+
+```
+主 Agent (Server) → SubAgentLLM (本地)     → 可直接使用 KeyWatcher
+主 Agent (Server) → SubAgentNet (遠端)    → 無法直接存取 Server 的終端
+SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨立確認
+```
+
+#### 情境分析
+
+| 情境 | sub-agent 類型 | 使用者確認方式 |
+|------|---------------|----------------|
+| SubAgentLLM 在本機執行危險操作 | SubAgentLLM（本地） | 共用 Server 的 KeyWatcher，直接詢問終端 |
+| SubAgentNet 接收遠端指令需要確認 | SubAgentNet（Client） | Client 有自己的終端，獨立處理確認 |
+| Server 的 LLM 呼叫 sub-agent tool，tool 內部觸發安全檢查 | SubAgentLLM / SubAgentCLI | 共用 Server 的 KeyWatcher |
+
+#### 設計決策
+
+1. **SubAgentLLM（本地）**：與主 Agent 共享同一個終端和 `KeyWatcher`。使用者確認直接在當前終端進行，無需額外機制。
+
+2. **SubAgentNet（遠端 Client）**：擁有獨立的終端和 `KeyWatcher`。使用者確認在 Client 自己的終端上處理，不影響 Server。
+
+3. **主 Agent readline 阻塞問題**：當主 Agent 正在等待使用者輸入（`readline()`）時，sub-agent 的確認提示會與主迴圈的 prompt 衝突。**解決方式**：
+   - sub-agent 透過 `execute(task)` 同步執行，不會在 `readline()` 期間觸發
+   - 若未來需要非同步 sub-agent，需實作「確認訊息佇列」機制，將確認請求排入佇列，等主迴圈空閒時再顯示
+
+4. **EditFilesTool 替換衝突**：`readline()` 用於選擇替換項目。在 sub-agent 情境下，若 `replace_text_mode=ask`，同樣會阻塞等待使用者輸入。
+
+### 確認流程狀態機
+
+```
+┌─────────────┐
+│ Agent 執行   │
+│ Tool / Task  │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐     是      ┌──────────────┐
+│ 需要確認？   │────────────→│ 執行操作      │
+└──────┬──────┘             └──────────────┘
+       │ 否
+       ▼
+┌─────────────┐     y/yes    ┌──────────────┐
+│ 顯示 Prompt  │────────────→│ 執行操作      │
+│ read_key()   │              └──────────────┘
+│ readline()   │
+└──────┬──────┘
+       │ n/no / 其他
+       ▼
+┌─────────────┐
+│ 跳過 / 取消  │
+│ 回傳錯誤     │
+└─────────────┘
+```
+
+### 實作計畫
 
 ### Phase 1: 基礎結構
 
@@ -162,3 +259,11 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 | # | 項目 | 內容 |
 |---|------|------|
 | 8 | SubAgentNet WebSocket 連線 | 使用 httplib 的 WebSocket API，類似 Telegram Bot 的事件驅動模式 |
+
+### Phase 5: Multi-Agent 使用者確認機制（待規劃）
+
+| # | 項目 | 內容 |
+|---|------|------|
+| 9 | SubAgentLLM 共用 KeyWatcher | 本地 sub-agent 直接使用 Server 的 `KeyWatcher`，無需額外機制 |
+| 10 | SubAgentNet 獨立確認 | Client 擁有自己的終端和 `KeyWatcher`，確認在 Client 側處理 |
+| 11 | 非同步確認佇列（未來） | 若 sub-agent 需非同步執行，實作確認訊息佇列，避免與主迴圈 readline 衝突 |

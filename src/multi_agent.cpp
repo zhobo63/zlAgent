@@ -257,8 +257,8 @@ std::string SubAgentTool::execute(const std::string& json_args) {
 
 // ── RemoteClientTool ─────────────────────────────────────
 
-RemoteClientTool::RemoteClientTool(std::string name, std::string description, SendTaskCallback cb)
-    : name_(std::move(name)), description_(std::move(description)), send_task_cb_(std::move(cb)) {
+RemoteClientTool::RemoteClientTool(std::string name, std::string description, std::string chat_id, SendTaskCallback cb)
+    : name_(std::move(name)), description_(std::move(description)), chat_id_(std::move(chat_id)), send_task_cb_(std::move(cb)) {
 }
 
 std::string RemoteClientTool::name() const {
@@ -285,7 +285,7 @@ std::string RemoteClientTool::parameters_schema() const {
 std::string RemoteClientTool::execute(const std::string& json_args) {
     nlohmann::json args = nlohmann::json::parse(json_args);
     std::string task = args.value("task", "");
-    return send_task_cb_(name_, task);
+    return send_task_cb_(chat_id_, task);
 }
 
 // ── MultiAgent (Server) ─────────────────────────────
@@ -327,7 +327,13 @@ void MultiAgent::start(int listen_port) {
                     auto j = nlohmann::json::parse(msg);
                     std::string type = j.value("type", "");
 
-                    if (type == "register") {
+                    if (type == "ping") {
+                        // Respond to client heartbeat.
+                        nlohmann::json pong_msg;
+                        pong_msg["type"] = "pong";
+                        ws.send(pong_msg.dump());
+                    }
+                    else if (type == "register") {
                         // Client is registering itself as a remote tool.
                         std::string name = j.value("name", chat_id);
                         std::string description = j.value("description", "Remote agent: " + name);
@@ -340,7 +346,7 @@ void MultiAgent::start(int listen_port) {
 
                         // Register as a Tool in the registry.
                         auto tool = std::make_shared<RemoteClientTool>(
-                            name, description,
+                            name, description, chat_id,
                             [this](const std::string& cid, const std::string& task) {
                                 return send_task_to_client(cid, task);
                             }

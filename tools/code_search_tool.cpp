@@ -1,17 +1,21 @@
 #include "pch.h"
 
 #include "tool.h"
-#include <regex>
+#include <algorithm>
 #include <regex>
 #include <cstring>
 #include <set>
+
+
 
 namespace agent {
 using json = nlohmann::json;
 
 class CodeSearchTool : public Tool {
 private:
-    // Load excluded directory names from .gitignore / .hgignore
+    std::filesystem::path m_search_root;
+    // Load excluded directory paths from .gitignore / .hgignore
+    // Supports both simple names ("build/") and nested paths ("bin/www/game/").
     std::set<std::string> load_ignored_dirs(const std::filesystem::path& root) {
         std::set<std::string> ignored;
         for (const auto& ignore_file : {".gitignore", ".hgignore"}) {
@@ -28,21 +32,32 @@ private:
                 // Skip comments and empty lines
                 if (line.empty() || line[0] == '#') continue;
 
-                // Strip trailing slash to get directory name
-                std::string dir_name = line;
-                if (!dir_name.empty() && dir_name.back() == '/')
-                    dir_name.pop_back();
+                // Strip trailing slash to get directory path
+                std::string dir_path = line;
+                if (!dir_path.empty() && dir_path.back() == '/')
+                    dir_path.pop_back();
 
-                // Only add simple directory names (no wildcards, no path separators)
-                if (!dir_name.empty() &&
-                    dir_name.find('*') == std::string::npos &&
-                    dir_name.find('?') == std::string::npos &&
-                    dir_name.find('/') == std::string::npos) {
-                    ignored.insert(dir_name);
+                // Skip lines with wildcards (we don't support glob patterns)
+                if (dir_path.find('*') != std::string::npos ||
+                    dir_path.find('?') != std::string::npos) continue;
+
+                if (!dir_path.empty()) {
+                    ignored.insert(dir_path);
                 }
             }
         }
         return ignored;
+    }
+
+    // Check whether the given relative path (from search root) is under any ignored directory.
+    static bool is_ignored_dir(const std::string& rel_path, const std::set<std::string>& ignored_dirs) {
+        for (const auto& ig : ignored_dirs) {
+            if (rel_path == ig ||
+                (rel_path.size() > ig.size() && rel_path.substr(0, ig.size()) == ig && rel_path[ig.size()] == '/')) {
+                return true;
+            }
+        }
+        return false;
     }
 
 public:
@@ -126,6 +141,7 @@ private:
             LOG_DEBUG("CodeSearchTool", "ignored dirs: " + std::string("") + ", count=" + std::to_string(ignored_dirs.size()));
         }
 
+        m_search_root = resolved;
         search_dir_recursive(resolved, file_pattern, re, results, match_count, max_results, ignored_dirs);
     }
 
@@ -143,16 +159,29 @@ private:
                 if (entry.is_directory()) {
                     std::string dirname = entry.path().filename().string();
                     if (!dirname.empty() && dirname[0] == '.') continue;
-                    // Skip directories listed in .gitignore / .hgignore
-                    if (ignored_dirs.count(dirname)) continue;
+
+                    // Compute relative path from search root to this directory for nested ignore matching
+                    fs::path rel = fs::relative(entry.path(), m_search_root);
+                    std::string rel_str = rel.string();
+                    // Normalize separators to '/'
+                    std::replace(rel_str.begin(), rel_str.end(), '\\', '/');
+
+                    // Skip directories listed in .gitignore / .hgignore (supports nested paths)
+                    if (is_ignored_dir(rel_str, ignored_dirs)) continue;
+
                     search_dir_recursive(entry.path(), file_pattern, re, results, match_count, max_results, ignored_dirs);
                     continue;
                 }
 
                 if (entry.is_regular_file()) {
-                    // Check file pattern filter
                     std::string fname = entry.path().filename().string();
-                    if (!file_pattern.empty() && !match_glob(fname, file_pattern)) continue;
+
+                    // If a glob filter is specified, use it; otherwise restrict to code files only
+                    if (!file_pattern.empty()) {
+                        if (!match_glob(fname, file_pattern)) continue;
+                    } else {
+                        if (!is_code_file(fname)) continue;
+                    }
 
                     search_file(entry.path().string(), re, results, match_count, max_results);
                 }
@@ -160,6 +189,44 @@ private:
         } catch (const fs::filesystem_error&) {
             // Skip directories we can't access.
         }
+    }
+
+    // Whitelist of known code file extensions by language category
+    static const std::set<std::string>& get_code_extensions() {
+        static const std::set<std::string> exts = {
+            // C/C++
+            ".c", ".cpp", ".cxx", ".cc", ".h", ".hpp", ".hxx", ".hh",
+            // Go
+            ".go",
+            // JavaScript / TypeScript
+            ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+            // Rust
+            ".rs",
+            // Java
+            ".java",
+            // Python
+            ".py",
+            // C#
+            ".cs",
+            // Ruby
+            ".rb",
+            // PHP
+            ".php",
+            // Swift / Kotlin
+            ".swift", ".kt", ".kts",
+            // Shell
+            ".sh", ".bash", ".zsh",
+        };
+        return exts;
+    }
+
+    static bool is_code_file(const std::string& filename) {
+        auto pos = filename.rfind('.');
+        if (pos == std::string::npos) return false;
+        std::string ext = filename.substr(pos);
+        // Convert to lowercase for case-insensitive comparison
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        return get_code_extensions().count(ext) > 0;
     }
 
     // Simple glob matcher for patterns like "*.cpp" or "*.h"

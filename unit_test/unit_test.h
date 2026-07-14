@@ -9,7 +9,7 @@ struct UnitReport {
     bool result;
     std::vector<UnitReport> report;
 
-    UnitReport(const char* _name = "", bool _result = false) :name(_name), result(_result) {}
+    UnitReport(const std::string &_name = "", bool _result = false) :name(_name), result(_result) {}
 };
 
 inline bool unit_test_valid(UnitReport &r) {

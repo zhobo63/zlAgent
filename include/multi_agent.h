@@ -6,6 +6,8 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
+#include <future>
 #include "llm_client.h"
 #include "tool.h"
 
@@ -64,6 +66,11 @@ public:
         bool enabled = false;
         std::string url;                            // e.g. "ws://127.0.0.1:8766/ws"
         std::string workdir;                        // local working directory
+        /// How to handle user confirmation requests.
+        /// "ask_server" — forward to server terminal (default)
+        /// "auto_yes"   — always confirm
+        /// "auto_no"    — always cancel
+        std::string confirm_mode = "ask_server";
     };
 
     SubAgentNet(const std::string& name, const std::string& description = "");
@@ -77,6 +84,10 @@ public:
 
     // Check if the client is currently connected.
     bool is_connected() const { return connected_.load(); }
+
+    /// Ask for user confirmation. Respects confirm_mode setting.
+    /// Returns true ("y") or false ("n").
+    bool ask_confirm(const std::string& message, int timeout_seconds = 60);
 
 private:
     Config cfg_;
@@ -93,6 +104,19 @@ private:
 
     // Handle an incoming JSON message from the server.
     void handle_message(const nlohmann::json& msg);
+
+    /// Send a confirm_request to the server and wait for response.
+    /// Returns 'y' or 'n'. Blocks until response or timeout.
+    char send_confirm_request(const std::string& message, int timeout_seconds);
+
+    // Pending confirmation requests: request_id -> promise
+    struct PendingConfirm {
+        std::promise<char> promise;
+        std::chrono::steady_clock::time_point deadline;
+    };
+    std::mutex confirm_mutex_;
+    std::map<std::string, PendingConfirm> pending_confirms_;
+    int confirm_counter_{0};
 
     std::thread heartbeat_thread_;
     std::atomic<bool> last_pong_received_{true};
@@ -134,7 +158,7 @@ public:
     // callback to send task and receive result from the server's connection map
     using SendTaskCallback = std::function<std::string(const std::string& chat_id, const std::string& task)>;
 
-    RemoteClientTool(std::string name, std::string description, SendTaskCallback cb);
+    RemoteClientTool(std::string name, std::string description, std::string chat_id, SendTaskCallback cb);
 
     std::string name() const override;
     std::string description() const override;
@@ -144,6 +168,7 @@ public:
 private:
     std::string name_;
     std::string description_;
+    std::string chat_id_;
     SendTaskCallback send_task_cb_;
 };
 

@@ -236,6 +236,16 @@ void Agent::load_config(const std::string& name)
         multi_agent_->start(cfg.multi_agent_config.listen_port);
     }
 
+    // Initialize SubAgentNet client if configured.
+    if (cfg.net_agent.enabled && !cfg.net_agent.url.empty()) {
+        LOG_INFO("NetAgent", "Initializing WebSocket client: " + cfg.net_agent.url);
+        sub_agent_ = std::make_shared<agent::SubAgentNet>("net_agent", "Remote agent connected via WebSocket");
+        SubAgentNet::Config net_cfg;
+        net_cfg.enabled = true;
+        net_cfg.url = cfg.net_agent.url;
+        sub_agent_->start(net_cfg);
+    }
+
     // Initialize SubAgentLLM instances for each workdir.
     if (cfg.llm_agent.enabled) {
         LOG_INFO("LlmAgent", "Initializing LLM sub-agents");
