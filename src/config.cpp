@@ -375,6 +375,8 @@ Config Config::load(const std::string& ini_path) {
             read_bool(s, "enabled", cfg.net_agent.enabled, false);
             read_if_exists(s, "url", cfg.net_agent.url);
             read_if_exists(s, "confirm_mode", cfg.net_agent.confirm_mode);
+            read_if_exists(s, "name", cfg.net_agent.name);
+            read_if_exists(s, "description", cfg.net_agent.description);
         }
     }
 
@@ -584,6 +586,8 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
         kvs["enabled"]      = cfg.net_agent.enabled ? "true" : "false";
         kvs["url"]          = cfg.net_agent.url;
         kvs["confirm_mode"] = cfg.net_agent.confirm_mode;
+        kvs["name"]         = cfg.net_agent.name;
+        kvs["description"]  = cfg.net_agent.description;
         write_section("net_agent", kvs);
     }
 

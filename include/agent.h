@@ -126,6 +126,7 @@ public:
     void save_session();
     void new_session();
 
+    std::shared_ptr<MultiAgent> get_multi_agent() { return multi_agent_; }
     std::shared_ptr<SubAgentNet> get_sub_agent() { return sub_agent_; }
 private:
     // Preprocess user_input: detect file references and inject content (outline or line ranges).

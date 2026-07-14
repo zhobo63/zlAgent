@@ -26,6 +26,7 @@ void register_command_handlers(
     KeyWatcher::add_keywords({
         "/h", "/help", "/status", "/config",
         "/skills", "/tools", "/tool",
+        "/agent",
         "/model",
         "/facts", "/sessions", "/summary", "/new", "/save",
         "/search-kb", "/add-doc",
@@ -43,6 +44,7 @@ void register_command_handlers(
             "  /skills            List registered skills\n"
             "  /tools             List all internal tools\n"
             "  /tool <name>       Show details for a specific tool\n"
+            "  /agent             List sub-agents (local, remote clients, net agent)\n"
             "  /view <path>       Overview project directory and generate code summary\n"
             "  /outline <file>    Show file outline (symbol names and line numbers)\n"
             "  /scan <path>       Scan project directory and generate code summary\n"
@@ -177,6 +179,52 @@ void register_command_handlers(
         }
 
         LOG_INFO("Command", "  Tool '" + name + "' not found. Use /tools to list available tools.");
+    });
+
+    // ── /agent - list sub-agents ──────────────────────────
+    dispatcher.register_command("agent", [ag](const std::vector<std::string>&, std::string&) {
+        if (!ag) return;
+
+        bool has_any = false;
+
+        // Local sub-agents registered via MultiAgent server.
+        auto ma = ag->get_multi_agent();
+        if (ma && ma->is_enable()) {
+            auto local_agents = ma->get_local_agents();
+            if (!local_agents.empty()) {
+                LOG_INFO("Command", "\n--- Local Sub-Agents ---");
+                for (const auto& [name, desc] : local_agents) {
+                    std::string d = desc;
+                    if (d.size() > 80) d = d.substr(0, 77) + "...";
+                    LOG_INFO("Command", "  **" + name + "** - " + d);
+                }
+                has_any = true;
+            }
+
+            auto remote_clients = ma->get_remote_clients();
+            if (!remote_clients.empty()) {
+                LOG_INFO("Command", "\n--- Remote Clients ---");
+                for (const auto& rc : remote_clients) {
+                    std::string d = rc.description;
+                    if (d.size() > 80) d = d.substr(0, 77) + "...";
+                    LOG_INFO("Command", "  **" + rc.name + "** [" + rc.chat_id + "] - " + d);
+                }
+                has_any = true;
+            }
+        }
+
+        // SubAgentNet client (this instance connecting to a remote server).
+        auto sub_agent = ag->get_sub_agent();
+        if (sub_agent) {
+            LOG_INFO("Command", "\n--- Net Agent (Client Mode) ---");
+            std::string status = sub_agent->is_connected() ? "[Connected]" : "[Disconnected]";
+            LOG_INFO("Command", "  **" + sub_agent->get_name() + "** " + status + " - " + sub_agent->description());
+            has_any = true;
+        }
+
+        if (!has_any) {
+            LOG_INFO("Command", "  No sub-agents registered.");
+        }
     });
 
     // ── /model - interactive model switcher ────────────────

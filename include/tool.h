@@ -70,6 +70,9 @@ public:
     // Find a tool by name (returns nullptr if not found)
     ToolPtr find_tool(const std::string& tool_name);
 
+    // Unregister a tool by name (returns true if found and removed)
+    bool unregister_tool(const std::string& tool_name);
+
  private:
     std::unordered_map<std::string, ToolPtr> tools_;
 };

@@ -29,6 +29,7 @@
 [llm_agent]
 enable=true
 workdir = path1/ path2/ # 可以設定多組工作目錄
+description = 
 ```
 - 每個工作目錄建立一個 SubAgentLLM 實例，註冊為 Tool 加入 ToolRegistry
 
@@ -47,6 +48,9 @@ workdir = path1/ path2/ # 可以設定多組工作目錄
 enable=true
 url = ws://127.0.0.1:8765/ws
 confirm_mode = ask_server   # auto_yes | auto_no | ask_server
+name = 
+description = 
+
 ```
 
 - 設定項 enable=true && url 時候啟用

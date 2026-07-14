@@ -123,6 +123,14 @@ std::string GenerateFileOutline(const std::string& path);
 std::string GenerateFileOutline(const std::string& path, int startLine, int endLine);
 
 // -----------------------------------------------------------------------
+// Directory listing helper
+// -----------------------------------------------------------------------
+
+/// Generate a directory listing showing folders and files.
+/// Returns empty string on failure or if the path is not a directory.
+std::string GenerateDirectoryListing(const std::string& path);
+
+// -----------------------------------------------------------------------
 // Glob pattern matching helpers
 // -----------------------------------------------------------------------
 

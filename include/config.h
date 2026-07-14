@@ -136,6 +136,8 @@ struct Config {
         /// "auto_yes"   — always confirm
         /// "auto_no"    — always cancel
         std::string confirm_mode = "ask_server";
+        std::string name;                           // agent identity shown to remote server
+        std::string description;                    // brief description of this agent's role
     } net_agent;
 
     // ── Multi Agent (WebSocket server for remote clients) ─

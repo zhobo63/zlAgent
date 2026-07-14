@@ -1,1 +1,10 @@
-null
+{
+  "sessions": [
+    {
+      "message_count": 1,
+      "summary": "- No transcript or dialogue was provided in your message.\n- Please paste the full conversation you'd like summarized.\n- Once received, I will generate a one-line topic and 3–5 bullet points covering key actions, decisions, and outcomes.",
+      "timestamp": "2026-07-14T23:26:21",
+      "topic": "Awaiting conversation input for summarization"
+    }
+  ]
+}

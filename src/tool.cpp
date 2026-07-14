@@ -121,6 +121,15 @@ ToolPtr ToolRegistry::find_tool(const std::string& tool_name) {
     return nullptr;
 }
 
+bool ToolRegistry::unregister_tool(const std::string& tool_name) {
+    auto it = tools_.find(tool_name);
+    if (it != tools_.end()) {
+        tools_.erase(it);
+        return true;
+    }
+    return false;
+}
+
 std::string ToolRegistry::execute(const std::string& tool_name, const std::string& json_args) {
     auto ptr = find_tool(tool_name);
     if (ptr) {

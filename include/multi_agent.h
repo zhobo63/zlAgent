@@ -194,6 +194,17 @@ public:
     // Register a sub-agent and automatically wrap it as a Tool in the Agent's ToolRegistry.
     void register_agent(std::shared_ptr<SubAgent> agent);
 
+    // Get list of registered local sub-agents (name, description).
+    std::vector<std::pair<std::string, std::string>> get_local_agents() const;
+
+    // Get list of connected remote clients (chat_id, name, description).
+    struct RemoteClientInfo {
+        std::string chat_id;
+        std::string name;
+        std::string description;
+    };
+    std::vector<RemoteClientInfo> get_remote_clients() const;
+
 private:
     ToolRegistry& registry_;
 
@@ -204,14 +215,17 @@ private:
     // Track connected remote clients: chat_id -> WebSocket handle + tool info.
     struct RemoteClient {
         httplib::ws::WebSocket* ws = nullptr;
-        std::string name;
+        std::string name;               // registered tool name
         std::string description;
         std::atomic<bool> result_ready{false};
         std::string pending_result;
+        bool registered = false;         // whether a RemoteClientTool was registered
     };
-
-    std::mutex client_mutex_;
+    mutable std::mutex client_mutex_;
     std::map<std::string, RemoteClient> clients_;  // chat_id -> client info
+
+    // Track registered local sub-agents for listing.
+    mutable std::vector<std::shared_ptr<SubAgent>> local_agents_;
 
     // Send a task to a remote client and wait for result.
     std::string send_task_to_client(const std::string& chat_id, const std::string& task);

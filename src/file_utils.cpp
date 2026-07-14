@@ -1001,6 +1001,40 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
 }
 
 // -----------------------------------------------------------------------
+// Directory listing helper
+// -----------------------------------------------------------------------
+
+std::string GenerateDirectoryListing(const std::string& path) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(path) || !fs::is_directory(path)) return "";
+
+    std::string folders, files;
+    int folder_count = 0, file_count = 0;
+
+    for (const auto& entry : fs::directory_iterator(path)) {
+        std::string name = entry.path().filename().string();
+        if (name == "." || name == "..") continue;
+
+        if (entry.is_directory()) {
+            folders += "  " + name + "/\n";
+            folder_count++;
+        } else {
+            files += "  " + name + "\n";
+            file_count++;
+        }
+    }
+
+    std::ostringstream oss;
+    oss << "# Folders:\n";
+    if (folder_count > 0) oss << folders;
+    oss << "\n# Files:\n";
+    if (file_count > 0) oss << files;
+    oss << "\n(" << folder_count << " directories, " << file_count << " files)";
+
+    return oss.str();
+}
+
+// -----------------------------------------------------------------------
 // Glob pattern matching helpers
 // -----------------------------------------------------------------------
 

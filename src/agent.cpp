@@ -239,7 +239,9 @@ void Agent::load_config(const std::string& name)
     // Initialize SubAgentNet client if configured.
     if (cfg.net_agent.enabled && !cfg.net_agent.url.empty()) {
         LOG_INFO("NetAgent", "Initializing WebSocket client: " + cfg.net_agent.url);
-        sub_agent_ = std::make_shared<agent::SubAgentNet>("net_agent", "Remote agent connected via WebSocket");
+        std::string agent_name = cfg.net_agent.name.empty() ? "net_agent" : cfg.net_agent.name;
+        std::string agent_desc = cfg.net_agent.description.empty() ? "Remote agent connected via WebSocket" : cfg.net_agent.description;
+        sub_agent_ = std::make_shared<agent::SubAgentNet>(agent_name, agent_desc);
         SubAgentNet::Config net_cfg;
         net_cfg.enabled = true;
         net_cfg.url = cfg.net_agent.url;
@@ -550,6 +552,10 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
     static const std::regex file_ref_bare_re(
         R"(([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+))"
     );
+    // Regex for directory paths: must contain / or \ to avoid matching plain words
+    static const std::regex dir_ref_re(
+        R"(([a-zA-Z0-9_.-]+[/\\](?:[a-zA-Z0-9_.-]+[/\\]*)*))"
+    );
 
     std::string result = user_input;
     // We process matches from the original string and build a new result,
@@ -637,10 +643,52 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
             namespace fs = std::filesystem;
             if (!fs::exists(filepath)) continue;
 
-            std::string outline = GenerateFileOutline(filepath);
-            if (!outline.empty()) {
+            // If it's a directory, list its contents instead of generating an outline
+            if (fs::is_directory(filepath)) {
+                std::string listing = GenerateDirectoryListing(filepath);
+                if (!listing.empty()) {
+                    insertions.push_back({(size_t)(m.position() + m.length()),
+                        "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n"});
+                }
+            } else {
+                std::string outline = GenerateFileOutline(filepath);
+                if (!outline.empty()) {
+                    insertions.push_back({(size_t)(m.position() + m.length()),
+                        "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
+                }
+            }
+        }
+    }
+
+    // Also match directory paths — list contents
+    {
+        auto begin3 = std::sregex_iterator(user_input.begin(), user_input.end(), dir_ref_re);
+        for (auto it = begin3; it != end; ++it) {
+            std::smatch m = *it;
+            std::string filepath = m[1].str();
+
+            // Skip if already covered by a previous match
+            bool dominated = false;
+            for (const auto& ins : insertions) {
+                if (ins.pos >= (size_t)m.position() && ins.pos <= (size_t)(m.position() + m.length())) {
+                    dominated = true;
+                    break;
+                }
+            }
+            if (dominated) continue;
+
+            // Skip if already processed
+            std::string key = filepath + ":dir";
+            if (processed_file_keys_.count(key)) continue;
+            processed_file_keys_.insert(key);
+
+            namespace fs = std::filesystem;
+            if (!fs::exists(filepath) || !fs::is_directory(filepath)) continue;
+
+            std::string listing = GenerateDirectoryListing(filepath);
+            if (!listing.empty()) {
                 insertions.push_back({(size_t)(m.position() + m.length()),
-                    "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
+                    "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n"});
             }
         }
     }

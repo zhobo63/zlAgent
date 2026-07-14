@@ -417,12 +417,6 @@ void MultiAgent::start(int listen_port) {
                         std::string name = j.value("name", chat_id);
                         std::string description = j.value("description", "Remote agent: " + name);
 
-                        {
-                            std::lock_guard<std::mutex> lock(client_mutex_);
-                            clients_[chat_id].name = name;
-                            clients_[chat_id].description = description;
-                        }
-
                         // Register as a Tool in the registry.
                         auto tool = std::make_shared<RemoteClientTool>(
                             name, description, chat_id,
@@ -431,6 +425,13 @@ void MultiAgent::start(int listen_port) {
                             }
                         );
                         registry_.register_tool(tool);
+
+                        {
+                            std::lock_guard<std::mutex> lock(client_mutex_);
+                            clients_[chat_id].name = name;
+                            clients_[chat_id].description = description;
+                            clients_[chat_id].registered = true;
+                        }
 
                         LOG_INFO("MultiAgent", "Remote client registered as tool: " + name);
                     }
@@ -489,9 +490,18 @@ void MultiAgent::start(int listen_port) {
             }
         }
 
-        // Clean up on disconnect.
-        std::lock_guard<std::mutex> lock(client_mutex_);
-        clients_.erase(chat_id);
+        // Clean up on disconnect: unregister tool and remove client record.
+        {
+            std::lock_guard<std::mutex> lock(client_mutex_);
+            auto it = clients_.find(chat_id);
+            if (it != clients_.end()) {
+                if (it->second.registered && !it->second.name.empty()) {
+                    registry_.unregister_tool(it->second.name);
+                    LOG_INFO("MultiAgent", "Unregistered remote tool: " + it->second.name);
+                }
+                clients_.erase(it);
+            }
+        }
     });
 
     server_thread_ = std::thread([this, listen_port]() {
@@ -557,8 +567,30 @@ std::string MultiAgent::send_task_to_client(const std::string& chat_id, const st
 }
 
 void MultiAgent::register_agent(std::shared_ptr<SubAgent> agent) {
+    local_agents_.push_back(agent);
     auto tool = std::make_shared<SubAgentTool>(agent);
     registry_.register_tool(tool);
+}
+
+std::vector<std::pair<std::string, std::string>> MultiAgent::get_local_agents() const {
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto& a : local_agents_) {
+        result.emplace_back(a->get_name(), a->description());
+    }
+    return result;
+}
+
+std::vector<MultiAgent::RemoteClientInfo> MultiAgent::get_remote_clients() const {
+    std::lock_guard<std::mutex> lock(client_mutex_);
+    std::vector<RemoteClientInfo> result;
+    for (const auto& [cid, rc] : clients_) {
+        RemoteClientInfo info;
+        info.chat_id = cid;
+        info.name = rc.name.empty() ? cid : rc.name;
+        info.description = rc.description;
+        result.push_back(info);
+    }
+    return result;
 }
 
 } // namespace agent
