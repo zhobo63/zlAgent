@@ -293,8 +293,8 @@ void EditFile::apply_blocks(EditLines& out_lines) {
                 return;
             if (!block.new_content.empty()) {
                 auto replace_lines = split_lines(block.new_content);
-                for (int rl = 0; rl < replace_lines.size() - 1; rl++) {
-                    result.push_back(replace_lines[rl]);
+                for (auto& rl : replace_lines) {
+                    result.push_back(rl);
                 }
             }
             current_line = block.end + 1;
