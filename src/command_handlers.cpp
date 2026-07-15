@@ -27,6 +27,7 @@ void register_command_handlers(
         "/h", "/help", "/status", "/config",
         "/skills", "/tools", "/tool",
         "/agent",
+        "/task",
         "/model",
         "/facts", "/sessions", "/summary", "/new", "/save",
         "/search-kb", "/add-doc",
@@ -224,6 +225,77 @@ void register_command_handlers(
 
         if (!has_any) {
             LOG_INFO("Command", "  No sub-agents registered.");
+        }
+    });
+
+    // ── /task <name> <task> - send task to a specific sub-agent ────────────────
+    dispatcher.register_command("task", [ag](const std::vector<std::string>& args, std::string& response) {
+        if (!ag) return;
+
+        // Need at least: /task <name> <task>
+        if (args.size() < 2) {
+            LOG_INFO("Command", "Usage: /task <agent_name> <task_description>");
+            LOG_INFO("Command", "Example: /task reviewer Please review the latest changes");
+
+            // List available agents for convenience.
+            auto ma = ag->get_multi_agent();
+            if (ma && ma->is_enable()) {
+                auto local_agents = ma->get_local_agents();
+                if (!local_agents.empty()) {
+                    LOG_INFO("Command", "\nAvailable sub-agents:");
+                    for (const auto& [name, desc] : local_agents) {
+                        std::string d = desc;
+                        if (d.size() > 60) d = d.substr(0, 57) + "...";
+                        LOG_INFO("Command", "  - " + name + ": " + d);
+                    }
+                }
+            }
+
+            auto tools = ag->get_tools();
+            if (!tools.empty()) {
+                bool has_sub_agent_tool = false;
+                for (const auto& tool : tools) {
+                    // SubAgentTool names match registered sub-agents.
+                    std::string name = tool->name();
+                    if (ma && ma->is_enable()) {
+                        auto local_agents = ma->get_local_agents();
+                        for (const auto& [an, ad] : local_agents) {
+                            if (an == name) { has_sub_agent_tool = true; break; }
+                        }
+                    }
+                }
+            }
+
+            return;
+        }
+
+        std::string agent_name = args[0];
+        // Reconstruct the task from remaining args.
+        std::string task;
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (!task.empty()) task += " ";
+            task += args[i];
+        }
+
+        // Try to find the sub-agent tool by name.
+        auto tool = ag->get_tool(agent_name);
+        if (!tool) {
+            LOG_WARN("Command", "Sub-agent not found: " + agent_name);
+            return;
+        }
+
+        LOG_INFO("Command", "Sending task to **" + agent_name + "**: " + task);
+        nlohmann::json args_json;
+        args_json["task"] = task;
+        std::string result = tool->execute(args_json.dump());
+
+        // Display the result, truncating if too long.
+        if (result.size() > 2000) {
+            LOG_INFO("Command", "Result from **" + agent_name + "**:");
+            LOG_INFO("Command", result.substr(0, 1997) + "...");
+        } else {
+            LOG_INFO("Command", "Result from **" + agent_name + "**:");
+            LOG_INFO("Command", result);
         }
     });
 
@@ -446,8 +518,14 @@ void register_command_handlers(
         }
 
         LOG_INFO("Command", "  Saving session to long-term memory...");
-        ltm->save_session(ag->get_memory(), ag->get_llm());
-        LOG_INFO("Command", "  Session saved successfully.");
+        ltm->save_session(ag->get_memory());
+
+        LOG_INFO("Command", "  Generating summary and extracting facts...");
+        if (ltm->summarize_session(ag->get_memory(), ag->get_llm())) {
+            LOG_INFO("Command", "  Session saved successfully.");
+        } else {
+            LOG_WARN("Command", "  Failed to summarize session.");
+        }
     });
 
     // ── /search-kb query ────────────────────────────────

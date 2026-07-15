@@ -47,8 +47,14 @@ public:
 
     // ── Session Management ────────────────────────
 
-    // Save current working memory as a session: generate summary + extract facts via LLM.
-    void save_session(Memory& working_memory, LLMClient& llm);
+    // Save current working memory as a raw session: only stores timestamp and message count.
+    // No LLM calls — fast, suitable for automatic save on exit.
+    void save_session(Memory& working_memory);
+
+    // Generate summary + extract facts via LLM for the most recent saved session.
+    // This is an optional post-processing step; call manually (e.g. /summary, /save).
+    // Returns true if a session was summarized successfully.
+    bool summarize_session(Memory& working_memory, LLMClient& llm);
 
     // Get the N most recent session summaries (newest first).
     std::vector<SessionSummary> get_recent_sessions(int n = 10) const;

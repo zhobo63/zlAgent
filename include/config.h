@@ -121,10 +121,18 @@ struct Config {
         std::vector<int64_t> allowed_chat_ids;      // empty = allow all
     } telegram;
 
-    // ── LLM Agent (SubAgentLLM workdirs) ───────────
+    // ── LLM Agent (SubAgentLLM instances) ───────────
+    struct LlmAgentEntry {
+        bool enabled = true;
+        std::string workdir;                        // working directory for this sub-agent
+        std::string name;                           // agent identity (used as tool name)
+        std::string description;                    // brief description of this agent's role
+        std::string system_prompt;                  // custom system prompt (overrides built-in)
+    };
+
     struct LlmAgent {
         bool enabled = false;
-        std::vector<std::string> workdirs;          // comma-separated in INI
+        std::vector<LlmAgentEntry> agents;          // parsed from [llm_agent:name] sections
     } llm_agent;
 
     // ── Net Agent (WebSocket client to remote server) ─

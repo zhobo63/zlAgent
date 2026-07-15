@@ -31,6 +31,7 @@ namespace agent {
 class Agent {
 public:
     Agent();
+    virtual ~Agent();
 
     // Load configuration from zlagent.ini (falls back to defaults if not found).
     void load_config(const std::string& name = "zlagent.ini");

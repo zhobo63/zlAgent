@@ -353,17 +353,24 @@ Config Config::load(const std::string& ini_path) {
         }
     }
 
-    // --- [llm_agent] section ---
-    {
-        auto it = data.find("llm_agent");
-        if (it != data.end()) {
+    // --- [llm_agent:name] sections ---
+    for (auto it = data.begin(); it != data.end(); ++it) {
+        if (it->first.substr(0, 11) == "llm_agent:") {
             const auto& s = it->second;
-            read_bool(s, "enabled", cfg.llm_agent.enabled, false);
-            std::string workdirs_str;
-            read_if_exists(s, "workdirs", workdirs_str);
-            if (!workdirs_str.empty()) {
-                cfg.llm_agent.workdirs = Config::split_csv(workdirs_str);
+            std::string agent_name = it->first.substr(12); // part after "llm_agent:"
+
+            LlmAgentEntry entry;
+            read_bool(s, "enabled", entry.enabled, true);
+            read_if_exists(s, "workdir", entry.workdir);
+            read_if_exists(s, "name", entry.name);
+            if (entry.name.empty()) {
+                entry.name = agent_name; // fallback to section suffix
             }
+            read_if_exists(s, "description", entry.description);
+            read_if_exists(s, "system_prompt", entry.system_prompt);
+
+            cfg.llm_agent.enabled = true;
+            cfg.llm_agent.agents.push_back(entry);
         }
     }
 
@@ -411,7 +418,7 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
 
     bool first_section = true;
 
-    auto write_section = [&](const char* name, const std::map<std::string, std::string>& kvs) {
+    auto write_section = [&](const std::string &name, const std::map<std::string, std::string>& kvs) {
         if (!first_section) out << "\n";
         out << "[" << name << "]\n";
         for (const auto& [k, v] : kvs) {
@@ -565,19 +572,15 @@ bool Config::save(const Config& cfg, const std::string& ini_path) {
         write_section("telegram", kvs);
     }
 
-    // [llm_agent]
-    {
+    // [llm_agent:name] sections
+    for (const auto& entry : cfg.llm_agent.agents) {
         std::map<std::string, std::string> kvs;
-        kvs["enabled"] = cfg.llm_agent.enabled ? "true" : "false";
-        if (!cfg.llm_agent.workdirs.empty()) {
-            std::string dirs;
-            for (const auto& d : cfg.llm_agent.workdirs) {
-                if (!dirs.empty()) dirs += ", ";
-                dirs += d;
-            }
-            kvs["workdirs"] = dirs;
-        }
-        write_section("llm_agent", kvs);
+        kvs["enabled"]       = entry.enabled ? "true" : "false";
+        kvs["workdir"]       = entry.workdir;
+        kvs["name"]          = entry.name;
+        kvs["description"]   = entry.description;
+        kvs["system_prompt"] = entry.system_prompt;
+        write_section("llm_agent:" + entry.name, kvs);
     }
 
     // [net_agent]

@@ -56,6 +56,13 @@ void SubAgentLLM::set_workdir(const std::string workdir)
     description_ = "Sub-agent working in: " + workdir + "\n" + summary_resp.content;
 }
 
+void SubAgentLLM::set_system_prompt(const std::string& prompt)
+{
+    if (agent_ && !prompt.empty()) {
+        agent_->set_system_prompt(prompt);
+    }
+}
+
 ChatResponse SubAgentLLM::run_loop(const std::string& task) {
     ChatResponse response;
     

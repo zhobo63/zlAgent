@@ -51,6 +51,10 @@ public:
     // as the tool description for LLM routing.
     void set_workdir(const std::string workdir);
 
+    // Override the system prompt of the internal agent. If empty, the built-in
+    // or config-based system prompt is used instead.
+    void set_system_prompt(const std::string& prompt);
+
     ChatResponse run_loop(const std::string& task) override;
 private:
     mutable std::unique_ptr<Agent> agent_;
@@ -182,6 +186,7 @@ private:
 class MultiAgent {
 public:
     explicit MultiAgent(ToolRegistry& registry);
+    virtual ~MultiAgent() { stop(); }
 
     bool is_enable() const;
 

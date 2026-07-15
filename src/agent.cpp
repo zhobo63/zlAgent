@@ -25,6 +25,13 @@ void set_global_agent(Agent* ag) { g_agent = ag; }
 
 Agent::Agent() {}
 
+Agent::~Agent()
+{
+    if (multi_agent_) {
+        multi_agent_->stop();
+    }
+}
+
 void Agent::load_config(const std::string& name)
 {
     config_ = Config::load(name);
@@ -249,17 +256,20 @@ void Agent::load_config(const std::string& name)
         sub_agent_->start(net_cfg);
     }
 
-    // Initialize SubAgentLLM instances for each workdir.
+    // Initialize SubAgentLLM instances for each llm_agent entry.
     if (cfg.llm_agent.enabled) {
         LOG_INFO("LlmAgent", "Initializing LLM sub-agents");
-        for (const auto& workdir : cfg.llm_agent.workdirs) {
-            std::string basename = std::filesystem::path(workdir).filename().string();
-            std::string agent_name = "llm_agent_" + basename;
+        for (const auto& entry : cfg.llm_agent.agents) {
+            if (!entry.enabled) continue;
 
-            LOG_INFO("LlmAgent", "Creating sub-agent: " + agent_name + " (workdir: " + workdir + ")");
+            std::string agent_name = entry.name.empty() ? "llm_agent_" + std::filesystem::path(entry.workdir).filename().string() : entry.name;
+            LOG_INFO("LlmAgent", "Creating sub-agent: " + agent_name + " (workdir: " + entry.workdir + ")");
 
-            auto sub_agent = std::make_shared<agent::SubAgentLLM>(agent_name);
-            sub_agent->set_workdir(workdir);
+            auto sub_agent = std::make_shared<agent::SubAgentLLM>(agent_name, entry.description);
+            sub_agent->set_workdir(entry.workdir);
+            if (!entry.system_prompt.empty()) {
+                sub_agent->set_system_prompt(entry.system_prompt);
+            }
 
             // Register with MultiAgent if available, otherwise register directly.
             if (multi_agent_) {
@@ -533,8 +543,9 @@ void Agent::new_session()
 void Agent::save_session()
 {
     if (long_term_memory_) {
+        // Fast save — no LLM calls. Just stores timestamp and message count.
         TUI::out("\nSaving session to long-term memory...\n");
-        long_term_memory_->save_session(memory_, llm_);
+        long_term_memory_->save_session(memory_);
     }
 
 }

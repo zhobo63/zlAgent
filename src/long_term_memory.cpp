@@ -140,18 +140,54 @@ std::vector<std::pair<std::string, std::string>> LongTermMemory::extract_facts(
     return facts;
 }
 
-void LongTermMemory::save_session(Memory& working_memory, LLMClient& llm) {
+void LongTermMemory::save_session(Memory& working_memory) {
     const auto& messages = working_memory.get_messages();
     if (messages.empty()) return;
 
     std::string ts = current_timestamp();
 
-    // Generate summary.
-    std::string raw_summary = generate_summary(messages, llm);
+    // Use the first user message as the topic.
+    std::string topic;
+    for (const auto& m : messages) {
+        if (m.role == "user" && !m.content.empty()) {
+            topic = m.content;
+            break;
+        }
+    }
+    // Truncate if too long.
+    const size_t max_topic_len = 120;
+    if (topic.size() > max_topic_len) {
+        topic = topic.substr(0, max_topic_len - 3) + "...";
+    }
 
     SessionSummary session;
     session.timestamp = ts;
+    session.topic = std::move(topic);
+    session.summary = "";        // no LLM — summary will be filled by summarize_session()
     session.message_count = static_cast<int>(messages.size());
+
+    // Insert at the front (newest first).
+    sessions_.insert(sessions_.begin(), std::move(session));
+
+    // Trim to max_sessions.
+    while (static_cast<int>(sessions_.size()) > cfg_.max_sessions) {
+        sessions_.pop_back();
+    }
+
+    // Persist to disk — no LLM calls, just write JSON.
+    save();
+}
+
+bool LongTermMemory::summarize_session(Memory& working_memory, LLMClient& llm) {
+    if (sessions_.empty()) return false;
+
+    const auto& messages = working_memory.get_messages();
+    if (messages.empty()) return false;
+
+    // Generate summary.
+    std::string raw_summary = generate_summary(messages, llm);
+
+    SessionSummary& session = sessions_[0];  // most recent is at front
 
     // Parse topic and summary from the combined string.
     size_t nl_pos = raw_summary.find('\n');
@@ -163,14 +199,6 @@ void LongTermMemory::save_session(Memory& working_memory, LLMClient& llm) {
         session.summary = raw_summary;
     }
 
-    // Insert at the front (newest first).
-    sessions_.insert(sessions_.begin(), std::move(session));
-
-    // Trim to max_sessions.
-    while (static_cast<int>(sessions_.size()) > cfg_.max_sessions) {
-        sessions_.pop_back();
-    }
-
     // Extract facts if enabled.
     if (cfg_.auto_extract_facts) {
         auto extracted = extract_facts(messages, llm);
@@ -178,14 +206,15 @@ void LongTermMemory::save_session(Memory& working_memory, LLMClient& llm) {
             FactEntry entry;
             entry.key = key;
             entry.value = value;
-            entry.source_session = ts;
-            entry.timestamp = ts;
+            entry.source_session = session.timestamp;
+            entry.timestamp = current_timestamp();
             facts_[key] = std::move(entry);
         }
     }
 
     // Persist to disk.
     save();
+    return true;
 }
 
 std::vector<SessionSummary> LongTermMemory::get_recent_sessions(int n) const {
