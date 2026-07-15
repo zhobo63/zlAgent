@@ -4,6 +4,7 @@
 
 #include "tools.h"
 #include "safety_guard.h"
+#include "file_utils.h"
 
 using namespace agent;
 namespace fs = std::filesystem;
@@ -915,54 +916,47 @@ void test_edit_files_tools(UnitReport& parent)
         // line1:  `confirm_request` | ...
         // line2:  `confirm_response` | ...
         // line3:  (blank)
-        // line4:  ```ini
         // line5:  [net_agent]
-        // line6:  enable=true
-        // line7:  url = ws://127.0.0.1:8765/ws
         // line8:  confirm_mode = ask_server
         // line9:  ```
         // line10: (blank)
         // line11: #### flow
+
         std::ofstream out(fs::path(dir) / "md.txt", std::ios::binary);
         out << "`confirm_request` | Client -> Server\n";
         out << "`confirm_response` | Server -> Client\n";
         out << "\n";                          // blank line 3
-        out << "```ini\n";
         out << "[net_agent]\n";
-        out << "enable=true\n";
-        out << "url = ws://127.0.0.1:8765/ws\n";
         out << "confirm_mode = ask_server\n";
         out << "```\n";
-        out << "\n";                          // blank line 10
+        out << "\n";                          // blank line 7
         out << "#### flow\n";
         out.close();
 
         auto tool = create_edit_files_tool();
         json args;
 
-        // Replace lines 2-10 (includes blank lines at 3 and 10)
+        // Replace lines 2-3 (includes blank lines at 3 and 7)
         // new_text must also include the blank lines to keep line count correct
         {
             json op;
             op["path"] = dir + "/md.txt";
             op["start_line"] = 2;
-            op["end_line"] = 10;
-            // new_text: replace with "#### Config 設定" section, preserving blank lines
+            op["end_line"] = 7;
+            // new_text: replace with "#### Config setup" section, preserving blank lines
             op["new_text"] =
-                "`confirm_response` | Server -> Client\n"
-                "\n"                                          // blank line (was line 3)
-                "#### Config setup\n"
-                "\n"                                          // blank line after heading
-                "```ini\n"
-                "[net_agent]\n"
-                "enable=true\n"
-                "url = ws://127.0.0.1:8765/ws\n"
-                "confirm_mode = ask_server   # auto_yes | auto_no | ask_server\n"
-                "```\n"
-                "\n";                                         // blank line (was line 10)
+R"(`confirm_response` | Server -> Client
+
+#### Config setup
+
+[net_agent]
+confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
+```
+)";
             args["replace_line_range"] = json::array({op});
 
             auto new_text = op.value("new_text", "");
+            LOG_DEBUG("replace_line_range", "\n" + new_text);
         }
 
         auto args_str = args.dump();
@@ -975,6 +969,8 @@ void test_edit_files_tools(UnitReport& parent)
         std::ifstream in(fs::path(dir) / "md.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
+        std::cout << content << std::endl;
+
         // Verify the blank lines are preserved by comparing full content
         UNIT_TEST("content_correct", content ==
             "`confirm_request` | Client -> Server\n"
@@ -982,11 +978,8 @@ void test_edit_files_tools(UnitReport& parent)
             "\n"
             "#### Config setup\n"
             "\n"
-            "```ini\n"
             "[net_agent]\n"
-            "enable=true\n"
-            "url = ws://127.0.0.1:8765/ws\n"
-            "confirm_mode = ask_server   # auto_yes | auto_no | ask_server\n"
+            "confirm_mode = auto_yes   # auto_yes | auto_no | ask_server\n"
             "```\n"
             "\n"
             "#### flow\n");

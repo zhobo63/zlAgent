@@ -963,23 +963,29 @@ that entire file is rolled back. Files are independent of each other.)";
                     if (strcmp(type_name, "replace_line_range") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
+                        auto new_text = op.value("new_text", "");
                         std::cout << "    replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
+                        std::cout << "===\n" << new_text << "\n===\n";
                     } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
+                        auto new_text = op.value("new_text", "");
                         std::cout << "    insert_before_line: '" << path << "' before line " << line_num << '\n';
+                        std::cout << "===\n" << new_text << "\n===\n";
                     } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
+                        auto new_text = op.value("new_text", "");
                         std::cout << "    insert_after_line: '" << path << "' after line " << line_num << '\n';
+                        std::cout << "===\n" << new_text << "\n===\n";
                     } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         std::cout << "    delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
                     } else if (strcmp(type_name, "replace_text") == 0) {
                         std::string old_text = op.value("old_text", "");
-                        size_t nl = old_text.find('\n');
-                        std::string preview = (nl != std::string::npos) ? old_text.substr(0, nl) : old_text;
-                        if (preview.size() > 60) preview = preview.substr(0, 57) + "...";
-                        std::cout << "    replace_text: '" << path << "' '" << preview << "'\n";
+                        auto new_text = op.value("new_text", "");
+                        std::cout << "    replace_text: '" << path;
+                        std::cout << "\n=== old_text===\n" << old_text << "\n===\n";
+                        std::cout << "\n=== new_text===\n" << new_text << "\n===\n";
                     }
                 }
             };

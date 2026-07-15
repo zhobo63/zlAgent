@@ -440,7 +440,7 @@ static void test_edit_file(UnitReport& parent)
 
         EditFile ef;
         ef.read_file((fs::path(dir) / "test.txt").string());
-        ef.insert_before_line(2, "inserted");
+        ef.insert_before_line(2, "inserted1\ninserted2");
 
         std::string err;
         UNIT_TEST("validate_ok", ef.validate_blocks(err));
@@ -448,8 +448,8 @@ static void test_edit_file(UnitReport& parent)
         EditLines out;
         ef.apply_blocks(out);
         // split_lines: ["line1","line2","line3",""]
-        // insert_before_line(2, "inserted") → ["line1","inserted","line2","line3",""]
-        UNIT_TEST("content_correct", out.to_string() == "line1\ninserted\nline2\nline3\n");
+        // insert_before_line(2, "inserted1","inserted2") → ["line1","inserted1","inserted2","line2","line3",""]
+        UNIT_TEST("content_correct", out.to_string() == "line1\ninserted1\ninserted2\nline2\nline3\n");
     }
     {
         LOG_INFO("file_utils", "editfile_insert_after_line");
