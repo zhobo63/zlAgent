@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <mutex>
 #include <string>
 #include <vector>
 #include <map>
@@ -90,6 +91,7 @@ public:
     // Current timestamp as ISO-8601 string (local time).
     static std::string current_timestamp();
 private:
+    mutable std::mutex mutex_;               // protects sessions_ and facts_
     Config cfg_;
     std::vector<SessionSummary> sessions_;   // newest first
     std::map<std::string, FactEntry> facts_;  // key -> fact
@@ -103,9 +105,5 @@ private:
         const std::vector<ChatMessage>& messages, LLMClient& llm);
 
 };
-
-// Global long-term memory accessor (set by main.cpp, used by memory tools).
-LongTermMemory* get_global_long_term_memory();
-void set_global_long_term_memory(LongTermMemory* ltm);
 
 } // namespace agent

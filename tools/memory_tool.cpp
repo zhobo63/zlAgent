@@ -11,7 +11,10 @@ using json = nlohmann::json;
 // SearchMemoriesTool - semantic search over past session summaries via RAG
 // -----------------------------------------------------------------------
 class SearchMemoriesTool : public Tool {
+    LongTermMemory* ltm_;  // non-owning; lifetime managed by Agent
 public:
+    explicit SearchMemoriesTool(LongTermMemory* memory) : ltm_(memory) {}
+
     std::string name() const override { return "search_memories"; }
     std::string description() const override {
         return "Search past conversation sessions for relevant context. "
@@ -39,9 +42,9 @@ public:
             int top_k = args.value("top_k", 3);
 
             if (query.empty()) return "Error: Query is required.";
-            if (!agent::get_global_long_term_memory()) return "Error: Long-term memory not initialized.";
+            if (!ltm_) return "Error: Long-term memory not initialized.";
 
-            auto sessions = agent::get_global_long_term_memory()->get_recent_sessions(top_k * 2);
+            auto sessions = ltm_->get_recent_sessions(top_k * 2);
             if (sessions.empty()) {
                 return "No past sessions found in long-term memory.";
             }
@@ -119,7 +122,10 @@ public:
 // RecallFactsTool - retrieve structured facts by key prefix
 // -----------------------------------------------------------------------
 class RecallFactsTool : public Tool {
+    LongTermMemory* ltm_;  // non-owning; lifetime managed by Agent
 public:
+    explicit RecallFactsTool(LongTermMemory* memory) : ltm_(memory) {}
+
     std::string name() const override { return "recall_facts"; }
     std::string description() const override {
         return "Retrieve stored facts from long-term memory. "
@@ -143,9 +149,9 @@ public:
             }
             std::string prefix = args.value("prefix", "");
 
-            if (!agent::get_global_long_term_memory()) return "Error: Long-term memory not initialized.";
+            if (!ltm_) return "Error: Long-term memory not initialized.";
 
-            auto facts = agent::get_global_long_term_memory()->get_facts(prefix);
+            auto facts = ltm_->get_facts(prefix);
             if (facts.empty()) {
                 return prefix.empty()
                     ? "No facts stored in long-term memory."
@@ -170,12 +176,12 @@ public:
     }
 };
 
-ToolPtr create_search_memories_tool() {
-    return std::make_shared<SearchMemoriesTool>();
+ToolPtr create_search_memories_tool(LongTermMemory* ltm) {
+    return std::make_shared<SearchMemoriesTool>(ltm);
 }
 
-ToolPtr create_recall_facts_tool() {
-    return std::make_shared<RecallFactsTool>();
+ToolPtr create_recall_facts_tool(LongTermMemory* ltm) {
+    return std::make_shared<RecallFactsTool>(ltm);
 }
 
 } // namespace agent

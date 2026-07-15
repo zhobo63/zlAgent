@@ -77,7 +77,7 @@ void register_command_handlers(
     dispatcher.register_command("help", show_help);
 
     // ── /status ────────────────────────────────────────
-    dispatcher.register_command("status", [ag](const std::vector<std::string>&, std::string&) {
+    dispatcher.register_command("status", [ag, long_term_memory, rag_manager](const std::vector<std::string>&, std::string&) {
         if (!ag) return;
         int tool_count = static_cast<int>(ag->get_tool_names().size());
         LOG_INFO("Command", "\n--- Agent Status ---\n  Tools registered: " + std::to_string(tool_count) + "\n");
@@ -94,18 +94,15 @@ void register_command_handlers(
         }
 
         // Long-term memory.
-        auto ltm = get_global_long_term_memory();
-        if (ltm) {
-            auto sessions = ltm->get_recent_sessions(1);
+        if (long_term_memory) {
             LOG_INFO("Command", "  Long-term memory: " +
-                      std::to_string(ltm->get_recent_sessions(100).size()) + " sessions, " +
-                      std::to_string(ltm->get_facts().size()) + " facts\n");
+                      std::to_string(long_term_memory->get_recent_sessions(100).size()) + " sessions, " +
+                      std::to_string(long_term_memory->get_facts().size()) + " facts\n");
         }
 
         // RAG.
-        auto rag = get_global_rag_manager();
-        if (rag) {
-            LOG_INFO("Command", "  RAG chunks: " + std::to_string(rag->total_chunks()) + "\n");
+        if (rag_manager) {
+            LOG_INFO("Command", "  RAG chunks: " + std::to_string(rag_manager->total_chunks()) + "\n");
         }
     });
 
@@ -381,8 +378,8 @@ void register_command_handlers(
     });
 
     // ── /facts [prefix] ────────────────────────────────
-    dispatcher.register_command("facts", [](const std::vector<std::string>& args, std::string&) {
-        auto ltm = get_global_long_term_memory();
+    dispatcher.register_command("facts", [long_term_memory](const std::vector<std::string>& args, std::string&) {
+        auto ltm = long_term_memory;
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
@@ -412,8 +409,8 @@ void register_command_handlers(
     });
 
     // ── /sessions [n] ────────────────────────────────
-    dispatcher.register_command("sessions", [](const std::vector<std::string>& args, std::string&) {
-        auto ltm = get_global_long_term_memory();
+    dispatcher.register_command("sessions", [long_term_memory](const std::vector<std::string>& args, std::string&) {
+        auto ltm = long_term_memory;
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
@@ -506,8 +503,8 @@ void register_command_handlers(
     });
 
     // ── /save ────────────────────────────────────────
-    dispatcher.register_command("save", [ag](const std::vector<std::string>&, std::string&) {
-        auto ltm = get_global_long_term_memory();
+    dispatcher.register_command("save", [ag, long_term_memory](const std::vector<std::string>&, std::string&) {
+        auto ltm = long_term_memory;
         if (!ltm) {
             LOG_INFO("Command", "  Long-term memory not initialized.");
             return;
@@ -529,7 +526,7 @@ void register_command_handlers(
     });
 
     // ── /search-kb query ────────────────────────────────
-    dispatcher.register_command("search-kb", [](const std::vector<std::string>& args, std::string&) {
+    dispatcher.register_command("search-kb", [rag_manager](const std::vector<std::string>& args, std::string&) {
         if (args.empty()) {
             LOG_INFO("Command", "  Usage: /search-kb <query>");
             return;
@@ -542,7 +539,7 @@ void register_command_handlers(
             query += args[i];
         }
 
-        auto rag = get_global_rag_manager();
+        auto rag = rag_manager;
         if (!rag) {
             LOG_INFO("Command", "  RAG knowledge base not initialized.");
             return;
@@ -578,13 +575,13 @@ void register_command_handlers(
     });
 
     // ── /add-doc path ────────────────────────────────
-    dispatcher.register_command("add-doc", [](const std::vector<std::string>& args, std::string&) {
+    dispatcher.register_command("add-doc", [rag_manager](const std::vector<std::string>& args, std::string&) {
         if (args.empty()) {
             LOG_INFO("Command", "  Usage: /add-doc <file_or_directory_path>");
             return;
         }
 
-        auto rag = get_global_rag_manager();
+        auto rag = rag_manager;
         if (!rag) {
             LOG_INFO("Command", "  RAG knowledge base not initialized.");
             return;

@@ -1520,8 +1520,7 @@ public:
 
             // Read the file
             std::vector<std::string> lines;
-            bool has_trailing_newline = false;
-            if (!agent::read_file_lines(path, lines, &has_trailing_newline)) {
+            if (!agent::read_file_lines(path, lines)) {
                 return "Error: Cannot open file '" + path + "'";
             }
 
@@ -1544,7 +1543,7 @@ public:
 
             LOG_DEBUG("InsertFileContentTool", "execute path:" + path + " line:" + std::to_string(line_number) + " content:" + std::to_string(content.length()) + "bytes");
             // Write back
-            if (!agent::write_file_lines(path, lines, has_trailing_newline)) {
+            if (!agent::write_file_lines(path, lines)) {
                 return "Error: Cannot write to file '" + path + "'";
             }
 

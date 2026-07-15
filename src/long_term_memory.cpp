@@ -12,17 +12,6 @@ namespace agent {
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-// Global long-term memory pointer (set by main.cpp, used by memory tools).
-static LongTermMemory* g_long_term_memory = nullptr;
-
-void set_global_long_term_memory(LongTermMemory* ltm) {
-    g_long_term_memory = ltm;
-}
-
-LongTermMemory* get_global_long_term_memory() {
-    return g_long_term_memory;
-}
-
 // ============================================================================
 // LongTermMemory
 // ============================================================================
@@ -166,43 +155,62 @@ void LongTermMemory::save_session(Memory& working_memory) {
     session.summary = "";        // no LLM — summary will be filled by summarize_session()
     session.message_count = static_cast<int>(messages.size());
 
-    // Insert at the front (newest first).
-    sessions_.insert(sessions_.begin(), std::move(session));
-
-    // Trim to max_sessions.
-    while (static_cast<int>(sessions_.size()) > cfg_.max_sessions) {
-        sessions_.pop_back();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        // Insert at the front (newest first).
+        sessions_.insert(sessions_.begin(), std::move(session));
+        // Trim to max_sessions.
+        while (static_cast<int>(sessions_.size()) > cfg_.max_sessions) {
+            sessions_.pop_back();
+        }
     }
 
-    // Persist to disk — no LLM calls, just write JSON.
+    // Persist to disk — no LLM calls, just write JSON. (outside lock)
     save();
 }
 
 bool LongTermMemory::summarize_session(Memory& working_memory, LLMClient& llm) {
-    if (sessions_.empty()) return false;
+    bool has_sessions = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (sessions_.empty()) return false;
+        has_sessions = true;
+    }
 
     const auto& messages = working_memory.get_messages();
     if (messages.empty()) return false;
 
-    // Generate summary.
+    // Generate summary — LLM call outside lock.
     std::string raw_summary = generate_summary(messages, llm);
 
-    SessionSummary& session = sessions_[0];  // most recent is at front
-
-    // Parse topic and summary from the combined string.
-    size_t nl_pos = raw_summary.find('\n');
-    if (nl_pos != std::string::npos) {
-        session.topic = raw_summary.substr(0, nl_pos);
-        session.summary = raw_summary.substr(nl_pos + 1);
-    } else {
-        session.topic = "General conversation";
-        session.summary = raw_summary;
+    // Extract facts if enabled — LLM call outside lock.
+    std::vector<std::pair<std::string, std::string>> extracted_facts;
+    bool do_extract = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        do_extract = cfg_.auto_extract_facts;
+    }
+    if (do_extract) {
+        extracted_facts = extract_facts(messages, llm);
     }
 
-    // Extract facts if enabled.
-    if (cfg_.auto_extract_facts) {
-        auto extracted = extract_facts(messages, llm);
-        for (const auto& [key, value] : extracted) {
+    // Mutate shared state under lock.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        SessionSummary& session = sessions_[0];  // most recent is at front
+
+        // Parse topic and summary from the combined string.
+        size_t nl_pos = raw_summary.find('\n');
+        if (nl_pos != std::string::npos) {
+            session.topic = raw_summary.substr(0, nl_pos);
+            session.summary = raw_summary.substr(nl_pos + 1);
+        } else {
+            session.topic = "General conversation";
+            session.summary = raw_summary;
+        }
+
+        // Store extracted facts.
+        for (const auto& [key, value] : extracted_facts) {
             FactEntry entry;
             entry.key = key;
             entry.value = value;
@@ -212,12 +220,13 @@ bool LongTermMemory::summarize_session(Memory& working_memory, LLMClient& llm) {
         }
     }
 
-    // Persist to disk.
+    // Persist to disk — outside lock.
     save();
     return true;
 }
 
 std::vector<SessionSummary> LongTermMemory::get_recent_sessions(int n) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (n <= 0 || sessions_.empty()) return {};
     int count = std::min(n, static_cast<int>(sessions_.size()));
     return std::vector<SessionSummary>(sessions_.begin(), sessions_.begin() + count);
@@ -230,10 +239,12 @@ void LongTermMemory::add_fact(const std::string& key, const std::string& value) 
     entry.key = key;
     entry.value = value;
     entry.timestamp = current_timestamp();
+    std::lock_guard<std::mutex> lock(mutex_);
     facts_[key] = std::move(entry);
 }
 
 std::vector<FactEntry> LongTermMemory::get_facts(const std::string& prefix) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::vector<FactEntry> result;
     for (const auto& [k, v] : facts_) {
         if (prefix.empty() || k.compare(0, prefix.size(), prefix) == 0) {
@@ -244,6 +255,7 @@ std::vector<FactEntry> LongTermMemory::get_facts(const std::string& prefix) cons
 }
 
 void LongTermMemory::remove_fact(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
     facts_.erase(key);
 }
 
@@ -254,6 +266,7 @@ bool LongTermMemory::load() {
 
     // Load sessions.
     auto sessions_path = cfg_.store_dir + "/sessions.json";
+    std::vector<SessionSummary> loaded_sessions;
     if (fs::exists(sessions_path)) {
         std::ifstream in(sessions_path);
         try {
@@ -265,7 +278,7 @@ bool LongTermMemory::load() {
                     ss.topic = s.value("topic", "General conversation");
                     ss.summary = s.value("summary", "");
                     ss.message_count = s.value("message_count", 0);
-                    sessions_.push_back(ss);
+                    loaded_sessions.push_back(ss);
                 }
             }
         } catch (...) {
@@ -275,6 +288,7 @@ bool LongTermMemory::load() {
 
     // Load facts.
     auto facts_path = cfg_.store_dir + "/facts.json";
+    std::map<std::string, FactEntry> loaded_facts;
     if (fs::exists(facts_path)) {
         std::ifstream in(facts_path);
         try {
@@ -287,7 +301,7 @@ bool LongTermMemory::load() {
                     entry.source_session = f.value("source_session", "");
                     entry.timestamp = f.value("timestamp", "");
                     if (!entry.key.empty()) {
-                        facts_[entry.key] = std::move(entry);
+                        loaded_facts[entry.key] = std::move(entry);
                     }
                 }
             }
@@ -297,7 +311,14 @@ bool LongTermMemory::load() {
     }
 
     // Sessions are stored newest-first; reverse after loading from file.
-    std::reverse(sessions_.begin(), sessions_.end());
+    std::reverse(loaded_sessions.begin(), loaded_sessions.end());
+
+    // Swap into shared state under lock (fast, no I/O).
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessions_ = std::move(loaded_sessions);
+        facts_ = std::move(loaded_facts);
+    }
 
     return !sessions_.empty() || !facts_.empty();
 }
@@ -313,12 +334,27 @@ static void write_json_file(const std::string& path, const json& j) {
 }
 
 void LongTermMemory::save() const {
-    // Ensure directory exists.
+    // Snapshot shared state under lock.
+    std::vector<SessionSummary> sessions_snapshot;
+    json facts_json;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessions_snapshot = sessions_;  // copy
+        for (const auto& [k, v] : facts_) {
+            json fj;
+            fj["key"] = k;
+            fj["value"] = v.value;
+            fj["source_session"] = v.source_session;
+            fj["timestamp"] = v.timestamp;
+            facts_json["facts"].push_back(fj);
+        }
+    }
+
+    // Write to disk outside lock.
     fs::create_directories(cfg_.store_dir);
 
-    // Save sessions.
     json sessions_json;
-    for (const auto& s : sessions_) {
+    for (const auto& s : sessions_snapshot) {
         json sj;
         sj["timestamp"] = s.timestamp;
         sj["topic"] = s.topic;
@@ -328,22 +364,11 @@ void LongTermMemory::save() const {
     }
 
     write_json_file(cfg_.store_dir + "/sessions.json", sessions_json);
-
-    // Save facts.
-    json facts_json;
-    for (const auto& [k, v] : facts_) {
-        json fj;
-        fj["key"] = k;
-        fj["value"] = v.value;
-        fj["source_session"] = v.source_session;
-        fj["timestamp"] = v.timestamp;
-        facts_json["facts"].push_back(fj);
-    }
-
     write_json_file(cfg_.store_dir + "/facts.json", facts_json);
 }
 
 std::string LongTermMemory::build_context_string(int recent_n) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::ostringstream oss;
 
     // Semantic facts.
@@ -374,9 +399,17 @@ std::string LongTermMemory::build_context_string(int recent_n) const {
 // ── RAG Integration ───────────────────────────────────
 
 void LongTermMemory::integrate_with_rag(RAGManager* rag_manager) {
-    if (!rag_manager || sessions_.empty()) return;
+    if (!rag_manager) return;
 
-    for (const auto& s : sessions_) {
+    // Snapshot sessions under lock.
+    std::vector<SessionSummary> sessions_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (sessions_.empty()) return;
+        sessions_snapshot = sessions_;
+    }
+
+    for (const auto& s : sessions_snapshot) {
         std::ostringstream doc;
         doc << "Session: " << s.topic << "\n";
         doc << "Date: " << s.timestamp << "\n";

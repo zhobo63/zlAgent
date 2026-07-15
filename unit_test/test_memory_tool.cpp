@@ -16,8 +16,8 @@ static void safe_remove_all(const std::string& path)
     } catch (...) {}
 }
 
-void test_search_memories_tool(UnitReport& parent);
-void test_recall_facts_tool(UnitReport& parent);
+void test_search_memories_tool(UnitReport& parent, LongTermMemory* ltm);
+void test_recall_facts_tool(UnitReport& parent, LongTermMemory* ltm);
 
 // Temporary LongTermMemory for testing — scoped to the lifetime of this pointer.
 static std::unique_ptr<agent::LongTermMemory> g_test_ltm;
@@ -32,27 +32,25 @@ void test_memory_tool(UnitReport& parent)
     agent::LongTermMemory::Config cfg;
     cfg.store_dir = ".zlagent/test_memory";
     g_test_ltm = std::make_unique<agent::LongTermMemory>(cfg);
-    agent::set_global_long_term_memory(g_test_ltm.get());
 
     UnitReport unit("memory_tool");
     LOG_INFO("memory_tool", "entry");
 
-    test_search_memories_tool(unit);
-    test_recall_facts_tool(unit);
+    test_search_memories_tool(unit, g_test_ltm.get());
+    test_recall_facts_tool(unit, g_test_ltm.get());
 
-    // Cleanup: clear the global pointer so other tests aren't affected.
-    agent::set_global_long_term_memory(nullptr);
+    // Cleanup.
     g_test_ltm.reset();
 
     parent.report.push_back(unit);
 }
 
-void test_search_memories_tool(UnitReport& parent)
+void test_search_memories_tool(UnitReport& parent, LongTermMemory* ltm)
 {
     UnitReport unit("search_memories_tool");
     LOG_INFO("search_memories_tool", "entry");
 
-    auto tool = create_search_memories_tool();
+    auto tool = create_search_memories_tool(ltm);
 
     // 8. Tool name correct
     {
@@ -135,12 +133,12 @@ void test_search_memories_tool(UnitReport& parent)
     parent.report.push_back(unit);
 }
 
-void test_recall_facts_tool(UnitReport& parent)
+void test_recall_facts_tool(UnitReport& parent, LongTermMemory* ltm)
 {
     UnitReport unit("recall_facts_tool");
     LOG_INFO("recall_facts_tool", "entry");
 
-    auto tool = create_recall_facts_tool();
+    auto tool = create_recall_facts_tool(ltm);
 
     // 8. Tool name correct
     {

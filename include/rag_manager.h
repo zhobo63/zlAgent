@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <mutex>
 #include <string>
 #include <vector>
 #include <memory>
@@ -50,7 +51,7 @@ public:
 
     // ── State ───────────────────────────────────────────
 
-    size_t total_chunks() const { return store_.size(); }
+    size_t total_chunks() const;
     void clear();
 
     // Persist the vector store to disk.
@@ -60,6 +61,7 @@ public:
     bool load_store(const std::string& store_path);
 
 private:
+    mutable std::mutex mutex_;               // protects store_ and needs_fit_
     EmbeddingProvider* provider_;
     Config cfg_;
     VectorStore store_;
@@ -68,9 +70,5 @@ private:
     // If using TF-IDF, we need to fit on the corpus before embedding.
     bool needs_fit_ = false;
 };
-
-// Global RAG manager accessor (set by main.cpp, used by rag_tool).
-RAGManager* get_global_rag_manager();
-void set_global_rag_manager(RAGManager* mgr);
 
 } // namespace agent

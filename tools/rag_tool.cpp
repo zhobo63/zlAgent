@@ -7,22 +7,14 @@
 namespace agent {
 using json = nlohmann::json;
 
-// Global RAG manager pointer (set by main.cpp).
-static RAGManager* g_rag_manager = nullptr;
-
-void set_global_rag_manager(RAGManager* mgr) {
-    g_rag_manager = mgr;
-}
-
-RAGManager* get_global_rag_manager() {
-    return g_rag_manager;
-}
-
 // -----------------------------------------------------------------------
 // SearchKnowledgeBaseTool - LLM can call this to search the knowledge base
 // -----------------------------------------------------------------------
 class SearchKnowledgeBaseTool : public Tool {
+    RAGManager* rag_manager_;  // non-owning; lifetime managed by Agent
 public:
+    explicit SearchKnowledgeBaseTool(RAGManager* mgr) : rag_manager_(mgr) {}
+
     std::string name() const override { return "search_knowledge_base"; }
     std::string description() const override {
         return "Search the knowledge base for relevant information using semantic similarity. "
@@ -51,9 +43,9 @@ public:
             int top_k = args.value("top_k", -1);
 
             if (query.empty()) return "Error: Query is required.";
-            if (!g_rag_manager) return "Error: Knowledge base not initialized.";
+            if (!rag_manager_) return "Error: Knowledge base not initialized.";
 
-            auto results = g_rag_manager->search(query, top_k);
+            auto results = rag_manager_->search(query, top_k);
             if (results.empty()) {
                 return "No relevant results found for query: \"" + query + "\"";
             }
@@ -81,8 +73,8 @@ public:
     }
 };
 
-ToolPtr create_search_knowledge_base_tool() {
-    return std::make_shared<SearchKnowledgeBaseTool>();
+ToolPtr create_search_knowledge_base_tool(RAGManager* rag_manager) {
+    return std::make_shared<SearchKnowledgeBaseTool>(rag_manager);
 }
 
 } // namespace agent

@@ -314,8 +314,8 @@ int main(int argc, char* argv[]) {
 
     // === Cleanup on exit ===
     ag.save_session();
-    if (agent::get_global_rag_manager() && !cfg.rag.store_path.empty()) {
-        agent::get_global_rag_manager()->save(cfg.rag.store_path);
+    if (ag.get_rag_manager() && !cfg.rag.store_path.empty()) {
+        ag.get_rag_manager()->save(cfg.rag.store_path);
         LOG_INFO("RAG", "Knowledge base saved.");
     }
 

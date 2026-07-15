@@ -65,35 +65,51 @@ description =
 - `auto_yes` — 自動確認所有操作
 - `auto_no` — 自動取消所有需要確認的操作
 
-### 4. SubAgentCLI — 命令列工具任務
+**連線與心跳機制**：
+- **connection_loop()**：建立 WebSocket 連線，包含自動重連邏輯（失敗後 5 秒重試）
+- **heartbeat_loop()**：每秒發送 ping，若 5 秒內未收到 pong 則判定連線死亡並觸發重連
+- **handle_message()**：處理來自 Server 的訊息類型：
+  - `registered`：確認註冊成功
+  - `task`：接收任務並執行（使用 global agent）
+  - `pong`：心跳回應，更新最後收到 pong 的時間戳
+  - `confirm_response`：回應用戶確認請求
 
-執行 shell command、檔案操作等命令列操作。
+### 4. SubAgentTool — Tool 包裝器
 
-```
-cd workdir1/
-zlAgent -p task
-```
+將本地 `SubAgent` 實例包裝成標準 `Tool` 介面，使其可註冊到 `ToolRegistry`。
 
-### 5. MultiAgent — 協調者（Coordinator / Server）
+- **name()**：回傳 sub-agent 的名稱
+- **description()**：回傳 sub-agent 的描述（供 LLM 路由判斷）
+- **parameters_schema()**：定義輸入參數格式（包含 `task` string）
+- **execute(json_args)**：解析 JSON 並呼叫 `agent_->execute(task)`
 
-- 設定項
+### 5. RemoteClientTool — 遠端客戶端包裝器
 
-```
-[multi_agent]
-enable=true
-listen_port = 8766
-```
+將 WebSocket 連線的遠端 Client 包裝成標準 `Tool` 介面，讓 Server 端的 LLM 可以像呼叫本地 Tool 一樣呼叫遠端 Client。
 
-- 設定項 enable=true && listen_port > 0 時候啟用
-- 啟用時
-  - 建立實例 Agent::multi_agent_
-  - 建立實例 MultiAgent::server_ 並且開始監聽 WebSocket
+- **name() / description()**：來自 Client 註冊時提供的資訊
+- **execute(json_args)**：解析 JSON 取得 `task`，透過 `send_task_cb_` 將任務發送到指定 `chat_id` 的 Client
+
+### 6. MultiAgent — 協調者（Coordinator / Server）
+
+- **設定項 enable=true && listen_port > 0** 時啟用
+- 啟用時建立實例 `Agent::multi_agent_`，並啟動 httplib Server 監聽 WebSocket
 
 持有所有子智能體的列表，負責管理 sub-agent 生命週期。
 
 - **server_**：httplib Server，用於 WebSocket 連線共用（keep-alive）
-- **agents_**：`vector<shared_ptr<SubAgent>>`，管理所有 sub-agent
-- **register_agent(agent)**：註冊 sub-agent 並自動包裝為 Tool 加入 ToolRegistry
+- **local_agents_**：`vector<shared_ptr<SubAgent>>`，管理本地 sub-agent
+- **clients_**：`map<string, RemoteClient>`，管理已連接的遠端 Client（包含 ws pointer、tool 資訊）
+- **register_agent(agent)**：註冊本地 sub-agent 並自動包裝為 SubAgentTool 加入 ToolRegistry
+- **send_task_to_client(chat_id, task)**：將任務發送到指定 Client，並輪詢等待結果（最多 5 分鐘超時）
+- **get_local_agents()**：回傳所有本地 agent 的名稱與描述
+- **get_remote_clients()**：回傳所有已連接遠端客戶端的資訊
+
+**Server WebSocket 訊息處理**：
+- `ping` → 回應 `pong`
+- `register` → 建立 RemoteClientTool 並註冊到 ToolRegistry，更新 client 資訊
+- `result` → 儲存 Client 回傳的任務結果，標記為 ready
+- `confirm_request` → 以獨立 detached thread 處理：顯示 prompt 給使用者，等待鍵盤輸入，將答案透過 WebSocket 回傳
 
 ## 整體流程
 
@@ -150,7 +166,8 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 
 使用 httplib 的 WebSocket API（新版支援），非 HTTP。事件驅動模式與 Telegram Bot 一致：
 - 建立 `SubAgentNet::client_`（httplib WebSocket client）
-- 透過 `on_event("websocket.incoming", ...)` 接收訊息
+- **connection_loop()**：主迴圈，負責連線、讀取訊息、自動重連
+- **heartbeat_loop()**：獨立心跳線程，每秒發送 ping
 - 處理後透過 WebSocket 回報結果
 
 ### MultiAgent — Server
@@ -158,7 +175,7 @@ std::shared_ptr<SubAgentNet> sub_agent_;    // Client — 類似 Telegram Bot，
 - `[multi_agent]` 設定項只有 `enable` + `listen_port`
 - 使用 httplib Server 監聽 WebSocket 連線
 - 路由由 LLM 透過 Tool function calling 處理
-- 可註冊 sub_agent: SubAgentLLM, SubAgentNet, SubAgentCLI
+- 可註冊 sub-agent: SubAgentLLM（透過 register_agent）
 
 ## 使用者確認流程
 
@@ -199,7 +216,7 @@ SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨�
 |------|---------------|----------------|
 | SubAgentLLM 在本機執行危險操作 | SubAgentLLM（本地） | 共用 Server 的 KeyWatcher，直接詢問終端 |
 | SubAgentNet 接收遠端指令需要確認 | SubAgentNet（Client） | **透過 WebSocket 轉發給 Server**，由 Server 端使用者確認 |
-| Server 的 LLM 呼叫 sub-agent tool，tool 內部觸發安全檢查 | SubAgentLLM / SubAgentCLI | 共用 Server 的 KeyWatcher |
+| Server 的 LLM 呼叫 sub-agent tool，tool 內部觸發安全檢查 | SubAgentLLM / SubAgentTool | 共用 Server 的 KeyWatcher |
 
 #### 設計決策（已實作）
 
@@ -253,9 +270,7 @@ SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨�
 └──────────────────┘
 ```
 
-### 實作計畫
-
-### Phase 1: 基礎結構
+#### Phase 1: 基礎結構
 
 | # | 項目 | 內容 |
 |---|------|------|
@@ -263,27 +278,27 @@ SubAgentNet (Client) → 獨立執行           → 有自己的終端，可獨�
 | 2 | SubAgent → Tool 包裝器 | 建立 wrapper class，讓 SubAgent 可註冊到 ToolRegistry（提供 `name()`、`description()`、`parameters_schema()`、`execute(json_args)`） |
 | 3 | MultiAgent::register_agent() | 公開方法，加入 sub-agent 並自動註冊為 tool |
 
-### Phase 2: SubAgentLLM 實作
+#### Phase 2: SubAgentLLM 實作
 
 | # | 項目 | 內容 |
 |---|------|------|
 | 4 | set_workdir() 實作 | 建立內部 `agent_`、讀取該目錄下的 zlagent.ini、產生 project overview 作為 description |
 | 5 | run_loop() 迭代邏輯 | `agent_` run_stream |
 
-### Phase 3: Config + Agent 整合
+#### Phase 3: Config + Agent 整合
 
 | # | 項目 | 內容 |
 |---|------|------|
 | 6 | Config 新增設定結構 | `[llm_agent]`、`[net_agent]`、`[multi_agent]` |
 | 7 | Agent::load_config() 整合 | 根據 config 建立 MultiAgent、SubAgentLLM 實例，並註冊為 tools |
 
-### Phase 4: SubAgentNet（WebSocket client）
+#### Phase 4: SubAgentNet（WebSocket client）
 
 | # | 項目 | 內容 |
 |---|------|------|
 | 8 | SubAgentNet WebSocket 連線 | 使用 httplib 的 WebSocket API，類似 Telegram Bot 的事件驅動模式 |
 
-### Phase 5: Multi-Agent 使用者確認機制 ✅
+#### Phase 5: Multi-Agent 使用者確認機制 ✅
 
 已實作的 B + C 組合方案：Client 轉發確認請求給 Server + Config 自動模式。
 
@@ -314,7 +329,6 @@ confirm_mode = ask_server   # auto_yes | auto_no | ask_server
 ```
 
 #### 流程圖
-
 ```
 Client (SubAgentNet) → SafetyGuard::ask_user_confirm()
     ↓

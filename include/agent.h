@@ -12,6 +12,7 @@
 #include "terminal_command_detector.h"
 #include "long_term_memory.h"
 #include "command_dispatcher.h"
+#include "rag_manager.h"
 #include "multi_agent.h"
 
 namespace agent {
@@ -117,6 +118,9 @@ public:
     // Discover local tools from a project overview string, excluding already-registered ones.
     void discover_local_tools_from_overview(const std::string& overview);
 
+    RAGManager* get_rag_manager() { return rag_manager_.get(); }
+    const RAGManager* get_rag_manager() const { return rag_manager_.get(); }
+
     std::unique_ptr<LongTermMemory>& get_long_term_memory() { return long_term_memory_; }
     std::unique_ptr<TelegramClient>& get_telegram_client() { return telegram_client_; }
 
@@ -139,6 +143,7 @@ private:
     Memory memory_;
     Config config_;
     std::string system_prompt_;
+    std::unique_ptr<RAGManager> rag_manager_;
     std::unique_ptr<LongTermMemory> long_term_memory_;
     CommandDispatcher dispatcher_;
     std::unique_ptr<TelegramClient> telegram_client_;

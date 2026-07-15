@@ -3,6 +3,8 @@
 #include "tool.h"
 
 namespace agent {
+class RAGManager;
+class LongTermMemory;
 
 // Tool factory functions - create instances of each tool
 ToolPtr create_read_file_tool();
@@ -43,11 +45,11 @@ ToolPtr create_create_skill_tool();
 ToolPtr create_delete_skill_tool();
 ToolPtr create_reload_skills_tool();
 
-// RAG tool
-ToolPtr create_search_knowledge_base_tool();
+// RAG tool — requires a non-null RAGManager (lifetime managed by Agent)
+ToolPtr create_search_knowledge_base_tool(RAGManager* rag_manager);
 
-// Long-term memory tools
-ToolPtr create_search_memories_tool();
-ToolPtr create_recall_facts_tool();
+// Long-term memory tools — require a non-null LongTermMemory (lifetime managed by Agent)
+ToolPtr create_search_memories_tool(LongTermMemory* ltm);
+ToolPtr create_recall_facts_tool(LongTermMemory* ltm);
 
 } // namespace agent

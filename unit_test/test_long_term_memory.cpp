@@ -470,22 +470,7 @@ void test_long_term_memory_class(UnitReport& parent)
         UNIT_TEST("year_starts_with_20", ts.substr(0, 4) >= "2020");
     }
 
-    // --- Test 25: Global functions — set and get ---
-    {
-        LOG_INFO("long_term_memory", "global_set_get");
-        LongTermMemory ltm;
-
-        set_global_long_term_memory(&ltm);
-        auto* ptr = get_global_long_term_memory();
-        UNIT_TEST("pointer_matches", ptr == &ltm);
-
-        // Reset to nullptr
-        set_global_long_term_memory(nullptr);
-        ptr = get_global_long_term_memory();
-        UNIT_TEST("null_after_reset", ptr == nullptr);
-    }
-
-    // --- Test 26: save — creates directory if not exists ---
+    // --- Test 25: save — creates directory if not exists ---
     {
         LOG_INFO("long_term_memory", "save_creates_directory");
         std::string dir = "test_ltm_mkdir_temp";

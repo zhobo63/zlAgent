@@ -127,33 +127,30 @@ void Agent::load_config(const std::string& name)
         rag_cfg.min_score = cfg.rag.min_score;
         rag_cfg.store_path = cfg.rag.store_path;
 
-        std::unique_ptr<agent::RAGManager> rag_manager;
-
-        // Create RAG manager.
-        rag_manager = std::make_unique<agent::RAGManager>(provider, rag_cfg);
+        // Create RAG manager — stored as Agent member to avoid dangling pointer.
+        rag_manager_ = std::make_unique<agent::RAGManager>(provider, rag_cfg);
 
         // Load existing store if available.
         if (!cfg.rag.store_path.empty() && std::filesystem::exists(cfg.rag.store_path)) {
             LOG_INFO("RAG", "  Loading existing knowledge base from: " + cfg.rag.store_path);
-            rag_manager->load_store(cfg.rag.store_path);
+            rag_manager_->load_store(cfg.rag.store_path);
         }
 
         // Ingest knowledge directories at startup.
         for (const auto& dir : cfg.rag.knowledge_dirs) {
             LOG_INFO("RAG", "  Ingesting: " + dir);
-            rag_manager->add_directory(dir);
+            rag_manager_->add_directory(dir);
         }
 
         // Save store if persistence is configured.
         if (!cfg.rag.store_path.empty()) {
-            rag_manager->save(cfg.rag.store_path);
+            rag_manager_->save(cfg.rag.store_path);
             LOG_INFO("RAG", "  Knowledge base saved to: " + cfg.rag.store_path);
         }
 
-        set_global_rag_manager(rag_manager.get());
-        add_tool(agent::create_search_knowledge_base_tool());
+        add_tool(agent::create_search_knowledge_base_tool(rag_manager_.get()));
 
-        LOG_INFO("RAG", "  Total chunks indexed: " + std::to_string(rag_manager->total_chunks()));
+        LOG_INFO("RAG", "  Total chunks indexed: " + std::to_string(rag_manager_->total_chunks()));
     }
 
     // === Long-Term Memory ===
@@ -189,14 +186,13 @@ void Agent::load_config(const std::string& name)
         }
 
         // Integrate with RAG if available.
-        if (agent::get_global_rag_manager()) {
-            long_term_memory->integrate_with_rag(agent::get_global_rag_manager());
+        if (rag_manager_) {
+            long_term_memory->integrate_with_rag(rag_manager_.get());
             LOG_INFO("Memory", "  Session summaries injected into RAG knowledge base");
         }
 
-        set_global_long_term_memory(long_term_memory.get());
-        add_tool(agent::create_search_memories_tool());
-        add_tool(agent::create_recall_facts_tool());
+        add_tool(agent::create_search_memories_tool(long_term_memory.get()));
+        add_tool(agent::create_recall_facts_tool(long_term_memory.get()));
     }
 
 
@@ -207,8 +203,8 @@ void Agent::load_config(const std::string& name)
         dispatcher,
         this,
         agent::get_global_skill_registry(),
-        agent::get_global_rag_manager(),
-        agent::get_global_long_term_memory());
+        rag_manager_.get(),
+        long_term_memory_.get());
 
     // Register the /reply-mode command for user intervention control.
     register_reply_mode_command(dispatcher, this);
@@ -575,11 +571,7 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
     auto end   = std::sregex_iterator();
 
     // Collect all insertions with their positions (in the original string)
-    struct Insertion {
-        size_t pos;       // position after the match in original string
-        std::string text; // content to insert
-    };
-    std::vector<Insertion> insertions;
+    std::vector<std::string> insertions;
 
     for (auto it = begin; it != end; ++it) {
         std::smatch m = *it;
@@ -610,7 +602,7 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
 
             std::string lines_content = ReadFileLinesAsString(filepath, r.start, r.end);
             if (!lines_content.empty()) {
-                content_oss << "--- File: " << filepath << " (lines "
+                content_oss << "\n--- File: " << filepath << " (lines "
                             << r.start << "-" << r.end << ") ---\n"
                             << lines_content
                             << "--- End of file ---\n";
@@ -618,33 +610,16 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
         }
 
         if (!content_oss.str().empty()) {
-            insertions.push_back({(size_t)(m.position() + m.length()), content_oss.str()});
-        } else {
-            // No line ranges succeeded — fall back to outline
-            std::string outline = GenerateFileOutline(filepath);
-            if (!outline.empty()) {
-                insertions.push_back({ (size_t)(m.position() + m.length()),
-                    "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
-            }
+            insertions.push_back(content_oss.str());
         }
     }
 
     // Also match bare file paths without line spec — insert outline
-    {
+    if (insertions.size() == 0) {
         auto begin2 = std::sregex_iterator(user_input.begin(), user_input.end(), file_ref_bare_re);
         for (auto it = begin2; it != end; ++it) {
             std::smatch m = *it;
             std::string filepath = m[1].str();
-
-            // Skip if this match is already covered by a with-lines match
-            bool dominated = false;
-            for (const auto& ins : insertions) {
-                if (ins.pos >= (size_t)m.position() && ins.pos <= (size_t)(m.position() + m.length())) {
-                    dominated = true;
-                    break;
-                }
-            }
-            if (dominated) continue;
 
             // Skip if this filepath outline has already been processed
             std::string key = filepath + ":outline";
@@ -658,35 +633,26 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
             if (fs::is_directory(filepath)) {
                 std::string listing = GenerateDirectoryListing(filepath);
                 if (!listing.empty()) {
-                    insertions.push_back({(size_t)(m.position() + m.length()),
-                        "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n"});
+                    insertions.push_back(
+                        "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n");
                 }
-            } else {
+            }
+            else {
                 std::string outline = GenerateFileOutline(filepath);
                 if (!outline.empty()) {
-                    insertions.push_back({(size_t)(m.position() + m.length()),
-                        "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n"});
+                    insertions.push_back(
+                        "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n");
                 }
             }
         }
     }
 
     // Also match directory paths — list contents
-    {
+    if (insertions.size() == 0) {
         auto begin3 = std::sregex_iterator(user_input.begin(), user_input.end(), dir_ref_re);
         for (auto it = begin3; it != end; ++it) {
             std::smatch m = *it;
             std::string filepath = m[1].str();
-
-            // Skip if already covered by a previous match
-            bool dominated = false;
-            for (const auto& ins : insertions) {
-                if (ins.pos >= (size_t)m.position() && ins.pos <= (size_t)(m.position() + m.length())) {
-                    dominated = true;
-                    break;
-                }
-            }
-            if (dominated) continue;
 
             // Skip if already processed
             std::string key = filepath + ":dir";
@@ -698,16 +664,15 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
 
             std::string listing = GenerateDirectoryListing(filepath);
             if (!listing.empty()) {
-                insertions.push_back({(size_t)(m.position() + m.length()),
-                    "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n"});
+                insertions.push_back(
+                    "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n");
             }
         }
     }
 
     // Apply insertions in reverse order so positions remain valid
     for (auto it = insertions.rbegin(); it != insertions.rend(); ++it) {
-        //result.insert(it->pos, it->text);
-        result += it->text;
+        result += it->c_str();
     }
     LOG_DEBUG("preprocess_file_references", result);
 

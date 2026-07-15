@@ -10,6 +10,63 @@
 
 namespace agent {
 
+/// Split new_text into lines for replace_line_range / insert operations.
+/// Unlike EditLines::parse, this does NOT pop the trailing \n — every \n is a
+/// line separator, so trailing blank lines are preserved correctly.
+
+std::vector<std::string> split_lines(const char* text) {
+    std::vector<std::string> result;
+    const char* p = text;
+    const char* s = p;  // start of current line
+    while (p && *p) {
+        if (*p == '\n') {
+            size_t len = static_cast<size_t>(p - s);
+            // strip trailing \r from \r\n
+            if (len > 0 && p[-1] == '\r')
+                --len;
+            result.emplace_back(s, len);
+            s = p + 1;
+        }
+        ++p;
+    }
+    // push remaining content after the last \n
+    if (s <= p)
+        result.emplace_back(s, static_cast<size_t>(p - s));
+    return std::move(result);
+}
+
+std::vector<std::string> split_lines(const std::string& text) {
+    return std::move(split_lines(text.c_str()));
+}
+
+// ── read_file_lines / write_file_lines ───────────────────
+
+bool read_file_lines(const std::string& path,
+    std::vector<std::string>& out_lines) {
+    std::ifstream infile(path, std::ios::binary);
+    if (!infile.is_open()) return false;
+    std::ostringstream ss;
+    ss << infile.rdbuf();
+    std::string content = ss.str();
+    infile.close();
+    out_lines = split_lines(content);
+    return true;
+}
+
+bool write_file_lines(const std::string& path,
+    const std::vector<std::string>& lines) {
+    std::ofstream outfile(path, std::ios::trunc | std::ios::binary);
+    if (!outfile.is_open()) return false;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        outfile << lines[i];
+        if (i < static_cast<int>(lines.size()) - 1)
+            outfile << '\n';
+    }
+    outfile.close();
+    return true;
+}
+
+
 bool ReadFileLines(const std::string& path, int startLine, int endLine,
                    std::vector<std::pair<int, std::string>>& out) {
     if (startLine <= 0 || endLine < startLine) return false;
@@ -60,105 +117,37 @@ std::string ReadFileLinesAsString(const std::string& path, int startLine, int en
     return oss.str();
 }
 
-// ── read_file_lines / write_file_lines ───────────────────
-
-bool read_file_lines(const std::string& path,
-                     std::vector<std::string>& out_lines,
-                     bool* has_trailing_newline) {
-    std::ifstream infile(path);
-    if (!infile.is_open()) return false;
-    std::string line;
-    while (std::getline(infile, line)) {
-        out_lines.push_back(line);
-    }
-    // Detect whether the file ends with a newline by reading the last byte
-    if (has_trailing_newline) {
-        infile.clear();
-        std::streampos fsize = infile.tellg();
-        if (fsize > 0) {
-            infile.seekg(-1, std::ios::end);
-            char last;
-            infile.get(last);
-            *has_trailing_newline = (last == '\n');
-        } else {
-            *has_trailing_newline = false;
-        }
-    }
-    infile.close();
-    return true;
-}
-
-bool write_file_lines(const std::string& path,
-                      const std::vector<std::string>& lines,
-                      bool has_trailing_newline) {
-    std::ofstream outfile(path, std::ios::trunc);
-    if (!outfile.is_open()) return false;
-    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-        outfile << lines[i];
-        if (i < static_cast<int>(lines.size()) - 1)
-            outfile << '\n';
-    }
-    // Restore trailing newline if the original file had one
-    if (has_trailing_newline && !lines.empty())
-        outfile << '\n';
-    outfile.close();
-    return true;
-}
 
 // ── EditLines ────────────────────────────────────────────
 
 bool EditLines::read_file(const std::string& path) {
     lines.clear();
-    has_trailing_newline = false;
-    return read_file_lines(path, lines, &has_trailing_newline);
+    return read_file_lines(path, lines);
 }
 
 void EditLines::parse(const std::string& text) {
     lines.clear();
     if (text.empty()) return;
-
-    // If the entire content is newlines, each newline represents one empty line
-    bool all_newlines = true;
-    for (char c : text) {
-        if (c != '\n') { all_newlines = false; break; }
-    }
-    if (all_newlines) {
-        lines.resize(text.size());
-        return;
-    }
-
-    // Remove trailing newline so getline doesn't produce an extra empty element
-    std::string trimmed = text;
-    if (!trimmed.empty() && trimmed.back() == '\n')
-        trimmed.pop_back();
-
-    std::istringstream iss(trimmed);
-    std::string line;
-    while (std::getline(iss, line)) {
-        lines.push_back(line);
-    }
+    lines = split_lines(text);
 }
 
 bool EditLines::write_file(const std::string& path) const {
-    return write_file_lines(path, lines, has_trailing_newline);
+    return write_file_lines(path, lines);
 }
 
 std::string EditLines::to_string() const {
-    std::string s;
-    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-        if (i > 0) s += '\n';
-        s += lines[i];
+    std::ostringstream iss;
+    int lcount = static_cast<int>(lines.size());
+    for (int i = 0; i < lcount; ++i) {
+        iss << lines[i];
+        if (i < lcount - 1)
+            iss << "\n";
     }
-    return s;
+    return iss.str();
 }
 
 // ── EditFile implementation ───────────────────────────────
 
-static std::vector<std::string> split_edit_lines(const std::string& text) {
-    EditLines el;
-    el.parse(text);
-    return el.lines;
-}
 
 bool EditFile::ModifiedBlock::is_overlay(const ModifiedBlock& b) const {
     if (is_insert && b.is_insert) return false;
@@ -294,15 +283,20 @@ void EditFile::apply_blocks(EditLines& out_lines) {
             ++current_line;
         }
         if (block.is_insert) {
-            auto insert_lines = split_edit_lines(block.new_content);
-            for (const auto& il : insert_lines)
-                result.push_back(il);
+            if (!block.new_content.empty()) {
+                auto insert_lines = split_lines(block.new_content);
+                for (const auto& il : insert_lines)
+                    result.push_back(il);
+            }
         } else {
             if (block.end < 1 || block.end > total_lines)
                 return;
-            auto replace_lines = split_edit_lines(block.new_content);
-            for (const auto& rl : replace_lines)
-                result.push_back(rl);
+            if (!block.new_content.empty()) {
+                auto replace_lines = split_lines(block.new_content);
+                for (int rl = 0; rl < replace_lines.size() - 1; rl++) {
+                    result.push_back(replace_lines[rl]);
+                }
+            }
             current_line = block.end + 1;
         }
     }
@@ -313,7 +307,6 @@ void EditFile::apply_blocks(EditLines& out_lines) {
     }
 
     out_lines.lines = std::move(result);
-    out_lines.has_trailing_newline = has_trailing_newline;
 }
 
 } // namespace agent
@@ -322,24 +315,11 @@ namespace agent {
 
 // ── Helpers for DiffEdit ───────────────────────────────
 
-static std::vector<std::string> splitLines(const std::string& s) {
-    std::vector<std::string> lines;
-    if (s.empty()) return lines;
-    std::istringstream iss(s);
-    std::string line;
-    while (std::getline(iss, line)) {
-        // Remove trailing \r for Windows compatibility
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        lines.push_back(line);
-    }
-    return lines;
-}
-
 std::string DiffEdit(const std::string& old_text,
                      const std::string& new_text,
                      int start_line) {
-    auto old_lines = splitLines(old_text);
-    auto new_lines = splitLines(new_text);
+    auto old_lines = split_lines(old_text);
+    auto new_lines = split_lines(new_text);
 
     // Find LCS to identify common lines (context)
     int m = static_cast<int>(old_lines.size()), n = static_cast<int>(new_lines.size());
@@ -577,9 +557,42 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             }
         }
 
-        // Function: type name(...)
+        // Function definition: type name(...) { or name()
         size_t paren = trimmed.find('(');
         if (paren != std::string::npos && paren > 0) {
+            // Find the matching closing parenthesis
+            int depth = 1;
+            size_t scan = paren + 1;
+            while (scan < trimmed.size() && depth > 0) {
+                if (trimmed[scan] == '(') depth++;
+                else if (trimmed[scan] == ')') depth--;
+                scan++;
+            }
+            if (depth != 0) continue;
+            size_t close_paren = scan - 1;
+
+            // Check what follows the closing parenthesis: { means definition, ; means call
+            bool is_definition = false;
+            {
+                size_t after = close_paren + 1;
+                while (after < trimmed.size() && trimmed[after] == ' ') after++;
+                if (after < trimmed.size() && trimmed[after] == '{') {
+                    is_definition = true; // same-line: foo(...) {
+                }
+            }
+
+            // If not on the same line, check next non-empty line for {
+            if (!is_definition) {
+                for (int j = i + 1; j < static_cast<int>(lines.size()); j++) {
+                    std::string next_trimmed = trim_outline(lines[j]);
+                    if (next_trimmed.empty()) continue;
+                    if (next_trimmed[0] == '{') is_definition = true;
+                    break;
+                }
+            }
+
+            if (!is_definition) continue; // call, skip
+
             std::string before_paren = trim_outline(trimmed.substr(0, paren));
             if (!before_paren.empty() && !is_keyword_outline(before_paren)) {
                 size_t last_space = before_paren.find_last_of(' ');

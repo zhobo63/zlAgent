@@ -31,19 +31,19 @@ static void test_read_write_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\n";
         }
 
+        // split_lines: "line1\nline2\nline3\n" → ["line1", "line2", "line3", ""]
         std::vector<std::string> lines;
-        bool has_nl = false;
-        bool ok = read_file_lines((fs::path(dir) / "test.txt").string(), lines, &has_nl);
+        bool ok = read_file_lines((fs::path(dir) / "test.txt").string(), lines);
         UNIT_TEST("read_success", ok);
-        UNIT_TEST("three_lines", lines.size() == 3u);
+        UNIT_TEST("four_elements", lines.size() == 4u);
         UNIT_TEST("line1_content", lines[0] == "line1");
         UNIT_TEST("line2_content", lines[1] == "line2");
         UNIT_TEST("line3_content", lines[2] == "line3");
-        UNIT_TEST("has_trailing_newline", has_nl);
+        UNIT_TEST("trailing_empty", lines[3].empty());
 
         safe_remove_all(dir);
     }
@@ -56,16 +56,15 @@ static void test_read_write_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3";  // no trailing newline
         }
 
+        // split_lines: "line1\nline2\nline3" → ["line1", "line2", "line3"]
         std::vector<std::string> lines;
-        bool has_nl = false;
-        bool ok = read_file_lines((fs::path(dir) / "test.txt").string(), lines, &has_nl);
+        bool ok = read_file_lines((fs::path(dir) / "test.txt").string(), lines);
         UNIT_TEST("read_success", ok);
-        UNIT_TEST("three_lines", lines.size() == 3u);
-        UNIT_TEST("no_trailing_newline", !has_nl);
+        UNIT_TEST("three_elements", lines.size() == 3u);
 
         safe_remove_all(dir);
     }
@@ -78,15 +77,14 @@ static void test_read_write_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "empty.txt");
+            std::ofstream f(fs::path(dir) / "empty.txt", std::ios::binary);
         }
 
+        // split_lines: "" → [""]
         std::vector<std::string> lines;
-        bool has_nl = false;
-        bool ok = read_file_lines((fs::path(dir) / "empty.txt").string(), lines, &has_nl);
+        bool ok = read_file_lines((fs::path(dir) / "empty.txt").string(), lines);
         UNIT_TEST("read_success", ok);
-        UNIT_TEST("zero_lines", lines.empty());
-        UNIT_TEST("no_trailing_newline", !has_nl);
+        UNIT_TEST("one_empty_element", lines.size() == 1u && lines[0].empty());
 
         safe_remove_all(dir);
     }
@@ -99,24 +97,24 @@ static void test_read_write_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         std::vector<std::string> lines;
-        bool ok = read_file_lines((fs::path(dir) / "nonexistent.txt").string(), lines, nullptr);
+        bool ok = read_file_lines((fs::path(dir) / "nonexistent.txt").string(), lines);
         UNIT_TEST("read_failed", !ok);
 
         safe_remove_all(dir);
     }
 
-    // --- Test 5: Write file with trailing newline ---
+    // --- Test 5: Write file with trailing newline (encoded as extra empty element) ---
     {
         LOG_INFO("file_utils", "write_with_trailing_newline");
         std::string dir = "test_fu_rwfl5_temp";
         safe_remove_all(dir);
         fs::create_directories(dir);
 
-        std::vector<std::string> lines = {"hello", "world"};
-        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines, true);
+        // ["hello", "world", ""] → join with \n → "hello\nworld\n"
+        std::vector<std::string> lines = {"hello", "world", ""};
+        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines);
         UNIT_TEST("write_success", ok);
 
-        // Read back and verify
         {
             std::ifstream f(fs::path(dir) / "out.txt");
             std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
@@ -133,8 +131,9 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
         fs::create_directories(dir);
 
+        // ["hello", "world"] → join with \n → "hello\nworld"
         std::vector<std::string> lines = {"hello", "world"};
-        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines, false);
+        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines);
         UNIT_TEST("write_success", ok);
 
         {
@@ -146,21 +145,21 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 7: Write empty lines vector with trailing newline ---
+    // --- Test 7: Write empty lines vector ---
     {
-        LOG_INFO("file_utils", "write_empty_lines_with_newline");
+        LOG_INFO("file_utils", "write_empty_lines");
         std::string dir = "test_fu_rwfl7_temp";
         safe_remove_all(dir);
         fs::create_directories(dir);
 
+        // [] → nothing to write → empty file
         std::vector<std::string> lines;
-        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines, true);
+        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines);
         UNIT_TEST("write_success", ok);
 
         {
             std::ifstream f(fs::path(dir) / "out.txt");
             std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            // Empty lines with trailing newline: no output since lines is empty
             UNIT_TEST("content_empty", content.empty());
         }
 
@@ -174,8 +173,9 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
         fs::create_directories(dir);
 
+        // ["only_one"] → "only_one"
         std::vector<std::string> lines = {"only_one"};
-        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines, false);
+        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines);
         UNIT_TEST("write_success", ok);
 
         {
@@ -187,15 +187,16 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // --- Test 9: Write single line with trailing newline ---
+    // --- Test 9: Write single line with trailing newline (encoded as extra empty element) ---
     {
         LOG_INFO("file_utils", "write_single_line_with_newline");
         std::string dir = "test_fu_rwfl9_temp";
         safe_remove_all(dir);
         fs::create_directories(dir);
 
-        std::vector<std::string> lines = {"only_one"};
-        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines, true);
+        // ["only_one", ""] → "only_one\n"
+        std::vector<std::string> lines = {"only_one", ""};
+        bool ok = write_file_lines((fs::path(dir) / "out.txt").string(), lines);
         UNIT_TEST("write_success", ok);
 
         {
@@ -214,17 +215,16 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
         fs::create_directories(dir);
 
-        // Write original
-        std::vector<std::string> orig_lines = {"a", "b", "c"};
-        write_file_lines((fs::path(dir) / "rt.txt").string(), orig_lines, true);
+        // Write: ["a", "b", "c", ""] → "a\nb\nc\n"
+        std::vector<std::string> orig_lines = {"a", "b", "c", ""};
+        write_file_lines((fs::path(dir) / "rt.txt").string(), orig_lines);
 
-        // Read back
+        // Read back: should get same lines
         std::vector<std::string> read_lines;
-        bool has_nl = false;
-        read_file_lines((fs::path(dir) / "rt.txt").string(), read_lines, &has_nl);
+        read_file_lines((fs::path(dir) / "rt.txt").string(), read_lines);
 
-        // Write again with same trailing newline
-        write_file_lines((fs::path(dir) / "rt2.txt").string(), read_lines, has_nl);
+        // Write again — round-trip preserves content exactly
+        write_file_lines((fs::path(dir) / "rt2.txt").string(), read_lines);
 
         {
             std::ifstream f(fs::path(dir) / "rt2.txt");
@@ -242,14 +242,15 @@ static void test_read_write_file_lines(UnitReport& parent)
         safe_remove_all(dir);
         fs::create_directories(dir);
 
+        // Write: ["a", "b", "c"] → "a\nb\nc"
         std::vector<std::string> orig_lines = {"a", "b", "c"};
-        write_file_lines((fs::path(dir) / "rt.txt").string(), orig_lines, false);
+        write_file_lines((fs::path(dir) / "rt.txt").string(), orig_lines);
 
+        // Read back: should get same lines
         std::vector<std::string> read_lines;
-        bool has_nl = false;
-        read_file_lines((fs::path(dir) / "rt.txt").string(), read_lines, &has_nl);
+        read_file_lines((fs::path(dir) / "rt.txt").string(), read_lines);
 
-        write_file_lines((fs::path(dir) / "rt2.txt").string(), read_lines, has_nl);
+        write_file_lines((fs::path(dir) / "rt2.txt").string(), read_lines);
 
         {
             std::ifstream f(fs::path(dir) / "rt2.txt");
@@ -280,15 +281,15 @@ static void test_edit_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\n";
         }
 
         EditLines el;
         bool ok = el.read_file((fs::path(dir) / "test.txt").string());
         UNIT_TEST("read_success", ok);
-        UNIT_TEST("three_lines", el.lines.size() == 3u);
-        UNIT_TEST("has_trailing_newline", el.has_trailing_newline);
+        // split_lines: "line1\nline2\nline3\n" → ["line1", "line2", "line3", ""]
+        UNIT_TEST("four_elements", el.lines.size() == 4u);
 
         // Modify and write back
         el.lines[1] = "modified";
@@ -309,10 +310,11 @@ static void test_edit_lines(UnitReport& parent)
         LOG_INFO("file_utils", "editlines_parse_with_newline");
         EditLines el;
         el.parse("a\nb\nc\n");
-        UNIT_TEST("three_lines", el.lines.size() == 3u);
+        UNIT_TEST("four_elements", el.lines.size() == 4u);
         UNIT_TEST("line1", el.lines[0] == "a");
         UNIT_TEST("line2", el.lines[1] == "b");
         UNIT_TEST("line3", el.lines[2] == "c");
+        UNIT_TEST("trailing_empty", el.lines[3].empty());
     }
 
     // --- Test 3: parse without trailing newline ---
@@ -371,8 +373,8 @@ static void test_edit_lines(UnitReport& parent)
         LOG_INFO("file_utils", "editlines_parse_only_newline");
         EditLines el;
         el.parse("\n");
-        UNIT_TEST("one_empty_line", el.lines.size() == 1u);
-        UNIT_TEST("empty_content", el.lines.size() > 0 && el.lines[0].empty());
+        UNIT_TEST("two_empty_lines", el.lines.size() == 2u);
+        UNIT_TEST("both_empty", el.lines[0].empty() && el.lines[1].empty());
     }
 
     // --- Test 10: parse with multiple empty lines ---
@@ -380,7 +382,7 @@ static void test_edit_lines(UnitReport& parent)
         LOG_INFO("file_utils", "editlines_parse_multiple_empty_lines");
         EditLines el;
         el.parse("\n\n\n");
-        UNIT_TEST("three_empty_lines", el.lines.size() == 3u);
+        UNIT_TEST("four_empty_lines", el.lines.size() == 4u);
     }
 
     parent.report.push_back(unit);
@@ -403,7 +405,7 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\nline4\nline5\n";
         }
 
@@ -416,12 +418,10 @@ static void test_edit_file(UnitReport& parent)
 
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("result_lines", out.lines.size() == 5u);
-        UNIT_TEST("line1_unchanged", out.lines[0] == "line1");
-        UNIT_TEST("replaced_a", out.lines[1] == "replaced_a");
-        UNIT_TEST("replaced_b", out.lines[2] == "replaced_b");
-        UNIT_TEST("line4_unchanged", out.lines[3] == "line4");
-        UNIT_TEST("line5_unchanged", out.lines[4] == "line5");
+        // split_lines: ["line1","line2","line3","line4","line5",""]
+        // replace 2-3 with ["replaced_a","replaced_b"]
+        // → "line1\nreplaced_a\nreplaced_b\nline4\nline5\n"
+        UNIT_TEST("content_correct", out.to_string() == "line1\nreplaced_a\nreplaced_b\nline4\nline5\n");
 
         safe_remove_all(dir);
     }
@@ -434,7 +434,7 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\n";
         }
 
@@ -447,15 +447,10 @@ static void test_edit_file(UnitReport& parent)
 
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("four_lines", out.lines.size() == 4u);
-        UNIT_TEST("line1_unchanged", out.lines[0] == "line1");
-        UNIT_TEST("inserted_line", out.lines[1] == "inserted");
-        UNIT_TEST("line2_after_insert", out.lines[2] == "line2");
-
-        safe_remove_all(dir);
+        // split_lines: ["line1","line2","line3",""]
+        // insert_before_line(2, "inserted") → ["line1","inserted","line2","line3",""]
+        UNIT_TEST("content_correct", out.to_string() == "line1\ninserted\nline2\nline3\n");
     }
-
-    // --- Test 3: insert_after_line ---
     {
         LOG_INFO("file_utils", "editfile_insert_after_line");
         std::string dir = "test_fu_ef_ial_temp";
@@ -463,7 +458,7 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\n";
         }
 
@@ -476,15 +471,10 @@ static void test_edit_file(UnitReport& parent)
 
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("four_lines", out.lines.size() == 4u);
-        UNIT_TEST("line1_unchanged", out.lines[0] == "line1");
-        UNIT_TEST("inserted_line", out.lines[1] == "inserted");
-        UNIT_TEST("line2_after_insert", out.lines[2] == "line2");
-
-        safe_remove_all(dir);
+        // split_lines: ["line1","line2","line3",""]
+        // insert_after_line(1, "inserted") → ["line1","inserted","line2","line3",""]
+        UNIT_TEST("content_correct", out.to_string() == "line1\ninserted\nline2\nline3\n");
     }
-
-    // --- Test 4: delete_lines ---
     {
         LOG_INFO("file_utils", "editfile_delete_lines");
         std::string dir = "test_fu_ef_dl_temp";
@@ -492,7 +482,7 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\nline4\nline5\n";
         }
 
@@ -505,9 +495,10 @@ static void test_edit_file(UnitReport& parent)
 
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("two_lines", out.lines.size() == 2u);
-        UNIT_TEST("line1_unchanged", out.lines[0] == "line1");
-        UNIT_TEST("line5_unchanged", out.lines[1] == "line5");
+        // split_lines: ["line1","line2","line3","line4","line5",""]
+        // delete lines 2-4 → ["line1","line5",""] → "line1\nline5\n"
+        auto res = out.to_string();
+        UNIT_TEST("content_correct", res == "line1\nline5\n");
 
         safe_remove_all(dir);
     }
@@ -656,7 +647,7 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "line1\nline2\nline3\nline4\nline5\n";
         }
 
@@ -670,10 +661,10 @@ static void test_edit_file(UnitReport& parent)
 
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("three_lines", out.lines.size() == 3u);
-        UNIT_TEST("replaced_1", out.lines[0] == "replaced_1");
-        UNIT_TEST("line2_unchanged", out.lines[1] == "line2");
-        UNIT_TEST("line5_unchanged", out.lines[2] == "line5");
+        // split_lines: ["line1","line2","line3","line4","line5",""]
+        // replace line 1 → ["replaced_1"] + delete lines 3-4
+        // → ["replaced_1","line2","line5",""] → "replaced_1\nline2\nline5\n"
+        UNIT_TEST("content_correct", out.to_string() == "replaced_1\nline2\nline5\n");
 
         safe_remove_all(dir);
     }
@@ -718,18 +709,20 @@ static void test_edit_file(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "a\nb\nc\n";  // with trailing newline
         }
 
         EditFile ef;
         ef.read_file((fs::path(dir) / "test.txt").string());
-        UNIT_TEST("original_has_trailing_newline", ef.has_trailing_newline);
+        // split_lines: trailing \n → extra empty element
+        UNIT_TEST("four_elements", ef.lines.size() == 4u);
 
         ef.replace_line_range(2, 2, "modified");
         EditLines out;
         ef.apply_blocks(out);
-        UNIT_TEST("preserved_trailing_newline", out.has_trailing_newline);
+        // Trailing empty element preserved through apply_blocks
+        UNIT_TEST("trailing_empty_preserved", !out.lines.empty() && out.lines.back().empty());
 
         safe_remove_all(dir);
     }
@@ -754,7 +747,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             for (int i = 1; i <= 5; ++i)
                 f << "line" << i << "\n";
         }
@@ -779,7 +772,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "a\nb\nc\n";
         }
 
@@ -801,7 +794,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "a\nb\nc\n";
         }
 
@@ -820,7 +813,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "a\nb\nc\n";
         }
 
@@ -839,7 +832,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "hello\nworld\nfoo\nbar\nbaz\n";
         }
 
@@ -858,7 +851,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "hello\nworld\nfoo\nbar\nbaz\n";
         }
 
@@ -883,7 +876,7 @@ static void test_read_file_lines(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.txt");
+            std::ofstream f(fs::path(dir) / "test.txt", std::ios::binary);
             f << "a\nb\nc\n";
         }
 
@@ -1003,7 +996,7 @@ static void test_generate_file_outline(UnitReport& parent)
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.cpp");
+            std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
             f << R"(namespace agent {
 class MyClass {
 public:
@@ -1029,7 +1022,7 @@ void bar() {}
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.py");
+            std::ofstream f(fs::path(dir) / "test.py", std::ios::binary);
             f << R"(def hello():
     pass
 
@@ -1055,7 +1048,7 @@ class MyClass:
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.js");
+            std::ofstream f(fs::path(dir) / "test.js", std::ios::binary);
             f << R"(function hello() {}
 class MyClass {}
 )";
@@ -1077,7 +1070,7 @@ class MyClass {}
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.go");
+            std::ofstream f(fs::path(dir) / "test.go", std::ios::binary);
             f << R"(package main
 func hello() {}
 type MyStruct struct {}
@@ -1100,7 +1093,7 @@ type MyStruct struct {}
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.rs");
+            std::ofstream f(fs::path(dir) / "test.rs", std::ios::binary);
             f << R"(mod my_mod {}
 fn hello() {}
 struct MyStruct {}
@@ -1126,7 +1119,7 @@ impl MyTrait for MyStruct {}
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "Test.java");
+            std::ofstream f(fs::path(dir) / "Test.java", std::ios::binary);
             f << R"(package com.example;
 class MyClass {
     public void hello() {}
@@ -1152,7 +1145,7 @@ enum MyEnum { A, B }
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.md");
+            std::ofstream f(fs::path(dir) / "test.md", std::ios::binary);
             f << R"(# Title
 ## Section 1
 ### Subsection
@@ -1183,7 +1176,7 @@ enum MyEnum { A, B }
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "empty.cpp");
+            std::ofstream f(fs::path(dir) / "empty.cpp", std::ios::binary);
         }
 
         std::string result = GenerateFileOutline((fs::path(dir) / "empty.cpp").string());
@@ -1201,7 +1194,7 @@ enum MyEnum { A, B }
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "plain.txt");
+            std::ofstream f(fs::path(dir) / "plain.txt", std::ios::binary);
             f << "just some plain text\nno symbols here\n";
         }
 
@@ -1219,7 +1212,7 @@ enum MyEnum { A, B }
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.cpp");
+            std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
             f << R"(void foo() {}
 void bar() {}
 void baz() {}
@@ -1242,7 +1235,7 @@ void baz() {}
         fs::create_directories(dir);
 
         {
-            std::ofstream f(fs::path(dir) / "test.cpp");
+            std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
             f << R"(void foo() {}
 )";
         }

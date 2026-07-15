@@ -66,9 +66,8 @@ static void test_search_knowledge_base_tool(UnitReport& parent)
     RAGManager::Config cfg;
     cfg.min_score = 0.0f; // accept all results for testing
     RAGManager rag_manager(&provider, cfg);
-    set_global_rag_manager(&rag_manager);
 
-    auto tool = create_search_knowledge_base_tool();
+    auto tool = create_search_knowledge_base_tool(&rag_manager);
 
     // 8. Tool name correct
     {
@@ -151,10 +150,9 @@ static void test_search_knowledge_base_tool(UnitReport& parent)
     // 9. Knowledge base not initialized: RAG manager is null → "Error: Knowledge base not initialized."
     {
         LOG_INFO("search_knowledge_base_tool", "rag_not_initialized");
-        set_global_rag_manager(nullptr); // temporarily clear
-        auto result = tool->execute(R"({"query": "test"})");
+        auto null_tool = create_search_knowledge_base_tool(nullptr);
+        auto result = null_tool->execute(R"({"query": "test"})");
         UNIT_TEST("error_on_rag_not_initialized", result.find("Error: Knowledge base not initialized.") != std::string::npos);
-        set_global_rag_manager(&rag_manager); // restore
     }
 
     parent.report.push_back(unit);

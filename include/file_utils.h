@@ -6,31 +6,34 @@
 
 namespace agent {
 
-/// Read all lines from a file. Detects whether the file ends with a newline.
-/// has_trailing_newline is optional — pass nullptr if you don't need it.
-bool read_file_lines(const std::string& path,
-                     std::vector<std::string>& out_lines,
-                     bool* has_trailing_newline = nullptr);
 
-/// Write lines back to a file. Restores trailing newline if requested.
+/// Split text into lines. trailing blank lines are preserved correctly.
+
+std::vector<std::string> split_lines(const char* text);
+std::vector<std::string> split_lines(const std::string& text);
+
+/// Read all lines from a file. Uses split_lines semantics:
+/// "A\n" → ["A", ""],  "A" → ["A"]
+bool read_file_lines(const std::string& path,
+                     std::vector<std::string>& out_lines);
+
+/// Write lines back to a file. Joins with '\n'. Inverse of read_file_lines.
 bool write_file_lines(const std::string& path,
-                      const std::vector<std::string>& lines,
-                      bool has_trailing_newline = false);
+                      const std::vector<std::string>& lines);
 
 struct EditLines {
     std::vector<std::string> lines;
-    bool has_trailing_newline = false;
 
-    /// Read from file — detects trailing newline automatically.
+    /// Read from file — uses split_lines semantics.
     bool read_file(const std::string& path);
 
-    /// Parse text into lines (e.g. new_text input). Trailing \n is stripped.
+    /// Parse text into lines (e.g. new_text input). Uses split_lines.
     void parse(const std::string& text);
 
-    /// Write back to file — restores trailing newline if original had one.
+    /// Write back to file — joins with '\n'.
     bool write_file(const std::string& path) const;
 
-    /// Join lines with '\n' into a single string (no trailing newline).
+    /// Join lines with '\n' into a single string.
     std::string to_string() const;
 };
 

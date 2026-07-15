@@ -3,6 +3,12 @@
     {
       "message_count": 3,
       "summary": "",
+      "timestamp": "2026-07-15T11:32:10",
+      "topic": "src/agent.cpp 201-207\n--- File Outline: src/agent.cpp ---\n# File outline for src/agent.cpp (1080)\n  17 namespace agen..."
+    },
+    {
+      "message_count": 3,
+      "summary": "",
       "timestamp": "2026-07-15T10:10:06",
       "topic": ""
     },
@@ -17,6 +23,12 @@
       "summary": "No summary available.",
       "timestamp": "2026-07-15T09:28:49",
       "topic": "General conversation"
+    },
+    {
+      "message_count": 9,
+      "summary": "",
+      "timestamp": "2026-07-15T11:28:24",
+      "topic": "src/agent.cpp 549-711 已經使用行數的 就不要再取摘要了\n--- File Outline: src/agent.cpp ---\n# File outli..."
     }
   ]
 }
