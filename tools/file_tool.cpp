@@ -116,11 +116,11 @@ public:
         return
             "Read the contents of multiple files. Supports three input modes that can be combined in a single call:\n"
             "  (1) paths — string array, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"], \"outline\":false}\n"
-            "      outline is required at top-level: true for file outlines (symbol names and line numbers), false for full content.\n"
+            "      Requires top-level outline: true for file outlines (symbol names and line numbers), false for full content.\n"
             "  (2) files — object array with per-file options, e.g. {\"files\":[{\"path\":\"a.cpp\",\"outline\":true,\"start_line\":1,\"end_line\":100}]}\n"
             "      Each file can have its own outline (bool), start_line/end_line for range. In outline mode, range limits the symbols returned.\n"
             "  (3) directory + glob — e.g. {\"directory\":\"src\", \"glob\":\"*.cpp\", \"outline\":true}\n"
-            "      Scans a directory with a file pattern; outline is required at top-level.\n"
+            "      Both directory and glob must be provided together; requires top-level outline.\n"
             "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown\n";
     }
     std::string parameters_schema() const override {
@@ -139,18 +139,17 @@ public:
                 },
                 "directory": {
                     "type": "string",
-                    "description": "Directory to search in (default: current directory) "
+                    "description": "Directory to search in. Must be provided together with glob." 
                 },
                 "glob": {
                     "type": "string",
-                    "description": "File pattern to match (mutually exclusive with paths, default: '*') "
+                    "description": "File pattern to match (default: '*'). Must be provided together with directory." 
                 },
                 "outline": {
                     "type": "boolean",
                     "description": "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content."
                 }
-            },
-            "required": ["outline"]
+            }
         })").dump();
         return schema;
     }

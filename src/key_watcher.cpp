@@ -946,7 +946,6 @@ void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
     }
 
     printf("%s", out.c_str());
-    TUI::flush();
 }
 
 /// Clear the completion menu lines and restore cursor.
@@ -974,7 +973,6 @@ void KeyWatcher::LineBuffer::clear_completion_menu(int current_input_row) {
     cmd += std::to_string(input_col);
     cmd += "H";
     printf("%s", cmd.c_str());
-    TUI::flush();
 }
 
 int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _candidates)
@@ -1001,7 +999,6 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     }
     auto pos = TUI::getCursorPos();
     pos.col = pos_before.col;
-    TUI::flush();
     input_col = pos.col;
     if (scroll_amount > 0) {
         pos.row = std::max(1, pos_before.row - scroll_amount);
@@ -1112,7 +1109,6 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             TUI::setCursorPos(final_row, buf.col);
         }
         buf.is_display_dirty = false;
-        TUI::flush();
 
         // ── Read a key ────────────────────────────────────────
         Key k = read_key();
