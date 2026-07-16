@@ -146,6 +146,7 @@ public:
 		int input_col = 0;
 
 		int prompt_row;
+		int draw_pos = -1;
 
 		// Cached display width of the prompt (computed once, invalidated on prompt change)
 		mutable int cached_prompt_col = 0;
@@ -194,18 +195,9 @@ public:
 		/// Get the text after the cursor as UTF-8 string.
 		std::string suffix() const;
 
-		std::string display_text() const {
-			std::string s = prompt;
-			for (const auto& k : text) {
-				s.append(reinterpret_cast<const char*>(k.code), k.size);
-			}
-			return s;
-		}
+		std::string display_text() const;
 
-		void resize(size_t n) {
-			text.resize(n);
-			if (pos > n) pos = n;
-		}
+		void resize(size_t n);
 
 		/// Total displayable length (text up to cursor + hint).
 		size_t total_len() const { return pos + hint.size(); }
@@ -227,6 +219,12 @@ public:
 		/// Erase the prompt from screen.
 		void clear_prompt();
 
+		/// Erase from draw_col to screen end
+		void clear();
+
+		/// draw remain input
+		void draw();
+
 		/// Show the completion menu with the given candidates. Returns the number of visible rows.
 		int show_completion_menu(std::vector<std::string>& _candidates);
 
@@ -239,8 +237,6 @@ public:
 		/// Draw (or redraw) the completion menu on screen.
 		void draw_completion_menu(int current_input_row);
 
-		/// Erase the completion menu from screen.
-		void clear_completion_menu(int current_input_row);
 	};
 
 private:

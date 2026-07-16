@@ -18,6 +18,8 @@ doc/llm_provider.md
 [ ] 增量渲染（Incremental Redraw）
 [ ] build_candidates() 重複掃描目錄
 [ ] read_key_thread() 推送按鍵時，通知 condition_variable
+[ ] `History::add()` 改用 deque | 歷史記錄操作從 O(n) → O(1) |
+[ ] LineBuffer::move_down move_up 錯誤
 
 ## [ ] file_utils.cpp
 

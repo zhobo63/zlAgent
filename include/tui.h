@@ -91,6 +91,8 @@ public:
     static constexpr const char* ANSI_CLEAR_SCREEN    = "\033[2J";      // clear entire screen
     static constexpr const char* ANSI_SCROLL_UP       = "\033[1A";      // move cursor up one line
     static constexpr const char* ANSI_SCROLL_DOWN     = "\033[1B";      // move cursor down one line
+    static constexpr const char* ANSI_CLEAR_TO_END    = "\x1B[0J";	    // clears from cursor until end of screen
+    static constexpr const char* ANSI_CLEAR_TO_BEGIN  = "\x1B[1J";      // clears from cursor to beginning of screen
 
     // ── Utility functions ─────────────────────────
 
@@ -228,6 +230,26 @@ public:
     /// Dim text (for thinking/secondary content)
     static inline std::string dim(const std::string& text) {
         return ANSI_DIM + text + ANSI_RESET;
+    }
+
+    static inline std::string cursor_pos(int row, int col) {
+        return "\x1b[" + std::to_string(row) + ";" + std::to_string(col) + "H";
+    }
+
+    static inline std::string cursor_up(int row) {
+        return "\x1b[" + std::to_string(row) + "A";
+    }
+
+    static inline std::string cursor_down(int row) {
+        return "\x1b[" + std::to_string(row) + "B";
+    }
+
+    static inline std::string cursor_right(int col) {
+        return "\x1b[" + std::to_string(col) + "C";
+    }
+
+    static inline std::string cursor_left(int col) {
+        return "\x1b[" + std::to_string(col) + "D";
     }
 
     /// Underline text

@@ -259,6 +259,21 @@ void KeyWatcher::LineBuffer::set_prompt(const std::string& p) {
     cached_prompt_col = compute_prompt_width(p);
 }
 
+static void cal_display_pos(const std::vector<Key> &text, int pos, int& col, int& row) {
+    int term_width = TUI::getTerminalWidth();
+    for (size_t i = 0; i < pos && i < text.size(); ++i) {
+        if (text[i].char_width == 0 || text[i].ch == '\n') { 
+            row++; col = 1; 
+            continue; 
+        }
+        col += text[i].char_width;
+        if (col > term_width) {
+            row++;
+            col = 1;
+        }
+    }
+}
+
 void KeyWatcher::LineBuffer::recompute() {
     int term_width = TUI::getTerminalWidth();
 
@@ -299,11 +314,15 @@ bool KeyWatcher::LineBuffer::backspace() {
     text.erase(text.begin() + static_cast<long>(pos - 1));
     pos--;
     is_display_dirty = true;
+    draw_pos = pos;
     return true;
 }
 
 void KeyWatcher::LineBuffer::move_left() {
-    if (pos > 0) pos--;
+    if (pos > 0) {
+        pos--;
+        draw_pos = pos;
+    }
 }
 
 void KeyWatcher::LineBuffer::move_right() {
@@ -411,6 +430,69 @@ std::string KeyWatcher::LineBuffer::suffix() const {
     return result;
 }
 
+std::string KeyWatcher::LineBuffer::display_text() const {
+    std::string s = prompt;
+    for (const auto& k : text) {
+        s.append(reinterpret_cast<const char*>(k.code), k.size);
+    }
+    return s;
+}
+
+void KeyWatcher::LineBuffer::clear_prompt()
+{
+    // Build a single ANSI string: position → erase each line and move down → restore cursor.
+
+    std::cout << TUI::cursor_pos(prompt_row, 1) <<
+        TUI::ANSI_CLEAR_TO_END <<
+        TUI::cursor_pos(prompt_row, 1) << TUI::ANSI_RESET;
+}
+
+void KeyWatcher::LineBuffer::clear()
+{
+    int draw_row = 1;
+    int draw_col = 1;
+    if (draw_pos >= 0) {
+        draw_col = cached_prompt_col;
+        cal_display_pos(text, draw_pos, draw_col, draw_row);
+    }
+    std::cout << TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) <<
+        TUI::ANSI_CLEAR_TO_END <<
+        TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_RESET;
+}
+
+void KeyWatcher::LineBuffer::draw()
+{
+    if (draw_pos < 0) {
+        std::cout << prompt;
+        draw_pos = 0;
+    }
+    std::string draw_text;
+    size_t p;
+    for (p = draw_pos; p < text.size(); p++) {
+        auto& k = text[p];
+        draw_text.append(reinterpret_cast<const char*>(k.code), k.size);
+    }
+    std::cout << draw_text;
+    draw_pos = pos;
+}
+
+void KeyWatcher::LineBuffer::resize(size_t n) {
+    text.resize(n);
+    if (pos > n) {
+        pos = n;
+        draw_pos = n;
+    }
+}
+
+
+void KeyWatcher::LineBuffer::set_text(const std::string& _text)
+{
+    text = utf8_to_keys(_text);
+    pos = text.size();
+    is_display_dirty = true;
+    draw_pos = 0;
+}
+
 void KeyWatcher::LineBuffer::print_hint() {
 	TUI::setAnsiCode(2); // dim
     for (size_t i = 0; i < hint.size(); ++i) {
@@ -473,6 +555,107 @@ void KeyWatcher::LineBuffer::apply_hint() {
 void KeyWatcher::LineBuffer::clear_hint() {
     hint.clear();
     hint_candidates.clear();
+}
+
+// ============================================================================
+// Completion menu — render and interact with completion options
+// ============================================================================
+
+static constexpr size_t MAX_DISPLAYED = 9;
+
+void KeyWatcher::LineBuffer::insert_completion(const std::string& completion) {
+    int start = prefix_start();
+    std::string prefix = get_prefix();
+    // Determine if this is command mode (starts with / and no second /)
+    bool is_command = (prefix.size() > 0 && prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
+    int path_len = is_command ? 0 : KeyWatcher::get_path(prefix).length();
+    resize(start + path_len);
+    auto keys = utf8_to_keys(completion);
+    for (const auto& k : keys) insert_char(k);
+    clear_hint();
+    is_completion_active = false;
+}
+
+/// Draw the completion menu below the input line.
+void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
+    size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
+
+    // Build the entire menu in a single string to minimize I/O and flicker.
+    std::string out;
+    out += "\n";
+    for (size_t i = 0; i < max_displayed; ++i) {
+        size_t idx = page_offset + i;
+        if (idx >= candidates.size())
+            break;
+        bool is_selected = (static_cast<int>(idx - page_offset) == selected);
+        out += "\x1b[32m";
+        out += std::to_string(i + 1);
+        out += "\x1b[0m ";
+        out += "\x1b[";
+        out += is_selected ? "37" : "2";
+        out += "m";
+        out += candidates[idx];
+        out += "\x1b[0m";
+        if (i < max_displayed - 1)
+            out += "\n";
+    }
+
+    if (candidates.size() > MAX_DISPLAYED) {
+        bool can_go_up = (page_offset > 0);
+        bool can_go_down = (page_offset + MAX_DISPLAYED < candidates.size());
+        out += "\n\x1b[2m";
+        out += "candidates ";
+        out += std::to_string(page_offset + 1);
+        out += "-";
+        out += std::to_string(std::min(page_offset + MAX_DISPLAYED, candidates.size()));
+        out += " of ";
+        out += std::to_string(candidates.size());
+        out += " ";
+        if (can_go_up)
+            out += "[PgUp] ";
+        if (can_go_down)
+            out += "[PgDn]";
+    }
+
+    printf("%s", out.c_str());
+}
+
+int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _candidates)
+{
+    candidates = std::move(_candidates);
+    selected = 0;
+    page_offset = 0;
+    is_completion_active = true;
+    is_display_dirty = true; // menu opened, need redraw
+
+    int H = TUI::getTerminalHeight();
+    size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
+    // 1 line per candidate + 1 info line when paginated
+    size_t total_menu_lines = max_displayed;
+    if (candidates.size() > MAX_DISPLAYED)
+        total_menu_lines++;
+    auto pos_before = TUI::getCursorPos();
+    int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
+    // Build a single string with all newlines instead of N printf calls
+    if (scroll_amount > 0) {
+        prompt_row -= scroll_amount;
+        std::string cmd(scroll_amount, '\n');
+        printf("%s", cmd.c_str());
+        draw_pos = -1;
+    }
+    auto pos = TUI::getCursorPos();
+    pos.col = pos_before.col;
+    input_col = pos.col;
+    if (scroll_amount > 0) {
+        pos.row = std::max(1, pos_before.row - scroll_amount);
+    }
+    return pos.row;
+}
+
+void KeyWatcher::LineBuffer::hide_completion_menu(int current_input_row)
+{
+    is_completion_active = false;
+    is_display_dirty = true; // menu closed, need redraw
 }
 
 // ============================================================================
@@ -655,9 +838,6 @@ static std::wstring get_clipboard_text() {
 }
 #endif
 
-// ============================================================================
-// Completion menu — render and interact with completion options
-// ============================================================================
 
 Key KeyWatcher::read_key()
 {
@@ -887,162 +1067,6 @@ void KeyWatcher::read_key_thread() {
 #endif
 }
 
-static constexpr size_t MAX_DISPLAYED = 9;
-
-
-
-void KeyWatcher::LineBuffer::insert_completion(const std::string& completion) {
-    int start = prefix_start();
-	std::string prefix = get_prefix();
-	// Determine if this is command mode (starts with / and no second /)
-    bool is_command = (prefix.size() > 0 && prefix[0] == '/' && prefix.find('/', 1) == std::string::npos);
-	int path_len = is_command ? 0 : KeyWatcher::get_path(prefix).length();
-    resize(start + path_len);
-	auto keys = utf8_to_keys(completion);
-	for (const auto& k : keys) insert_char(k);
-    clear_hint();
-    is_completion_active = false;
-}
-
-/// Draw the completion menu below the input line.
-void KeyWatcher::LineBuffer::draw_completion_menu(int current_input_row) {
-    size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-
-    // Build the entire menu in a single string to minimize I/O and flicker.
-    std::string out;
-    out += "\n";
-    for (size_t i = 0; i < max_displayed; ++i) {
-        size_t idx = page_offset + i;
-        if (idx >= candidates.size())
-            break;
-        bool is_selected = (static_cast<int>(idx - page_offset) == selected);
-        out += "\x1b[32m";
-        out += std::to_string(i + 1);
-        out += "\x1b[0m ";
-        out += "\x1b[";
-        out += is_selected ? "37" : "2";
-        out += "m";
-        out += candidates[idx];
-        out += "\x1b[0m";
-        if (i < max_displayed - 1)
-            out += "\n";
-    }
-
-    if (candidates.size() > MAX_DISPLAYED) {
-        bool can_go_up = (page_offset > 0);
-        bool can_go_down = (page_offset + MAX_DISPLAYED < candidates.size());
-        out += "\n\x1b[2m";
-        out += "candidates ";
-        out += std::to_string(page_offset + 1);
-        out += "-";
-        out += std::to_string(std::min(page_offset + MAX_DISPLAYED, candidates.size()));
-        out += " of ";
-        out += std::to_string(candidates.size());
-        out += " ";
-        if (can_go_up)
-            out += "[PgUp] ";
-        if (can_go_down)
-            out += "[PgDn]";
-    }
-
-    printf("%s", out.c_str());
-}
-
-/// Clear the completion menu lines and restore cursor.
-void KeyWatcher::LineBuffer::clear_completion_menu(int current_input_row) {
-    size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-    // 1 line per candidate + 1 info line when paginated
-    size_t total_menu_lines = max_displayed;
-    if (candidates.size() > MAX_DISPLAYED)
-        total_menu_lines++;
-
-    // Build a single ANSI string: position → erase each line and move down → restore cursor.
-    std::string cmd;
-    cmd += "\x1b[";                          // position to first menu line
-    cmd += std::to_string(current_input_row + 1);
-    cmd += ";1H";
-    for (size_t i = 0; i < total_menu_lines; ++i) {
-        cmd += "\x1b[2K";                    // erase entire line
-        if (i + 1 < total_menu_lines)
-            cmd += "\x1b[B";                 // move down one row
-    }
-    cmd += "\x1b[0m";
-    cmd += "\x1b[";                          // restore cursor to input line
-    cmd += std::to_string(current_input_row);
-    cmd += ";";
-    cmd += std::to_string(input_col);
-    cmd += "H";
-    printf("%s", cmd.c_str());
-}
-
-int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _candidates)
-{
-    candidates = std::move(_candidates);
-    selected = 0;
-    page_offset = 0;
-    is_completion_active = true;
-    is_display_dirty = true; // menu opened, need redraw
-
-    int H = TUI::getTerminalHeight();
-    size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
-    // 1 line per candidate + 1 info line when paginated (same as clear_completion_menu)
-    size_t total_menu_lines = max_displayed;
-    if (candidates.size() > MAX_DISPLAYED)
-        total_menu_lines++;
-    auto pos_before = TUI::getCursorPos();
-    int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
-    // Build a single string with all newlines instead of N printf calls
-    if (scroll_amount > 0) {
-        prompt_row -= scroll_amount;
-        std::string cmd(scroll_amount, '\n');
-        printf("%s", cmd.c_str());
-    }
-    auto pos = TUI::getCursorPos();
-    pos.col = pos_before.col;
-    input_col = pos.col;
-    if (scroll_amount > 0) {
-        pos.row = std::max(1, pos_before.row - scroll_amount);
-    }
-    return pos.row;
-}
-
-void KeyWatcher::LineBuffer::hide_completion_menu(int current_input_row)
-{
-    is_completion_active = false;
-    is_display_dirty = true; // menu closed, need redraw
-    //clear_completion_menu(current_input_row);
-}
-
-void KeyWatcher::LineBuffer::clear_prompt()
-{
-    // Build a single ANSI string: position → erase each line and move down → restore cursor.
-    int line_clear = TUI::getTerminalHeight() - prompt_row + 1;
-    std::string cmd;
-    cmd += "\x1b[";                          // position to first menu line
-    cmd += std::to_string(prompt_row);
-    cmd += ";1H";
-    for (size_t i = 0; i < line_clear; ++i) {
-        cmd += "\x1b[2K";                    // erase entire line
-        if (i + 1 < line_clear)
-            cmd += "\x1b[B";                 // move down one row
-    }
-    cmd += "\x1b[0m";
-    cmd += "\x1b[";                          // restore cursor to input line
-    cmd += std::to_string(prompt_row);
-    cmd += ";";
-    cmd += std::to_string(1);
-    cmd += "H";
-    //printf("%s", cmd.c_str());
-    std::cout << cmd;
-}
-
-void KeyWatcher::LineBuffer::set_text(const std::string& _text)
-{
-    text = utf8_to_keys(_text);
-    pos = text.size();
-    is_display_dirty = true;
-}
-
 // ============================================================================
 // Completion API
 // ============================================================================
@@ -1086,15 +1110,18 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
 
         if (buf.is_display_dirty) {
             buf.recompute();
-            buf.clear_prompt();
-            std::cout << buf.display_text();
+            //buf.clear_prompt();
+            //std::cout << buf.display_text();
+
+            buf.clear();
+            buf.draw();
 
             // Print hint in dim color
             if (!buf.hint.empty()) {
                 buf.print_hint();
+                TUI::setAnsiCode(0); // reset color
             }
 
-            TUI::setAnsiCode(0); // reset color
             final_row = buf.row + buf.prompt_row - 1;
 
             // ── Completion menu rendering ────────────────────────
@@ -1129,8 +1156,6 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
                 if (choice > 0 && static_cast<size_t>(choice) <= buf.candidates.size()) {
                     // Fill chosen candidate
                     buf.insert_completion(buf.candidates[choice - 1]);
-                    // Clear menu
-                    // buf.clear_completion_menu(final_row);
                     handled = true;
                 }
             }
@@ -1375,7 +1400,6 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (!candidates.empty()) {
                 buf.candidates = std::move(candidates);
                 if (buf.is_completion_active) {
-                    //buf.clear_completion_menu(cursor_pos.row);
                     buf.page_offset = 0;
                 }
                 else {
