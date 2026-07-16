@@ -5,34 +5,13 @@
 
 doc/llm_provider.md
 
-## GenerateFileOutline
+## [ ] file_utils.cpp
 
-```
-# File outline for tools/file_tool.cpp (1812)
-  14 namespace agent
-  17   class ReadFileTool
- 111 class ReadFilesTool
- 293   struct FileTask
- 332     namespace fs     <-- 無意義
- 367 class WriteFileTool
- 447   namespace fs       <-- 無意義
- 478 namespace fs         <-- 無意義
- 480 to_time_t()
- 481   namespace std      <-- 無意義
- 492 class DeleteFilesTool
- 521   namespace fs       <-- 無意義
- 584     namespace fs     <-- 無意義
- 618       namespace fs   <-- 無意義
- 639       namespace fs   <-- 無意義
- 694 class EditFileTool
- 862 class EditFilesTool
- 957   [&]()  <-- 無意義
-1042 class ReplaceTextMode
-1044 is_json_array()
-1126 [&]()    <-- 無意義
-1135 [&]()    <-- 無意義
-1143 [&]()    <-- 無意義
-1151 [&]()    <-- 無意義
-1159 [&]()    <-- 無意義
-1238 class ListDirectoryTool
-```
+| # | 問題 | 行數 | 影響 |
+|---|------|------|------|
+| 7 | `match_glob()` 缺少 `**` 遞迴萬用字元 | 1055-1085 | pattern `src/**/*.cpp` 無法正確匹配 |
+
+| # | 問題 | 行數 | 影響 |
+|---|------|------|------|
+| 9 | `Base64Decode()` 無效輸入靜默錯誤 | 1091-1128 | 非 Base64 字元被忽略，無警告 |
+| 10 | `apply_blocks()` 排序不穩定 | 267-272 | 同位置 block 順序不確定 |

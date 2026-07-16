@@ -11,6 +11,7 @@
 
 const uint8_t bom[] = { 0xEF, 0xBB, 0xBF };
 
+namespace fs = std::filesystem;
 namespace agent {
 using json = nlohmann::json;
 
@@ -329,7 +330,6 @@ public:
                 auto directory = args.value("directory", "");
                 auto glob_pattern = args.value("glob", "*");
 
-                namespace fs = std::filesystem;
                 for (const auto& entry : fs::recursive_directory_iterator(directory)) {
                     if (!entry.is_regular_file()) continue;
                     std::string filename = entry.path().filename().string();
@@ -444,7 +444,6 @@ public:
             }
 
             // Ensure parent directory exists
-            namespace fs = std::filesystem;
             auto parent_dir = fs::path(path).parent_path();
             if (!parent_dir.empty()) {
                 std::error_code ec;
@@ -474,8 +473,6 @@ public:
 // -----------------------------------------------------------------------
 // DeleteFilesTool - Batch delete multiple files (paths or directory+glob)
 // -----------------------------------------------------------------------
-
-namespace fs = std::filesystem;
 
 static std::time_t to_time_t(fs::file_time_type ftime) {
     using namespace std::chrono;
@@ -517,8 +514,6 @@ public:
             auto args = json::parse(json_args);
             bool dry_run = args.value("dry_run", false);
             if (!dry_run) return; // Only preview in dry_run mode
-
-            namespace fs = std::filesystem;
 
             if (args.contains("paths")) {
                 auto paths = args["paths"].get<std::vector<std::string>>();
@@ -581,8 +576,6 @@ public:
                 auto directory = args.value("directory", "");
                 auto glob_pattern = args.value("glob", "*");
 
-                namespace fs = std::filesystem;
-
                 for (const auto& entry : fs::recursive_directory_iterator(directory)) {
                     if (!entry.is_regular_file()) continue;
                     std::string filename = entry.path().filename().string();
@@ -615,7 +608,6 @@ public:
                 int size_bytes = 0;
                 std::string modified_time;
                 try {
-                    namespace fs = std::filesystem;
                     if (fs::exists(path)) {
                         size_bytes = static_cast<int>(fs::file_size(path));
                         auto time_point = fs::last_write_time(path);
@@ -636,7 +628,6 @@ public:
                     result["deleted_files"].push_back(file_entry);
                 } else {
                     // Actually delete the file
-                    namespace fs = std::filesystem;
                     if (fs::exists(path)) {
                         auto ec = fs::remove(path);
                         if (!ec) {
@@ -1268,8 +1259,6 @@ public:
                 return "Error: No directory path provided.";
             }
 
-namespace fs = std::filesystem;
-
             if (!path.empty() && path.back() != '/' && path.back() != '\\')
                 path += '/';
 
@@ -1709,7 +1698,6 @@ private:
 
     // Check if the file extension requires UTF-8 BOM
     static bool needs_bom(const std::string& path) {
-        namespace fs = std::filesystem;
         auto ext = fs::path(path).extension().string();
         return ext == ".c" || ext == ".cpp" || ext == ".h" || ext == ".hpp";
     }
@@ -1759,7 +1747,6 @@ public:
                 }
 
                 // Ensure parent directory exists
-                namespace fs = std::filesystem;
                 auto parent_dir = fs::path(path).parent_path();
                 if (!parent_dir.empty()) {
                     std::error_code ec;

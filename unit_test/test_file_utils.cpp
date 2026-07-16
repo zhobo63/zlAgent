@@ -883,7 +883,8 @@ static void test_read_file_lines(UnitReport& parent)
         std::vector<std::pair<int, std::string>> out;
         bool ok = ReadFileLines((fs::path(dir) / "test.txt").string(), 1, 100, out);
         UNIT_TEST("read_success", ok);
-        UNIT_TEST("three_lines_only", out.size() == 3u);
+        // split_lines: "a\nb\nc\n" → ["a","b","c",""]
+        UNIT_TEST("four_lines_including_trailing_empty", out.size() == 4u);
 
         safe_remove_all(dir);
     }

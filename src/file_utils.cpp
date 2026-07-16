@@ -7,6 +7,7 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <unordered_set>
 
 namespace agent {
 
@@ -15,10 +16,21 @@ namespace agent {
 /// line separator, so trailing blank lines are preserved correctly.
 
 std::vector<std::string> split_lines(const char* text) {
-    std::vector<std::string> result;
+    // First pass: count lines to reserve capacity
+    size_t count = 1; // at least one line (the remainder after last \n)
     const char* p = text;
+    while (*p) {
+        if (*p == '\n') ++count;
+        ++p;
+    }
+
+    std::vector<std::string> result;
+    result.reserve(count);
+
+    // Second pass: extract lines
+    p = text;
     const char* s = p;  // start of current line
-    while (p && *p) {
+    while (*p) {
         if (*p == '\n') {
             size_t len = static_cast<size_t>(p - s);
             // strip trailing \r from \r\n
@@ -71,50 +83,41 @@ bool ReadFileLines(const std::string& path, int startLine, int endLine,
                    std::vector<std::pair<int, std::string>>& out) {
     if (startLine <= 0 || endLine < startLine) return false;
 
-    std::ifstream file(path);
-    if (!file.is_open()) return false;
+    EditLines el;
+    if (!el.read_file(path)) return false;
 
     out.clear();
-    std::string line;
-    int current = 1;
-
-    // Skip lines before the range
-    while (current < startLine && std::getline(file, line)) {
-        ++current;
+    int total = static_cast<int>(el.lines.size());
+    for (int i = startLine - 1; i < endLine && i < total; ++i) {
+        out.emplace_back(i + 1, el.lines[i]);
     }
-
-    // Read the requested range
-    while (current <= endLine && std::getline(file, line)) {
-        out.emplace_back(current, line);
-        ++current;
-    }
-
     return !out.empty();
 }
 
+static std::string _format_lines(const EditLines& el, int startLine, int endLine, int totalLines) {
+    if (startLine <= 0 || endLine < startLine) return "";
+
+    int width = static_cast<int>(std::to_string(totalLines).size());
+    int total = static_cast<int>(el.lines.size());
+
+    std::ostringstream oss;
+    for (int i = startLine - 1; i <= endLine && i < total; ++i) {
+        oss << std::setw(width) << (i + 1) << " " << el.lines[i] << "\n";
+    }
+    return oss.str();
+}
+
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine) {
-    // Count total lines for proper width
-    std::ifstream file(path);
-    if (!file.is_open()) return "";
-    int total_lines = 0;
-    std::string dummy;
-    while (std::getline(file, dummy)) total_lines++;
-    file.close();
-    return ReadFileLinesAsString(path, startLine, endLine, total_lines);
+    EditLines el;
+    if (!el.read_file(path)) return "";
+    int total = static_cast<int>(el.lines.size());
+    return _format_lines(el, startLine, endLine, total);
 }
 
 std::string ReadFileLinesAsString(const std::string& path, int startLine, int endLine, int totalLines) {
-    std::vector<std::pair<int, std::string>> lines;
-    if (!ReadFileLines(path, startLine, endLine, lines)) return "";
-
-    // Calculate width needed for line numbers based on total file length
-    int width = static_cast<int>(std::to_string(totalLines).size());
-
-    std::ostringstream oss;
-    for (const auto& [num, content] : lines) {
-        oss << std::setw(width) << num << " " << content << "\n";
-    }
-    return oss.str();
+    EditLines el;
+    if (!el.read_file(path)) return "";
+    return _format_lines(el, startLine, endLine, totalLines);
 }
 
 
@@ -240,22 +243,41 @@ std::pair<int, int> EditFile::text_range_to_lines(
 std::vector<std::pair<int, size_t>> EditFile::find_occurrences(
         const std::vector<std::string>& lines,
         const std::string& old_text) {
-    // Reconstruct content and find all occurrences of old_text.
+    // Reconstruct content and build line offset table for binary search.
     // Returns (line_number_of_start, content_position) for each match.
+    if (old_text.empty()) return {};
+
     std::string content;
+    std::vector<size_t> line_offsets; // starting position of each line in content
+    line_offsets.reserve(lines.size());
+    size_t offset = 0;
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        line_offsets.push_back(offset);
         if (i > 0) content += '\n';
         content += lines[i];
+        offset += lines[i].size() + 1;
     }
 
-    std::vector<std::pair<int, size_t>> results;
-    if (old_text.empty()) return results;
+    // Binary search: find the 1-based line number for a given position.
+    auto pos_to_line = [&](size_t pos) -> int {
+        auto it = std::upper_bound(line_offsets.begin(), line_offsets.end(), pos);
+        if (it == line_offsets.begin()) return 1;
+        --it; // step back to the candidate line
+        size_t idx = static_cast<size_t>(it - line_offsets.begin());
+        if (pos < *it + lines[idx].size())
+            return static_cast<int>(idx) + 1;
+        // pos is at or past this line's content; belongs to next line
+        if (idx + 1 < line_offsets.size())
+            return static_cast<int>(idx) + 2;
+        return static_cast<int>(lines.size());
+    };
 
+    std::vector<std::pair<int, size_t>> results;
     size_t search_pos = 0;
     while (true) {
         auto found = content.find(old_text, search_pos);
         if (found == std::string::npos) break;
-        int line_num = pos_to_line(lines, found);
+        int line_num = pos_to_line(found);
         results.push_back({line_num, found});
         search_pos = found + 1;
     }
@@ -484,7 +506,7 @@ static bool is_in_comment_outline(const std::string& line) {
 }
 
 static bool is_keyword_outline(const std::string& s) {
-    static const char* keywords[] = {
+    static const std::unordered_set<std::string> keywords = {
         "if", "else", "for", "while", "do", "switch", "case",
         "return", "break", "continue", "goto", "try", "catch",
         "throw", "new", "delete", "sizeof", "typeof",
@@ -495,10 +517,7 @@ static bool is_keyword_outline(const std::string& s) {
         "using", "template", "typename", "auto", "constexpr",
         "nullptr", "true", "false", "namespace", "class", "struct"
     };
-    for (const auto* kw : keywords) {
-        if (s == kw) return true;
-    }
-    return false;
+    return keywords.count(s) > 0;
 }
 
 static std::string extract_identifier_outline(const std::string& s, size_t pos) {
@@ -534,11 +553,6 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             if (!name.empty()) {
                 out.push_back({i + 1, "namespace", name, brace_depth});
             }
-            for (char c : trimmed) {
-                if (c == '{') brace_depth++;
-                else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
-            }
-            continue;
         }
 
         // class Name { or struct Name {
@@ -549,11 +563,7 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 if (!name.empty()) {
                     out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
                 }
-                for (char c : trimmed) {
-                    if (c == '{') brace_depth++;
-                    else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
-                }
-                goto next_line_cpp;
+                break;
             }
         }
 
@@ -602,7 +612,8 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 } else {
                     fname = before_paren;
                 }
-                if (!fname.empty() && !is_keyword_outline(fname)) {
+                if (!fname.empty() && !is_keyword_outline(fname) &&
+                    (std::isalpha(static_cast<unsigned char>(fname[0])) || fname[0] == '_')) {
                     out.push_back({i + 1, "function", fname, brace_depth});
                 }
             }
@@ -614,25 +625,52 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
         }
 
-    next_line_cpp:;
     }
+}
+
+// GCD helper for indent detection
+static int _gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
+
+// Detect the file's indent unit by computing GCD of all non-zero leading whitespace lengths.
+// Each tab or space counts as 1 unit, so:
+//   - tab-only files → GCD=1, depth = tab_count / 1
+//   - 4-space files  → GCD=4, depth = space_count / 4
+//   - 2-space files  → GCD=2, depth = space_count / 2
+static int detect_python_indent_width(const std::vector<std::string>& lines) {
+    int gcd_val = 0;
+    for (const auto& line : lines) {
+        int len = 0;
+        for (char c : line) {
+            if (c == ' ' || c == '\t') len++;
+            else break;
+        }
+        if (len > 0) {
+            if (gcd_val == 0) gcd_val = len;
+            else gcd_val = _gcd(gcd_val, len);
+        }
+    }
+    return gcd_val > 0 ? gcd_val : 4; // default to 4
 }
 
 static void parse_python_outline(const std::vector<std::string>& lines,
                                   const std::string& ext,
                                   std::vector<RawSymbol>& out) {
     (void)ext;
+    int indent_width = detect_python_indent_width(lines);
+
     for (int i = 0; i < static_cast<int>(lines.size()); i++) {
         std::string trimmed = trim_outline(lines[i]);
         if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
-        int indent = 0;
+        int units = 0;
         for (char c : lines[i]) {
-            if (c == ' ') indent++;
-            else if (c == '\t') indent += 4;
+            if (c == ' ' || c == '\t') units++;
             else break;
         }
-        int depth = indent / 4;
+        int depth = units / indent_width;
 
         if (trimmed.substr(0, 4) == "def ") {
             size_t paren = trimmed.find('(');
@@ -965,24 +1003,34 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
 
     // Compute end_line for each symbol:
     // A symbol's range ends just before the next symbol at same or shallower depth.
+    // O(n) via reverse scan + monotonic stack of (depth, start_line).
     std::vector<OutlineSymbol> symbols;
+    symbols.reserve(raw_symbols.size());
 
-    for (int i = 0; i < static_cast<int>(raw_symbols.size()); i++) {
+    int n = static_cast<int>(raw_symbols.size());
+    std::vector<int> end_lines(n); // [i] = end_line for symbol i
+    // Stack: (depth, start_line), depths strictly increasing from bottom to top.
+    std::vector<std::pair<int, int>> stack;
+
+    for (int i = n - 1; i >= 0; --i) {
+        int d = raw_symbols[i].depth;
+        // Pop deeper entries — they are children of the current symbol
+        while (!stack.empty() && stack.back().first > d)
+            stack.pop_back();
+        if (stack.empty())
+            end_lines[i] = total_lines;  // no sibling at same/shallower depth ahead
+        else
+            end_lines[i] = stack.back().second - 1;
+        stack.push_back({d, raw_symbols[i].start_line});
+    }
+
+    for (int i = 0; i < n; ++i) {
         OutlineSymbol sym;
         sym.start_line = raw_symbols[i].start_line;
         sym.kind = raw_symbols[i].kind;
         sym.name = raw_symbols[i].name;
         sym.depth = raw_symbols[i].depth;
-
-        int end = total_lines; // default to last line
-        for (int j = i + 1; j < static_cast<int>(raw_symbols.size()); j++) {
-            if (raw_symbols[j].depth <= raw_symbols[i].depth) {
-                end = raw_symbols[j].start_line - 1;
-                break;
-            }
-        }
-
-        sym.end_line = end;
+        sym.end_line = end_lines[i];
         symbols.push_back(sym);
     }
 
