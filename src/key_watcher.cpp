@@ -274,6 +274,33 @@ static void cal_display_pos(const std::vector<Key> &text, int pos, int& col, int
     }
 }
 
+static int get_display_pos(const std::vector<Key>& text, 
+    int prompt_col,
+    int prompt_row, int col, int row)
+{
+    int pos = 0;
+    if (row < prompt_row)
+        return pos;
+    int term_width = TUI::getTerminalWidth();
+    int r = prompt_row;
+    int c = prompt_col;
+    for (size_t i = 0; i < text.size(); i++) {
+        if (r >= row && c >= col)
+            return i;
+    
+        if (text[i].char_width == 0 || text[i].ch == '\n') {
+            r++; c = 1;
+            continue;
+        }
+        c += text[i].char_width;
+        if (c > term_width) {
+            r++;
+            c = 1;
+        }
+    }
+    return text.size();
+}
+
 void KeyWatcher::LineBuffer::recompute() {
     int term_width = TUI::getTerminalWidth();
 
@@ -326,79 +353,53 @@ void KeyWatcher::LineBuffer::move_left() {
 }
 
 void KeyWatcher::LineBuffer::move_right() {
-    if (pos < text.size()) pos++;
+    if (pos < text.size()) {
+        pos++;
+        draw_pos = pos;
+    }
 }
 
-void KeyWatcher::LineBuffer::move_up(int term_width) {
-    // Find the row above and go to the corresponding column
-    int current_row = 1, current_col = cached_prompt_col;
-
-    // Count columns up to cursor position
-    for (size_t i = 0; i < pos && i < text.size(); ++i) {
-        if (text[i].char_width == 0 || text[i].ch == '\n') { current_row++; current_col = 1; continue; }
-        current_col += text[i].char_width;
-        if (current_col > term_width) {
-            current_row++;
-            current_col = 1;
-        }
-    }
-
-    // Walk backwards to find the start of previous display line
-    size_t prev_line_start = pos;
-    for (size_t i = pos; i > 0; --i) {
-        if (text[i - 1].char_width == 0 || text[i - 1].ch == '\n') break;
-        prev_line_start = i - 1;
-    }
-
-    // Walk backwards to find the start of previous display line
-    size_t prev_prev_line_start = prev_line_start;
-    for (size_t i = prev_line_start; i > 0; --i) {
-        if (text[i - 1].char_width == 0 || text[i - 1].ch == '\n') break;
-        prev_prev_line_start = i - 1;
-    }
-
-    // Calculate target column within the previous display line
-    int offset_in_current = current_col - 1; // 0-based column index
-    size_t target_pos = prev_prev_line_start + static_cast<size_t>(offset_in_current);
-    if (target_pos > prev_line_start) target_pos = prev_line_start;
-
-    pos = target_pos;
+bool KeyWatcher::LineBuffer::move_up(int term_width) {
+    auto cp = TUI::getCursorPos();
+    if (cp.row <= prompt_row)
+        return false;
+    cp.row--;
+    pos = get_display_pos(text, cached_prompt_col, prompt_row, cp.col, cp.row);
+    draw_pos = pos;
+    return true;
 }
 
-void KeyWatcher::LineBuffer::move_down(int term_width) {
-    // Find the row below and go to the corresponding column
-    int current_row = 1, current_col = cached_prompt_col;
+bool KeyWatcher::LineBuffer::move_down(int term_width) {
+    auto cp = TUI::getCursorPos();
+    int old = pos;
+    pos = get_display_pos(text, cached_prompt_col, prompt_row, cp.col, cp.row + 1);
+    draw_pos = pos;
+    return old != pos;
+}
 
-    // Count columns up to cursor position
-    for (size_t i = 0; i < pos && i < text.size(); ++i) {
-        if (text[i].char_width == 0 || text[i].ch == '\n') { current_row++; current_col = 1; continue; }
-        current_col += text[i].char_width;
-        if (current_col > term_width) {
-            current_row++;
-            current_col = 1;
+void KeyWatcher::LineBuffer::move_home()
+{
+    if (pos < text.size() && pos>0 && text.size() > 0 && text[pos].ch == '\n')
+        pos--;
+    for (; pos > 0; pos--) {
+        if (pos >= text.size())
+            continue;
+        auto& k = text[pos];
+        if (k.ch == '\n') {
+            pos++;
+            break;
         }
     }
-
-    // Walk forward to find the end of next display line
-    size_t next_line_end = pos;
-    for (size_t i = pos; i < text.size(); ++i) {
-        if (text[i].char_width == 0 || text[i].ch == '\n') break;
-        next_line_end = i + 1;
+    draw_pos = pos;
+}
+void KeyWatcher::LineBuffer::move_end()
+{
+    for (; pos < text.size(); pos++) {
+        auto& k = text[pos];
+        if (k.ch == '\n')
+            break;
     }
-
-    // Walk forward to find the end of current display line
-    size_t line_end = pos;
-    for (size_t i = pos; i < text.size(); ++i) {
-        if (text[i].char_width == 0 || text[i].ch == '\n') break;
-        line_end = i + 1;
-    }
-
-    // Calculate target column within the next display line
-    int offset_in_current = current_col - 1; // 0-based column index
-    size_t target_pos = line_end + static_cast<size_t>(offset_in_current);
-    if (target_pos > next_line_end) target_pos = next_line_end;
-
-    pos = target_pos;
+    draw_pos = pos;
 }
 
 std::string KeyWatcher::LineBuffer::input() const {
@@ -638,9 +639,10 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     // Build a single string with all newlines instead of N printf calls
     if (scroll_amount > 0) {
+        TUI::setCursorPos(H, 1);
         prompt_row -= scroll_amount;
         std::string cmd(scroll_amount, '\n');
-        printf("%s", cmd.c_str());
+        std::cout << cmd;
         draw_pos = -1;
     }
     auto pos = TUI::getCursorPos();
@@ -1299,8 +1301,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         }
         if (k == Key::K_UP) {
             // If buffer is empty or we're at the beginning, browse history
-            if (!history.is_browsing() && buf.pos > 0) {
-                buf.move_up(term_width);
+            if (buf.move_up(term_width)) {
                 continue;
             }
             if (!history.is_browsing()) {
@@ -1315,6 +1316,9 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             continue;
         }
         if (k == Key::K_DOWN) {
+            if (buf.move_down(term_width)) {
+                continue;
+            }
             if (history.is_browsing()) {
                 if (history.next()) {
                     const std::string* entry = history.get_current();
@@ -1366,12 +1370,12 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         }
 
         if (k == Key::K_HOME) {
-            buf.pos = 0;
+            buf.move_home();
             continue;
         }
 
         if (k == Key::K_END) {
-            buf.pos = buf.text.size();
+            buf.move_end();
             continue;
         }
 

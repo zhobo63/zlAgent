@@ -145,11 +145,11 @@ public:
 		/// Cursor column when entering completion mode (used for restoring position).
 		int input_col = 0;
 
-		int prompt_row;
+		int prompt_row;						// y
 		int draw_pos = -1;
 
 		// Cached display width of the prompt (computed once, invalidated on prompt change)
-		mutable int cached_prompt_col = 0;
+		mutable int cached_prompt_col = 0;	// x
 
 		LineBuffer() : pos(0), row(1), col(1) {}
 
@@ -181,10 +181,13 @@ public:
 		void move_right();
 
 		/// Move cursor up by one row (wrap to previous line end).
-		void move_up(int term_width);
+		bool move_up(int term_width);
 
 		/// Move cursor down by one row (wrap to next line start).
-		void move_down(int term_width);
+		bool move_down(int term_width);
+
+		void move_home();
+		void move_end();
 
 		/// Get the user input text (after prompt) as UTF-8 string.
 		std::string input() const;
