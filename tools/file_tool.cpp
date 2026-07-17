@@ -149,7 +149,8 @@ public:
                     "type": "boolean",
                     "description": "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content."
                 }
-            }
+            },
+            "required": ["outline"]
         })").dump();
         return schema;
     }
@@ -916,24 +917,27 @@ that entire file is rolled back. Files are independent of each other.)";
                             "end_line": {"type": "integer", "description": "Ending line number (1-based, inclusive) "}
                         }
                     }
-                },
-                "replace_text": {
-                    "type": "array",
-                    "description": "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
-                    "items": {
-                        "type": "object",
-                        "required": ["path", "old_text", "new_text"],
-                        "properties": {
-                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
-                            "old_text": {"type": "string", "description": "Exact text to find and replace. Must match exactly."},
-                            "new_text": {"type": "string", "description": "Replacement text"}
-                        }
-                    }
                 }
             }
         })").dump();
         return schema;
     }
+
+#if 0
+    "replace_text": {
+        "type": "array",
+            "description" : "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
+            "items" : {
+            "type": "object",
+                "required" : ["path", "old_text", "new_text"] ,
+                "properties" : {
+                "path": {"type": "string", "description" : "File path to edit (relative to project root) "},
+                    "old_text" : {"type": "string", "description" : "Exact text to find and replace. Must match exactly."},
+                    "new_text" : {"type": "string", "description" : "Replacement text"}
+            }
+        }
+    }
+#endif
 
     void show_arguments(const std::string& json_args) override {
         Tool::show_arguments(json_args);
@@ -954,28 +958,28 @@ that entire file is rolled back. Files are independent of each other.)";
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    insert_before_line: '" << path << "' before line " << line_num << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# insert_before_line: '" << path << "' before line " << line_num << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    insert_after_line: '" << path << "' after line " << line_num << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# insert_after_line: '" << path << "' after line " << line_num << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        std::cout << "    delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
+                        std::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
                     } else if (strcmp(type_name, "replace_text") == 0) {
                         std::string old_text = op.value("old_text", "");
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    replace_text: '" << path;
-                        std::cout << "\n=== old_text===\n" << old_text << "\n===\n";
-                        std::cout << "\n=== new_text===\n" << new_text << "\n===\n";
+                        std::cout << "# replace_text: '" << path;
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << "\n=== old_text===\n" << old_text;
+                        std::cout << "\n=== new_text===\n" << new_text << TUI::ANSI_RESET << "\n";
                     }
                 }
             };

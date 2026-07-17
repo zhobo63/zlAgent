@@ -535,6 +535,7 @@ struct RawSymbol {
     std::string kind;
     std::string name;
     int depth;       // nesting level at time of discovery
+    std::string annotation;  // e.g. ": SubAgent", "[virtual]"
 };
 
 static void parse_cpp_outline(const std::vector<std::string>& lines,
@@ -546,22 +547,43 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
         std::string trimmed = trim_outline(lines[i]);
         if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
+        // Count closing braces BEFORE symbol detection so depth is correct.
+        // Exception: lines containing both '(' and '{' are likely function
+        // definitions like "void f() {}" where the '}' belongs to the body,
+        // not a scope transition.  Skip pre-counting unless line starts with '}'.
+        bool has_paren_and_brace = (trimmed.find('(') != std::string::npos && trimmed.find('{') != std::string::npos);
+        if (!has_paren_and_brace || !trimmed.empty() && trimmed[0] == '}') {
+            for (char c : trimmed) {
+                if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+            }
+        }
+
         // namespace Name {
         auto ns_pos = trimmed.find("namespace ");
         if (ns_pos != std::string::npos) {
             std::string name = extract_identifier_outline(trimmed, ns_pos + 10);
             if (!name.empty()) {
-                out.push_back({i + 1, "namespace", name, brace_depth});
+                out.push_back({i + 1, "namespace", name, brace_depth, {}});
             }
         }
 
-        // class Name { or struct Name {
+        // class Name : Base { or struct Name {
         for (const auto& kw : {std::string("class "), std::string("struct ")}) {
             size_t pos = trimmed.find(kw);
             if (pos != std::string::npos) {
                 std::string name = extract_identifier_outline(trimmed, pos + kw.size());
                 if (!name.empty()) {
-                    out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth});
+                    // Detect inheritance: "class Name : Base {"
+                    std::string annotation;
+                    size_t colon = trimmed.find(':', pos + kw.size());
+                    if (colon != std::string::npos) {
+                        size_t brace = trimmed.find('{', colon);
+                        std::string after_colon = trim_outline(trimmed.substr(colon + 1, (brace != std::string::npos ? brace : trimmed.size()) - colon - 1));
+                        if (!after_colon.empty() && !is_keyword_outline(after_colon)) {
+                            annotation = ": " + after_colon;
+                        }
+                    }
+                    out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth, annotation});
                 }
                 break;
             }
@@ -581,13 +603,17 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             if (depth != 0) continue;
             size_t close_paren = scan - 1;
 
-            // Check what follows the closing parenthesis: { means definition, ; means call
+            // Scan the rest of this line for { — qualifiers like const/override
+            // or constructor initializer lists can appear between ) and {.
             bool is_definition = false;
             {
                 size_t after = close_paren + 1;
-                while (after < trimmed.size() && trimmed[after] == ' ') after++;
-                if (after < trimmed.size() && trimmed[after] == '{') {
-                    is_definition = true; // same-line: foo(...) {
+                while (after < trimmed.size()) {
+                    if (trimmed[after] == '{') {
+                        is_definition = true;
+                        break;
+                    }
+                    after++;
                 }
             }
 
@@ -604,25 +630,45 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             if (!is_definition) continue; // call, skip
 
             std::string before_paren = trim_outline(trimmed.substr(0, paren));
-            if (!before_paren.empty() && !is_keyword_outline(before_paren)) {
-                size_t last_space = before_paren.find_last_of(' ');
-                std::string fname;
-                if (last_space != std::string::npos && last_space > 0) {
-                    fname = trim_outline(before_paren.substr(last_space + 1));
-                } else {
-                    fname = before_paren;
-                }
-                if (!fname.empty() && !is_keyword_outline(fname) &&
-                    (std::isalpha(static_cast<unsigned char>(fname[0])) || fname[0] == '_')) {
-                    out.push_back({i + 1, "function", fname, brace_depth});
-                }
+            // Skip template lines (e.g. "template<typename T>") and lambdas ("[]")
+            if (before_paren.empty() || is_keyword_outline(before_paren) ||
+                before_paren.find('<') != std::string::npos ||
+                before_paren.find('[') != std::string::npos)
+                continue;
+
+            size_t last_space = before_paren.find_last_of(' ');
+            std::string fname;
+            // Handle operator overloading: "bool operator==" → "operator=="
+            size_t op_pos = before_paren.find("operator");
+            if (op_pos != std::string::npos) {
+                fname = trim_outline(before_paren.substr(op_pos));
+            } else if (last_space != std::string::npos && last_space > 0) {
+                fname = trim_outline(before_paren.substr(last_space + 1));
+            } else {
+                fname = before_paren;
+            }
+            if (!fname.empty() && !is_keyword_outline(fname) &&
+                (std::isalpha(static_cast<unsigned char>(fname[0])) || fname[0] == '_')) {
+                // Detect qualifiers after ): virtual, override, final
+                std::string annotation;
+                { size_t after = close_paren + 1; while (after < trimmed.size() && (trimmed[after] == ' ' || trimmed[after] == '\t')) after++; if (after + 7 <= trimmed.size() && trimmed.substr(after, 7) == "virtual") annotation = "[virtual]"; else if (after + 8 <= trimmed.size() && trimmed.substr(after, 8) == "override") annotation = "[override]"; else if (after + 5 <= trimmed.size() && trimmed.substr(after, 5) == "final") annotation = "[final]"; }
+                out.push_back({i + 1, "function", fname, brace_depth, annotation});
             }
         }
 
-        // Count braces on this line (for non-symbol lines too)
-        for (char c : trimmed) {
-            if (c == '{') brace_depth++;
-            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        // Count opening braces AFTER symbol detection so depth is correct for this line's symbols.
+        // For inline functions like "void f() {}", { and } cancel out — count both to get net zero.
+        if (has_paren_and_brace) {
+            int open_count = 0, close_count = 0;
+            for (char c : trimmed) {
+                if (c == '{') open_count++;
+                else if (c == '}') close_count++;
+            }
+            brace_depth += (open_count - close_count);
+        } else {
+            for (char c : trimmed) {
+                if (c == '{') brace_depth++;
+            }
         }
 
     }
@@ -1031,31 +1077,79 @@ std::string GenerateFileOutline(const std::string& path, int startLine, int endL
         sym.name = raw_symbols[i].name;
         sym.depth = raw_symbols[i].depth;
         sym.end_line = end_lines[i];
+        sym.annotation = raw_symbols[i].annotation;
         symbols.push_back(sym);
     }
 
-    // Format output with line numbers
+    // Format output with line numbers and tree-drawing characters
     std::ostringstream oss;
     int width = static_cast<int>(std::to_string(total_lines).size());
-    oss << "# File outline for " << path << " (" << total_lines << ")\n";
+    oss << "# File outline for " << path << " (" << std::to_string(total_lines) << ")\n";
 
-    for (const auto& sym : symbols) {
+    // Determine which symbols are the last child at each depth.
+    // A symbol is a last sibling if no later symbol shares its depth.
+    std::vector<bool> is_last(symbols.size(), true);
+    for (size_t i = 0; i + 1 < symbols.size(); ++i) {
+        int d = symbols[i].depth;
+        // Scan forward past children to find the next sibling at same or shallower depth.
+        size_t j = i + 1;
+        while (j < symbols.size() && symbols[j].depth > d)
+            j++;
+        if (j < symbols.size() && symbols[j].depth == d)
+            is_last[i] = false;  // another sibling exists
+    }
+
+    // Track which ancestor levels are "last" so we draw │ vs blank.
+    std::vector<bool> ancestor_is_last(symbols.size(), true);
+    int prev_depth = 0;
+
+    for (size_t i = 0; i < symbols.size(); ++i) {
+        const auto& sym = symbols[i];
         // Only show symbols whose start line falls within the requested range
         if (startLine > 0 && sym.start_line < startLine) continue;
         if (endLine > 0 && sym.start_line > endLine) break;
 
+        // When moving back up in depth, clear stale ancestor_is_last entries.
+        // e.g. after "func1()" at depth 2 → "Outer2" at depth 0,
+        // the old ancestor_is_last[0..1] from Outer1/Inner1 must be cleared
+        // so they don't affect Outer2's children.
+        if (sym.depth < prev_depth) {
+            for (int d = sym.depth; d < prev_depth; d++)
+                ancestor_is_last[static_cast<size_t>(d)] = true;
+        }
+        prev_depth = sym.depth;
+
         oss << std::setw(width) << sym.start_line << " ";
 
-        // Indentation: two spaces per depth level
+        // Tree-drawing indentation
         for (int d = 0; d < sym.depth; d++) {
-            oss << "  ";
+            if (ancestor_is_last[static_cast<size_t>(d)])
+                oss << "  ";  // ancestor is last child → blank space
+            else
+                oss << "│ ";  // ancestor has more siblings below → vertical line
+        }
+
+        if (sym.depth > 0) {
+            if (is_last[i])
+                oss << "└ ";
+            else
+                oss << "├ ";
         }
 
         if (sym.kind == "function") {
-            oss << sym.name << "()\n";
+            oss << sym.name << "()";
+            if (!sym.annotation.empty())
+                oss << " " << sym.annotation;
+            oss << "\n";
         } else {
-            oss << sym.kind << " " << sym.name << "\n";
+            oss << sym.kind << " " << sym.name;
+            if (!sym.annotation.empty())
+                oss << " " << sym.annotation;
+            oss << "\n";
         }
+
+        // Update ancestor_is_last for children of this symbol
+        ancestor_is_last[static_cast<size_t>(sym.depth)] = is_last[i];
     }
 
     return oss.str();
