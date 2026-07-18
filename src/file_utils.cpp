@@ -548,14 +548,8 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
         if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
         // Count closing braces BEFORE symbol detection so depth is correct.
-        // Exception: lines containing both '(' and '{' are likely function
-        // definitions like "void f() {}" where the '}' belongs to the body,
-        // not a scope transition.  Skip pre-counting unless line starts with '}'.
-        bool has_paren_and_brace = (trimmed.find('(') != std::string::npos && trimmed.find('{') != std::string::npos);
-        if (!has_paren_and_brace || !trimmed.empty() && trimmed[0] == '}') {
-            for (char c : trimmed) {
-                if (c == '}') brace_depth = std::max(0, brace_depth - 1);
-            }
+        for (char c : trimmed) {
+            if (c == '}') brace_depth = std::max(0, brace_depth - 1);
         }
 
         // namespace Name {
@@ -622,8 +616,10 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 for (int j = i + 1; j < static_cast<int>(lines.size()); j++) {
                     std::string next_trimmed = trim_outline(lines[j]);
                     if (next_trimmed.empty()) continue;
-                    if (next_trimmed[0] == '{') is_definition = true;
-                    break;
+                    if (next_trimmed[0] == '{') {
+                        is_definition = true;
+                        break;
+                    }
                 }
             }
 
@@ -657,18 +653,8 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
         }
 
         // Count opening braces AFTER symbol detection so depth is correct for this line's symbols.
-        // For inline functions like "void f() {}", { and } cancel out — count both to get net zero.
-        if (has_paren_and_brace) {
-            int open_count = 0, close_count = 0;
-            for (char c : trimmed) {
-                if (c == '{') open_count++;
-                else if (c == '}') close_count++;
-            }
-            brace_depth += (open_count - close_count);
-        } else {
-            for (char c : trimmed) {
-                if (c == '{') brace_depth++;
-            }
+        for (char c : trimmed) {
+            if (c == '{') brace_depth++;
         }
 
     }
