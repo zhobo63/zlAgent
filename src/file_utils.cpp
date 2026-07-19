@@ -480,10 +480,38 @@ std::string DiffEdit(const std::string& old_text,
 
 // ── Helpers for GenerateFileOutline ───────────────────────
 
+static bool is_delims(char c, const char* delimiter)
+{
+    while (delimiter[0]) {
+        if (c == delimiter[0])
+            return true;
+        delimiter++;
+    }
+    return false;
+}
+
+std::vector<std::string> split(const std::string& s, const char *delimiter) {
+    std::vector<std::string> tokens;
+    size_t start = 0;
+    for (size_t i = 0; i <= s.length(); i++) {
+        if (i == s.length() || is_delims(s[i], delimiter)) {
+            if (i > start)
+                tokens.push_back(s.substr(start, i - start));
+            start = i + 1;
+        }
+    }
+    return tokens;
+}
+
 static std::string trim_outline(const std::string& s) {
+
     size_t start = 0, end = s.size();
     while (start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r')) start++;
     while (end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r')) end--;
+    int comment = s.find("//");
+    if (comment != std::string::npos && comment<end) {
+        end = comment;
+    }
     return s.substr(start, end - start);
 }
 
@@ -495,14 +523,15 @@ static std::string get_extension_outline(const std::string& path) {
     return ext;
 }
 
-static bool is_in_comment_outline(const std::string& line) {
-    auto trimmed = trim_outline(line);
-    if (trimmed.empty()) return false;
-    if (trimmed[0] == '/' && trimmed.size() >= 2 && (trimmed[1] == '/' || trimmed[1] == '*'))
+static bool is_in_comment_outline(const std::string& trimmed) {
+    if (trimmed[0] == '/' && trimmed.size() >= 2 && trimmed[1] == '/')
         return true;
     if (trimmed[0] == '#')
         return true;
     return false;
+}
+static bool is_comment_begin(const std::string& trimmed) {
+    return (trimmed.find("/*") != std::string::npos);
 }
 
 static bool is_keyword_outline(const std::string& s) {
@@ -534,129 +563,198 @@ struct RawSymbol {
     int start_line;  // 1-based
     std::string kind;
     std::string name;
-    int depth;       // nesting level at time of discovery
+    int depth = 0;       // nesting level at time of discovery
     std::string annotation;  // e.g. ": SubAgent", "[virtual]"
 };
+
+// Strip access specifiers from a base-list token: "public Base" → "Base"
+static std::string strip_access_specifier(const std::string& s) {
+    auto t = trim_outline(s);
+    if (t.empty()) return t;
+    static const char* specs[] = {"public", "private", "protected"};
+    for (const auto* sp : specs) {
+        size_t len = strlen(sp);
+        if (t.size() > len && t.substr(0, len) == sp && t[len] == ' ') {
+            return trim_outline(t.substr(len));
+        }
+    }
+    return t;
+}
+
+static std::string normalize_cpp_name(std::string& _name)
+{
+    std::string name;
+    auto toks = split(_name, " \t");
+    for (auto tok : toks) {
+        if (tok == "public" || tok == "private" || tok == "protected")
+            continue;
+        name += tok;
+    }
+    return name;
+}
 
 static void parse_cpp_outline(const std::vector<std::string>& lines,
                               const std::string& ext,
                               std::vector<RawSymbol>& out) {
-    (void)ext;
+
+    bool is_comment = false;
+    bool is_require_braces_begin = false;
     int brace_depth = 0;
+
+    std::vector<RawSymbol> cpp_stack;
+    RawSymbol cur;
+
     for (int i = 0; i < static_cast<int>(lines.size()); i++) {
-        std::string trimmed = trim_outline(lines[i]);
-        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
-
-        // Count closing braces BEFORE symbol detection so depth is correct.
-        for (char c : trimmed) {
-            if (c == '}') brace_depth = std::max(0, brace_depth - 1);
-        }
-
-        // namespace Name {
-        auto ns_pos = trimmed.find("namespace ");
-        if (ns_pos != std::string::npos) {
-            std::string name = extract_identifier_outline(trimmed, ns_pos + 10);
-            if (!name.empty()) {
-                out.push_back({i + 1, "namespace", name, brace_depth, {}});
+        auto line = trim_outline(lines[i]);
+        if (line.empty())
+            continue;
+        if (is_in_comment_outline(line))
+            continue;
+        if (is_comment) {
+            if (line.find("*/") != std::string::npos) {
+                is_comment = false;
             }
+            continue;
         }
 
-        // class Name : Base { or struct Name {
-        for (const auto& kw : {std::string("class "), std::string("struct ")}) {
-            size_t pos = trimmed.find(kw);
-            if (pos != std::string::npos) {
-                std::string name = extract_identifier_outline(trimmed, pos + kw.size());
-                if (!name.empty()) {
-                    // Detect inheritance: "class Name : Base {"
-                    std::string annotation;
-                    size_t colon = trimmed.find(':', pos + kw.size());
-                    if (colon != std::string::npos) {
-                        size_t brace = trimmed.find('{', colon);
-                        std::string after_colon = trim_outline(trimmed.substr(colon + 1, (brace != std::string::npos ? brace : trimmed.size()) - colon - 1));
-                        if (!after_colon.empty() && !is_keyword_outline(after_colon)) {
-                            annotation = ": " + after_colon;
-                        }
+        if (line.find("/*") != std::string::npos) {
+            is_comment = true;
+            continue;
+        }
+        bool has_braces_open = false;
+        bool has_braces_close = false;
+        bool has_round_braces = false;
+        std::vector<int> braces_pos;
+        int round_braces_open_pos = -1;
+        int round_braces_close_pos = -1;
+        bool func_declare = false;
+        bool has_func = false;
+        std::string func_name;
+
+        for (int l = 0; l < line.length();l++) {
+            auto c = line[l];
+            switch (c) {
+            case '{':
+                brace_depth++;
+                has_braces_open = true;
+                braces_pos.push_back(l);
+                break;
+            case '}':
+                brace_depth--;
+                has_braces_close = true;
+                break;
+            case '(':
+                has_round_braces = true;
+                if (has_func || brace_depth > cur.depth + 1)
+                    break;
+                has_func = true;
+                round_braces_open_pos = l;
+                // extract func_name: scan backwards from '(' skipping whitespace
+                {
+                    int pos = l - 1;
+                    while (pos >= 0 && std::isspace(line[pos])) pos--;
+                    int end = pos + 1;
+                    //while (pos >= 0 && (
+                    //    std::isalnum(line[pos]) ||
+                    //    line[pos] == '_' || 
+                    //    line[pos] == '~' || 
+                    //    line[pos] == ':')) pos--;
+                    pos = 0;
+                    func_name = line.substr(pos, end - pos);
+                    auto toks = split(func_name, " \t");
+                    func_name = "";
+                    for (auto tok : toks) {
+                        if (tok == "static" || tok == "inline" || tok == "const")
+                            continue;
+                        pos++;
+                        if (pos == 1)
+                            continue;
+                        if (pos > 2)
+                            func_name += " ";
+                        func_name += tok;
                     }
-                    out.push_back({i + 1, kw.substr(0, kw.size()-1), name, brace_depth, annotation});
+                }
+                break;
+            case ')':
+                round_braces_close_pos = l;
+                break;
+            case ';':
+                if (round_braces_close_pos >= 0 && l > round_braces_close_pos) {
+                    func_declare = true;
                 }
                 break;
             }
         }
 
-        // Function definition: type name(...) { or name()
-        size_t paren = trimmed.find('(');
-        if (paren != std::string::npos && paren > 0) {
-            // Find the matching closing parenthesis
-            int depth = 1;
-            size_t scan = paren + 1;
-            while (scan < trimmed.size() && depth > 0) {
-                if (trimmed[scan] == '(') depth++;
-                else if (trimmed[scan] == ')') depth--;
-                scan++;
-            }
-            if (depth != 0) continue;
-            size_t close_paren = scan - 1;
-
-            // Scan the rest of this line for { — qualifiers like const/override
-            // or constructor initializer lists can appear between ) and {.
-            bool is_definition = false;
-            {
-                size_t after = close_paren + 1;
-                while (after < trimmed.size()) {
-                    if (trimmed[after] == '{') {
-                        is_definition = true;
-                        break;
-                    }
-                    after++;
+        int start_pos = 0;
+        if (cpp_stack.size() > 0) {
+            if (brace_depth <= cur.depth) {
+                cpp_stack.pop_back();
+                if (cpp_stack.size() > 0) {
+                    cur = cpp_stack[cpp_stack.size() - 1];
                 }
             }
-
-            // If not on the same line, check next non-empty line for {
-            if (!is_definition) {
-                for (int j = i + 1; j < static_cast<int>(lines.size()); j++) {
-                    std::string next_trimmed = trim_outline(lines[j]);
-                    if (next_trimmed.empty()) continue;
-                    if (next_trimmed[0] == '{') {
-                        is_definition = true;
-                        break;
-                    }
+        }
+        if (is_require_braces_begin) {
+            if (has_braces_open) {
+                cur.name += line.substr(start_pos, braces_pos[0] - start_pos);
+                cur.name = normalize_cpp_name(cur.name);
+                is_require_braces_begin = false;
+                cur.depth = cpp_stack.size();
+                cpp_stack.push_back(cur);
+                out.push_back(cur);
+            }
+            else {
+                cur.name += line.substr(start_pos);
+            }
+            auto semicolon = line.find(";");
+            if (semicolon != std::string::npos) {
+                is_require_braces_begin = false;
+            }
+        }
+        else {
+            if (line.rfind("namespace", 0) == 0) {
+                is_require_braces_begin = true;
+                cur = { i+1, "namespace" };
+                start_pos = cur.kind.length() + 1;
+            }
+            else if (line.rfind("class", 0) == 0) {
+                is_require_braces_begin = true;
+                cur = { i+1, "class" };
+                start_pos = cur.kind.length() + 1;
+            }
+            else if (line.rfind("struct", 0) == 0) {
+                is_require_braces_begin = true;
+                cur = { i+1, "struct" };
+                start_pos = cur.kind.length() + 1;
+            }
+            else {
+                // check function
+                if (has_func && !func_name.empty()) {
+                    out.push_back({
+                        i + 1, "function", func_name , cpp_stack.size() > 0 ? cur.depth + 1 : 0
+                        });
                 }
-            }
-
-            if (!is_definition) continue; // call, skip
-
-            std::string before_paren = trim_outline(trimmed.substr(0, paren));
-            // Skip template lines (e.g. "template<typename T>") and lambdas ("[]")
-            if (before_paren.empty() || is_keyword_outline(before_paren) ||
-                before_paren.find('<') != std::string::npos ||
-                before_paren.find('[') != std::string::npos)
-                continue;
-
-            size_t last_space = before_paren.find_last_of(' ');
-            std::string fname;
-            // Handle operator overloading: "bool operator==" → "operator=="
-            size_t op_pos = before_paren.find("operator");
-            if (op_pos != std::string::npos) {
-                fname = trim_outline(before_paren.substr(op_pos));
-            } else if (last_space != std::string::npos && last_space > 0) {
-                fname = trim_outline(before_paren.substr(last_space + 1));
-            } else {
-                fname = before_paren;
-            }
-            if (!fname.empty() && !is_keyword_outline(fname) &&
-                (std::isalpha(static_cast<unsigned char>(fname[0])) || fname[0] == '_')) {
-                // Detect qualifiers after ): virtual, override, final
-                std::string annotation;
-                { size_t after = close_paren + 1; while (after < trimmed.size() && (trimmed[after] == ' ' || trimmed[after] == '\t')) after++; if (after + 7 <= trimmed.size() && trimmed.substr(after, 7) == "virtual") annotation = "[virtual]"; else if (after + 8 <= trimmed.size() && trimmed.substr(after, 8) == "override") annotation = "[override]"; else if (after + 5 <= trimmed.size() && trimmed.substr(after, 5) == "final") annotation = "[final]"; }
-                out.push_back({i + 1, "function", fname, brace_depth, annotation});
             }
         }
 
-        // Count opening braces AFTER symbol detection so depth is correct for this line's symbols.
-        for (char c : trimmed) {
-            if (c == '{') brace_depth++;
+        if (is_require_braces_begin) {
+            if (has_braces_open) {
+                cur.name = line.substr(start_pos, braces_pos[0] - start_pos);
+                cur.name = normalize_cpp_name(cur.name);
+                is_require_braces_begin = false;
+                cur.depth = cpp_stack.size();
+                cpp_stack.push_back(cur);
+                out.push_back(cur);
+            }
+            else {
+                cur.name = line.substr(start_pos);
+            }
+            auto semicolon = line.find(";");
+            if (semicolon != std::string::npos) {
+                is_require_braces_begin = false;
+            }
         }
-
     }
 }
 

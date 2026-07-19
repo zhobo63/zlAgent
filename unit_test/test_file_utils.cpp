@@ -1002,7 +1002,7 @@ public:
     void foo();
 };
 void bar() {}
-})";
+};)";
         {
             std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
             f << src;
@@ -1018,11 +1018,12 @@ void bar() {}
         std::string expected = "# File outline for " + (fs::path(dir) / "test.cpp").string() + " (7)\n";
         expected += "1 namespace agent\n"
                     "2   ├ class MyClass\n"
+                    "4   │ └ foo()\n"
                     "6   └ bar()\n";
 
         std::cout << "\n" << src << "\n";
         std::cout << "\n" << result << "\n";
-        UNIT_TEST("exact_output", result == expected);
+        UNIT_TEST("cpp_basic_exact_output", result == expected);
 
         safe_remove_all(dir);
     }
@@ -1037,14 +1038,14 @@ void bar() {}
         std::string src= R"(class Outer1 {
   struct Inner1 {
     void func1() {}
-  }
-}
+  };
+};
 class Outer2 {
   struct Inner2 {
     void func2() {}
-  }
+  };
   void func3() {}
-}
+};
 void func4() {})";
         {
             std::ofstream f(fs::path(dir) / "nested.cpp", std::ios::binary);
@@ -1077,7 +1078,7 @@ void func4() {})";
         std::cout << "\n" << src << "\n";
         std::cout << "\n" << result << "\n";
 
-        UNIT_TEST("exact_output", result == expected);
+        UNIT_TEST("cpp_nested_exact_output", result == expected);
 
         safe_remove_all(dir);
     }

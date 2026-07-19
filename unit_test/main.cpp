@@ -1,4 +1,5 @@
 ﻿#include "unit_test.h"
+#include "file_utils.h"
 
 void test_code_search_tools(UnitReport& parent);
 void test_config(UnitReport& parent);
@@ -27,6 +28,11 @@ void main() {
 #endif
 
     UnitReport main("UnitTest");
+
+    auto outline = agent::GenerateFileOutline("/hg/zlagent/include/key_watcher.h");
+    std::cout << outline << "\n";
+    outline = agent::GenerateFileOutline("/hg/zlagent/src/key_watcher.cpp");
+    std::cout << outline << "\n";
 
     try {
         //test_example(main);
