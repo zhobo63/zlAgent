@@ -23,9 +23,8 @@ struct Key {
 
 	constexpr Key(uint32_t c = 0, int s = 0, int cw = 0) : ch(c), size(s), char_width(cw) {}
 
-	/// Construct a Key from a Unicode code point (UTF-8 encoded).
+	/// Construct a Key from a Unicode code point (encodes to UTF-8 internally).
 	static Key from_codepoint(ucs4_t cp);
-
 	// Comparison operators for special keys
 	inline bool operator==(const Key& b) const {
 		return size == b.size && ch == b.ch;
@@ -58,7 +57,7 @@ struct Key {
 using KeyCallback = std::function<void(int k)>;
 using ReadlineCallback = std::function<void(const Key& k)>;
 
-/// Global key watcher that runs in the background and detects Ctrl-C.
+/// Global key watcher: background thread for input detection and interactive readline with history/completion.
 class KeyWatcher {
 public:
 	// ── Original API ────────────────────────────────────────
@@ -71,7 +70,7 @@ public:
 	/// Clear the registered key callback.
 	static void clear_callback() { s_callback = nullptr; }
 
-	/// Start watching for Ctrl-C (char code 3). Thread-safe, idempotent.
+	/// Start the background input thread. Thread-safe, idempotent.
 	static void start();
 
 	/// Stop the watcher thread. Thread-safe.
@@ -92,8 +91,6 @@ public:
 
 	/// Restore terminal to normal mode after readline exits.
 	static void close_keyboard();
-
-	/// Read the next key from stdin. Blocks until input is available.
 
 	// ── Completion API ──────────────────────────────────────
 
@@ -139,17 +136,17 @@ public:
 		// Completion menu state (only valid when is_completion_active)
 		std::vector<std::string> candidates;
 		int selected = 0;
-		/// Number of candidates to display per page in the completion menu.
+		/// Offset of the first candidate to display in the current page.
 		size_t page_offset = 0;
 
 		/// Cursor column when entering completion mode (used for restoring position).
 		int input_col = 0;
 
-		int prompt_row;
+		int prompt_row;						// y
 		int draw_pos = -1;
 
-		// Cached display width of the prompt (computed once, invalidated on prompt change)
-		mutable int cached_prompt_col = 0;
+		// Cached column position after the prompt (computed once, invalidated on prompt change)
+		mutable int cached_prompt_col = 0;	// x
 
 		LineBuffer() : pos(0), row(1), col(1) {}
 
@@ -181,10 +178,15 @@ public:
 		void move_right();
 
 		/// Move cursor up by one row (wrap to previous line end).
-		void move_up(int term_width);
+		bool move_up(int term_width);
 
 		/// Move cursor down by one row (wrap to next line start).
-		void move_down(int term_width);
+		bool move_down(int term_width);
+
+		/// Move cursor to the beginning of user input (after prompt).
+		void move_home();
+		/// Move cursor to the end of user input.
+		void move_end();
 
 		/// Get the user input text (after prompt) as UTF-8 string.
 		std::string input() const;
@@ -199,7 +201,7 @@ public:
 
 		void resize(size_t n);
 
-		/// Total displayable length (text up to cursor + hint).
+		/// Total length for display calculation (cursor position + hint byte size).
 		size_t total_len() const { return pos + hint.size(); }
 
 		/// Find the start of the current word (backwards from cursor, delimited by space or '@').
@@ -219,7 +221,7 @@ public:
 		/// Erase the prompt from screen.
 		void clear_prompt();
 
-		/// Erase from draw_col to screen end
+		/// Erase from cached_prompt_col to screen end
 		void clear();
 
 		/// draw remain input

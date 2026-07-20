@@ -854,6 +854,11 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
                     auto reply = prompt_user_reply(tc.name, tc.arguments);
                     if (reply.action == ReplyAction::No) {
                         LOG_WARN("Tool", "Skipped: " + tc.name);
+                        ChatMessage tool_msg{"tool", "User denied the operation.", tc.name};
+                        if (!tc.id.empty()) {
+                            tool_msg.content = "[call_id: " + tc.id + "] " + tool_msg.content;
+                        }
+                        memory_.add(tool_msg);
                         continue;
                     }
                 }

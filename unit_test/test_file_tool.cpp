@@ -2124,32 +2124,6 @@ void test_delete_files_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // dry_run mode does not delete
-    {
-        LOG_INFO("delete_files", "test_delete_dryrun_temp");
-        std::string dir = "test_delete_dryrun_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
-        fs::create_directories(dir);
-
-        std::ofstream out(fs::path(dir) / "dry.txt", std::ios::binary);
-        out << "not deleted\n";
-        out.close();
-
-        auto tool = create_delete_files_tool();
-        json args;
-        args["paths"] = {dir + "/dry.txt"};
-        args["dry_run"] = true;
-        auto args_str = args.dump();
-        tool->show_arguments(args_str);
-        tool->show_preview(args_str);
-        std::string result = tool->execute(args_str);
-        tool->show_result(result);
-        UNIT_TEST("dryrun_file_still_exists", fs::exists(fs::path(dir) / "dry.txt"));
-        UNIT_TEST("dryrun_message_present", result.find("Dry run mode") != std::string::npos);
-
-        safe_remove_all(dir);
-    }
-
     // directory + glob delete
     {
         LOG_INFO("delete_files", "test_delete_glob_temp");

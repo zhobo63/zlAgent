@@ -115,6 +115,7 @@ struct OutlineSymbol {
     std::string kind;    // "namespace", "class", "struct", "function"
     std::string name;
     int depth;           // nesting level (0 = top-level)
+    std::string annotation;  // e.g. ": SubAgent", "[virtual]"
 };
 
 /// Generate a file outline with symbol names and line ranges.

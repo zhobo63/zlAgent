@@ -989,28 +989,96 @@ static void test_generate_file_outline(UnitReport& parent)
     UnitReport unit("generate_file_outline");
     LOG_INFO("file_utils", "generate_file_outline");
 
-    // --- Test 1: C++ file outline ---
+    // --- Test 1: C++ file outline (exact output) ---
     {
         LOG_INFO("file_utils", "outline_cpp_basic");
         std::string dir = "test_fu_go_temp";
         safe_remove_all(dir);
         fs::create_directories(dir);
 
-        {
-            std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
-            f << R"(namespace agent {
+        std::string src= R"(namespace agent {
 class MyClass {
 public:
     void foo();
 };
 void bar() {}
-})";
+};)";
+        {
+            std::ofstream f(fs::path(dir) / "test.cpp", std::ios::binary);
+            f << src;
         }
 
         std::string result = GenerateFileOutline((fs::path(dir) / "test.cpp").string());
-        UNIT_TEST("not_empty", !result.empty());
-        UNIT_TEST("has_namespace", result.find("namespace") != std::string::npos);
-        UNIT_TEST("has_class", result.find("class") != std::string::npos || result.find("MyClass") != std::string::npos);
+
+        // Expected outline (7 lines)
+        // # File outline for test_fu_go_temp/test.cpp (7)
+        // 1 namespace agent
+        // 2   class MyClass
+        // 6 bar()
+        std::string expected = "# File outline for " + (fs::path(dir) / "test.cpp").string() + " (7)\n";
+        expected += "1 namespace agent\n"
+                    "2   ├ class MyClass\n"
+                    "4   │ └ foo()\n"
+                    "6   └ bar()\n";
+
+        std::cout << "\n" << src << "\n";
+        std::cout << "\n" << result << "\n";
+        UNIT_TEST("cpp_basic_exact_output", result == expected);
+
+        safe_remove_all(dir);
+    }
+
+    // --- Test 2: Nested class/struct/function outline (exact output) ---
+    {
+        LOG_INFO("file_utils", "outline_cpp_nested");
+        std::string dir = "test_fu_go_nested_temp";
+        safe_remove_all(dir);
+        fs::create_directories(dir);
+
+        std::string src= R"(class Outer1 {
+  struct Inner1 {
+    void func1() {}
+  };
+};
+class Outer2 {
+  struct Inner2 {
+    void func2() {}
+  };
+  void func3() {}
+};
+void func4() {})";
+        {
+            std::ofstream f(fs::path(dir) / "nested.cpp", std::ios::binary);
+            f << src;
+        }
+
+        std::string result = GenerateFileOutline((fs::path(dir) / "nested.cpp").string());
+
+        // Expected outline (12 lines, width=2 so single-digit line numbers are right-aligned)
+        // Parser counts '}' before symbol detection, so inline {} functions get lower depth
+        // # File outline for test_fu_go_nested_temp/nested.cpp (12)
+        //  1 class Outer1
+        //  2   struct Inner1
+        //  3   func1()
+        //  6 class Outer2
+        //  7   struct Inner2
+        //  8   func2()
+        // 10 func3()
+        // 12 func4()
+        std::string expected = "# File outline for " + (fs::path(dir) / "nested.cpp").string() + " (12)\n";
+        expected += " 1 class Outer1\n";
+        expected += " 2 │ └ struct Inner1\n";
+        expected += " 3 │   └ func1()\n";
+        expected += " 6 class Outer2\n";
+        expected += " 7 │ ├ struct Inner2\n";
+        expected += " 8 │ │ └ func2()\n";
+        expected += "10 │ └ func3()\n";
+        expected += "12 func4()\n";
+
+        std::cout << "\n" << src << "\n";
+        std::cout << "\n" << result << "\n";
+
+        UNIT_TEST("cpp_nested_exact_output", result == expected);
 
         safe_remove_all(dir);
     }

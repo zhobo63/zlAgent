@@ -17,7 +17,6 @@
 │   ├── safety_guard.h    # 安全防護（危險操作確認/路徑白名單/輸入過濾）
 │   ├── system_prompt.h   # 多語言系統提示詞提供者
 │   ├── language_detector.h # 自動語言偵測（副檔名掃描）
-│   ├── completion.h      # Isocline Tab 自動補全回呼 |
 │   ├── task_planner.h    # 🆕 任務規劃（拆解複雜任務為子步驟）
 │   ├── self_reflector.h  # 🆕 自我反思/糾錯（品質審查 + 自動重試）
 │   └── multi_agent.h     # 🆕 多 Agent 協作（Coder / Reviewer / Tester）
@@ -36,7 +35,6 @@
 │   ├── task_planner.cpp  # 🆕 LLM-driven 計劃生成 + replan
 │   ├── self_reflector.cpp# 🆕 品質審查 + 反饋重試
 │   └── multi_agent.cpp   # 🆕 SubAgent 路由 + Coder→Reviewer pipeline
-├── completion/           # Isocline Tab 自動補全
 ├── tools/                # 工具實現
 │   ├── file_tool.cpp         # read_file / write_file / edit_file
 │   ├── terminal_tool.cpp     # execute_command（跨平台）
@@ -455,59 +453,6 @@ user_reply_mode = off    # off, on_error, always
 
 ---
 
-## Isocline Tab 自動補全
-
-Agent 使用 isocline 作為 CLI 輸入引擎，支援按下 Tab 鍵時的命令和參數自動補全。
-
-### 基礎命令補全
-
-輸入以 `/` 開頭的文字時，Tab 會觸發命令補全：
-- **無參數** → 顯示所有可用命令（若 text 不完整則過濾）
-- **唯一匹配** → 單次 Tab 自動插入
-- **多個匹配** → 多次 Tab 列出所有選項
-
-### 命令參數補全
-
-不同命令有不同的參數類型，根據上下文提供不同的補全選項：
-
-| 命令 | 補全內容 |
-|------|----------|
-| `/model` | 模型編號（透過 `get_global_agent()` 取得可用模型） |
-| `/reply` | 模式（off, exec, edit, always） |
-| `/facts` | prefix 過濾補全（列出已知 fact key） |
-| `/sessions` | n（數量）補全（建議 5/10/20） |
-| `/search-kb` | 查詢詞補全（目前無 API，保留擴充空間） |
-| `/add-doc` | 檔案路徑補全（使用 `ic_complete_filename()`） |
-
-### /reply 命令 — 使用者介入模式設定
-
-```bash
-/reply-mode off       # 關閉介入（完全自動）
-/reply-mode on_error  # 工具失敗時暫停
-/reply-mode always    # 每次工具調用前暫停
-```
-
-| 選項 | 說明 |
-|------|------|
-| `off` | 完全自動，不暫停（預設） |
-| `on_error` | 僅在工具執行失敗時暫停 |
-| `always` | 每次工具呼叫前都暫停，等待使用者確認或修改參數 |
-
-### Tab 補全示例
-
-```bash
-# 輸入 /m → Tab → 自動補全為 /model
-$ /m[TAB]
-/model 
-
-# 輸入 /reply → Tab → 顯示所有模式選項
-$ /reply[TAB]
-off    exec    edit    always
-
-# 輸入 /add-doc src/ → Tab → 目錄跳躍
-$ /add-doc src/[TAB]
-/add-doc src/main.cpp
-```
 
 ## 日誌等級設定
 
@@ -591,6 +536,5 @@ model = deepseek-r1-distill-qwen-7b    ; 動態切換後持久化
 |------|------|
 | HTTP Client | httplib.h (single-header, cross-platform) |
 | JSON 解析 | nlohmann/json (header-only) |
-| CLI 輸入 | isocline（portable readline） |
 | C++ 標準 | C++17 |
 | 跨平台 | ✅ Windows / Linux / macOS |

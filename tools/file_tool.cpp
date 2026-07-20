@@ -115,11 +115,11 @@ public:
     std::string description() const override {
         return
             "Read the contents of multiple files. Supports three input modes that can be combined in a single call:\n"
-            "  (1) paths — string array, e.g. {\"paths\":[\"src/a.cpp\",\"inc/b.h\"], \"outline\":false}\n"
+            "  (1) paths — string array\n"
             "      Requires top-level outline: true for file outlines (symbol names and line numbers), false for full content.\n"
-            "  (2) files — object array with per-file options, e.g. {\"files\":[{\"path\":\"a.cpp\",\"outline\":true,\"start_line\":1,\"end_line\":100}]}\n"
-            "      Each file can have its own outline (bool), start_line/end_line for range. In outline mode, range limits the symbols returned.\n"
-            "  (3) directory + glob — e.g. {\"directory\":\"src\", \"glob\":\"*.cpp\", \"outline\":true}\n"
+            "  (2) files — object array with per-file options\n"
+            "      Each file can have its own outline (bool, inherits from top-level if omitted; defaults to true), start_line/end_line for range. In outline mode, range may narrow the scope of symbols returned depending on language support.\n"
+            "  (3) directory + glob\n"
             "      Both directory and glob must be provided together; requires top-level outline.\n"
             "*outline mode support C/C++, Python, JavaScript/TypeScript, Go, Rust, Java, Markdown\n";
     }
@@ -130,26 +130,27 @@ public:
                 "paths": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of file paths to read as a string array. E.g. [\"file1.cpp\", \"file2.h\"]. Requires top-level 'outline'. Can be combined with files/directory+glob."
+                    "description": "List of file paths to read as a string array. E.g. [\"file1.cpp\", \"file2.h\"]."
                 },
                 "files": {
                     "type": "array",
                     "items": {"type": "object"},
-                    "description": "List of file objects with per-file options. Each object: {\"path\": \"file.cpp\", \"outline\": false, \"start_line\": 1, \"end_line\": 100}. Can be combined with paths/directory+glob."
+                    "description": "List of file objects with per-file options. Each object: {\"path\": \"file.cpp\", \"outline\": false, \"start_line\": 1, \"end_line\": 100}."
                 },
                 "directory": {
                     "type": "string",
-                    "description": "Directory to search in. Must be provided together with glob." 
+                    "description": "Directory to search in. Used with glob."
                 },
                 "glob": {
                     "type": "string",
-                    "description": "File pattern to match (default: '*'). Must be provided together with directory." 
+                    "description": "File name pattern to match (default: '*'). Used with directory."
                 },
                 "outline": {
                     "type": "boolean",
-                    "description": "Required when using 'paths' or 'directory'+glob. Read file outlines (symbol names and line numbers) instead of full content. Set to true for outline only, false to read the complete file content."
+                    "description": "Read file outlines (symbol names and line numbers) instead of full content."
                 }
-            }
+            },
+            "required": ["outline"]
         })").dump();
         return schema;
     }
@@ -556,7 +557,6 @@ public:
             if (args.is_discarded()) {
                 return "Error: Invalid JSON arguments - not json";
             }
-            bool dry_run = args.value("dry_run", false);
             bool recursive = args.value("recursive", true);
 
             // Determine mode: paths or directory+glob
@@ -593,85 +593,23 @@ public:
                 return "No files found matching the criteria.";
             }
 
-            // Build JSON response
-            json result;
-            result["success"] = true;
-            result["dry_run"] = dry_run;
-            result["deleted_files"] = json::array();
-            int total_size = 0;
-            int success_count = 0;
-            int error_count = 0;
+            std::string output;
 
             for (const auto& path : file_paths) {
-                // Get file info before deletion
-                int size_bytes = 0;
-                std::string modified_time;
-                try {
-                    if (fs::exists(path)) {
-                        size_bytes = static_cast<int>(fs::file_size(path));
-                        auto time_point = fs::last_write_time(path);
-                        // Convert to string format
-                        std::time_t t = to_time_t(time_point);
-                        char buf[64];
-                        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&t));
-                        modified_time = buf;
-                    }
-                } catch (...) {}
-
-                if (dry_run) {
-                    // Only record without deleting
-                    json file_entry;
-                    file_entry["path"] = path;
-                    file_entry["size_bytes"] = size_bytes;
-                    file_entry["modified_time"] = modified_time.empty() ? "" : modified_time;
-                    result["deleted_files"].push_back(file_entry);
-                } else {
-                    // Actually delete the file
-                    if (fs::exists(path)) {
-                        auto ec = fs::remove(path);
-                        if (!ec) {
-                            total_size += size_bytes;
-                            success_count++;
-
-                            json file_entry;
-                            file_entry["path"] = path;
-                            file_entry["status"] = "success";
-                            file_entry["size_bytes"] = size_bytes;
-                            file_entry["modified_time"] = modified_time.empty() ? "" : modified_time;
-                            result["deleted_files"].push_back(file_entry);
-                        } else {
-                            error_count++;
-
-                            json err_entry;
-                            err_entry["path"] = path;
-                            err_entry["status"] = "error";
-                            err_entry["error"] = std::to_string(ec);
-                            result["deleted_files"].push_back(err_entry);
-                        }
+                // Delete the file
+                if (fs::exists(path)) {
+                    auto ec = fs::remove(path);
+                    if (!ec) {
+                        output += "DELETED: " + path + "\n";
                     } else {
-                        error_count++;
-
-                        json err_entry;
-                        err_entry["path"] = path;
-                        err_entry["status"] = "error";
-                        err_entry["error"] = "File not found";
-                        result["deleted_files"].push_back(err_entry);
+                        output += "FAIL: " + path + " - " + std::to_string(ec) + "\n";
                     }
+                } else {
+                    output += "FAIL: " + path + " - File not found\n";
                 }
             }
 
-            result["total_files"] = static_cast<int>(file_paths.size());
-            if (!dry_run) {
-                result["deleted_count"] = success_count;
-                result["summary"] = {
-                    {"success_count", success_count},
-                    {"error_count", error_count}
-                };
-            } else {
-                result["message"] = "Dry run mode: No files were actually deleted.";
-            }
-
-            return result.dump();
+            return output;
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
@@ -916,24 +854,27 @@ that entire file is rolled back. Files are independent of each other.)";
                             "end_line": {"type": "integer", "description": "Ending line number (1-based, inclusive) "}
                         }
                     }
-                },
-                "replace_text": {
-                    "type": "array",
-                    "description": "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
-                    "items": {
-                        "type": "object",
-                        "required": ["path", "old_text", "new_text"],
-                        "properties": {
-                            "path": {"type": "string", "description": "File path to edit (relative to project root) "},
-                            "old_text": {"type": "string", "description": "Exact text to find and replace. Must match exactly."},
-                            "new_text": {"type": "string", "description": "Replacement text"}
-                        }
-                    }
                 }
             }
         })").dump();
         return schema;
     }
+
+#if 0
+    "replace_text": {
+        "type": "array",
+            "description" : "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
+            "items" : {
+            "type": "object",
+                "required" : ["path", "old_text", "new_text"] ,
+                "properties" : {
+                "path": {"type": "string", "description" : "File path to edit (relative to project root) "},
+                    "old_text" : {"type": "string", "description" : "Exact text to find and replace. Must match exactly."},
+                    "new_text" : {"type": "string", "description" : "Replacement text"}
+            }
+        }
+    }
+#endif
 
     void show_arguments(const std::string& json_args) override {
         Tool::show_arguments(json_args);
@@ -954,28 +895,28 @@ that entire file is rolled back. Files are independent of each other.)";
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    insert_before_line: '" << path << "' before line " << line_num << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# insert_before_line: '" << path << "' before line " << line_num << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    insert_after_line: '" << path << "' after line " << line_num << '\n';
-                        std::cout << "===\n" << new_text << "\n===\n";
+                        std::cout << "# insert_after_line: '" << path << "' after line " << line_num << '\n';
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        std::cout << "    delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
+                        std::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
                     } else if (strcmp(type_name, "replace_text") == 0) {
                         std::string old_text = op.value("old_text", "");
                         auto new_text = op.value("new_text", "");
-                        std::cout << "    replace_text: '" << path;
-                        std::cout << "\n=== old_text===\n" << old_text << "\n===\n";
-                        std::cout << "\n=== new_text===\n" << new_text << "\n===\n";
+                        std::cout << "# replace_text: '" << path;
+                        std::cout << TUI::ANSI_BRIGHT_BLACK << "\n=== old_text===\n" << old_text;
+                        std::cout << "\n=== new_text===\n" << new_text << TUI::ANSI_RESET << "\n";
                     }
                 }
             };
@@ -1713,8 +1654,7 @@ public:
                 return "Error: 'files' array is required.";
             }
 
-            json result_written = json::array();
-            json result_failed  = json::array();
+            std::string output;
 
             for (const auto& file_entry : args["files"]) {
                 std::string path      = file_entry.value("path", "");
@@ -1722,14 +1662,14 @@ public:
                 std::string encoding  = file_entry.value("encoding", "text");
 
                 if (path.empty()) {
-                    result_failed.push_back({{"path", ""}, {"status", "error"}, {"error", "No file path provided."}});
+                    output += "FAIL: (no path) - No file path provided.\n";
                     continue;
                 }
 
                 // Safety: integrated path check (working dir + whitelist + strict mode).
                 auto check_result = SafetyGuard::get_instance().is_path_ok(path);
                 if (check_result == PathCheckResult::Denied) {
-                    result_failed.push_back({{"path", path}, {"status", "error"}, {"error", "Path is outside allowed directories. Operation denied."}});
+                    output += "FAIL: " + path + " - Path is outside allowed directories. Operation denied.\n";
                     continue;
                 }
 
@@ -1751,7 +1691,7 @@ public:
                     std::error_code ec;
                     fs::create_directories(parent_dir, ec);
                     if (ec) {
-                        result_failed.push_back({{"path", path}, {"status", "error"}, {"error", "Failed to create directory: " + ec.message()}});
+                        output += "FAIL: " + path + " - Failed to create directory: " + ec.message() + "\n";
                         continue;
                     }
                 }
@@ -1759,7 +1699,7 @@ public:
                 // Write the file
                 std::ofstream file(path, binary_mode ? std::ios::binary : std::ios::trunc);
                 if (!file.is_open()) {
-                    result_failed.push_back({{"path", path}, {"status", "error"}, {"error", std::string("Cannot create/open file: ") + strerror(errno)}});
+                    output += "FAIL: " + path + " - Cannot create/open file: " + strerror(errno) + "\n";
                     continue;
                 }
 
@@ -1770,15 +1710,10 @@ public:
                 }
                 file.close();
 
-                result_written.push_back({{"path", path}, {"status", "ok"}});
+                output += "OK: " + path + "\n";
             }
 
-            // Build response JSON
-            json response;
-            response["written_files"] = result_written;
-            response["failed_files"]  = result_failed;
-
-            return response.dump(2);
+            return output;
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
