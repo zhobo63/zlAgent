@@ -1,7 +1,7 @@
 # ZL Agent 優化清單
 
 
-## [ ] llm供應介面
+## [ ] llm_provider 供應介面
 
 doc/llm_provider.md
 
@@ -15,7 +15,7 @@ doc/llm_provider.md
 - 完整重绘而非增量更新
 - ANSI 字符串频繁分配
 
-[ ] 增量渲染（Incremental Redraw）
+[x] 增量渲染（Incremental Redraw）
 [ ] build_candidates() 重複掃描目錄
 [ ] read_key_thread() 推送按鍵時，通知 condition_variable
 [ ] `History::add()` 改用 deque | 歷史記錄操作從 O(n) → O(1) |
