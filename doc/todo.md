@@ -34,7 +34,7 @@ doc/llm_provider.md
 
 ## [ ] use edit_files
 
-tmp/ 測試生成一個100行左右的代碼 並使用 edit_files 工具`同時`修改 5處地方
+tmp/ 測試生成一個100行左右的代碼 並測試使用 edit_files 工具`同時`修改 5處地方 修改的操作需要符合邏輯 使用工具的不同功能 只能使用一次工具 修改後回報工具使用狀況
 測試完後 把你測試的步驟 包含生成的 原本內容 修改指令 寫到 tmp/test_edit_files.md 
 tmp/test_multi_edit.cpp 測試使用 edit_files 工具`同時`修改 5處地方
 

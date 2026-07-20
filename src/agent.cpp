@@ -602,10 +602,9 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
 
             std::string lines_content = ReadFileLinesAsString(filepath, r.start, r.end);
             if (!lines_content.empty()) {
-                content_oss << "\n--- File: " << filepath << " (lines "
-                            << r.start << "-" << r.end << ") ---\n"
-                            << lines_content
-                            << "--- End of file ---\n";
+                content_oss << "\n# File: " << filepath << " (lines "
+                    << r.start << "-" << r.end << ")\n"
+                    << lines_content << "\n";
             }
         }
 
@@ -634,14 +633,13 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
                 std::string listing = GenerateDirectoryListing(filepath);
                 if (!listing.empty()) {
                     insertions.push_back(
-                        "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n");
+                        "\n# Directory: " + filepath + " ---\n" + listing + "\n");
                 }
             }
             else {
                 std::string outline = GenerateFileOutline(filepath);
                 if (!outline.empty()) {
-                    insertions.push_back(
-                        "\n--- File Outline: " + filepath + " ---\n" + outline + "--- End of outline ---\n");
+                    insertions.push_back(outline + "\n");
                 }
             }
         }
@@ -665,13 +663,14 @@ std::string Agent::preprocess_file_references(const std::string& user_input) {
             std::string listing = GenerateDirectoryListing(filepath);
             if (!listing.empty()) {
                 insertions.push_back(
-                    "\n--- Directory: " + filepath + " ---\n" + listing + "--- End of directory ---\n");
+                    "\n# Directory: " + filepath + " ---\n" + listing + "\n");
             }
         }
     }
 
     // Apply insertions in reverse order so positions remain valid
     for (auto it = insertions.rbegin(); it != insertions.rend(); ++it) {
+        result += "\n";
         result += it->c_str();
     }
     LOG_DEBUG("preprocess_file_references", result);

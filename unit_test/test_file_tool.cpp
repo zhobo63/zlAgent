@@ -212,7 +212,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
         tool->show_result(result);
-        UNIT_TEST("successfully_wrote", result.find("Successfully wrote") != std::string::npos);
+        UNIT_TEST("successfully_wrote", result.find("OK:") != std::string::npos);
         UNIT_TEST("file_exists", fs::exists(fs::path(dir) / "new.txt"));
 
         std::ifstream in(fs::path(dir) / "new.txt");

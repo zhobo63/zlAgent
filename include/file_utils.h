@@ -105,6 +105,13 @@ std::string DiffEdit(const std::string& old_text,
                      const std::string& new_text,
                      int start_line = 0);
 
+/// Show the edited content after modification, with line numbers.
+/// Uses LCS to identify changed lines and outputs only the modified region
+/// in "EDITED: <path>" format followed by numbered lines of the new content.
+std::string EditedLines(const std::string& old_text,
+                        const std::string& new_text,
+                        int start_line = 0);
+
 // -----------------------------------------------------------------------
 // File outline helpers
 // -----------------------------------------------------------------------

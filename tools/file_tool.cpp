@@ -453,6 +453,18 @@ public:
                 }
             }
 
+            // Capture old content if file exists
+            std::string old_content;
+            {
+                std::ifstream existing(path);
+                if (existing.is_open()) {
+                    std::stringstream ss;
+                    ss << existing.rdbuf();
+                    old_content = ss.str();
+                    existing.close();
+                }
+            }
+
             std::ofstream file(path, std::ios::trunc);
             if (!file.is_open()) {
                 return "Error: Cannot create/open file '" + path + "'";
@@ -460,8 +472,16 @@ public:
             file << content;
             file.close();
 
-            return "Successfully wrote " + std::to_string(content.size()) +
-                   " bytes to '" + path + "'";
+            std::ostringstream oss;
+            oss << "OK: " << path << " (" << content.size() << " bytes)\n";
+
+            if (!old_content.empty()) {
+                std::string edited = EditedLines(old_content, content, 1);
+                if (!edited.empty()) {
+                    oss << edited;
+                }
+            }
+            return oss.str();
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what()) +
                    ". The response may have been truncated due to token limits. For large files, use edit_file for targeted changes instead.";
@@ -743,8 +763,18 @@ public:
                 outfile << content;
                 outfile.close();
 
-                std::string diff = DiffEdit(old_text, new_text);
-                return "Successfully edited '" + path + "'.\n" + diff;
+                // Calculate start_line from position
+                int start_line = 1;
+                for (size_t i = 0; i < pos; ++i) {
+                    if (content[i] == '\n') ++start_line;
+                }
+
+                std::string edited = EditedLines(old_text, new_text, start_line);
+                std::ostringstream oss;
+                if (!edited.empty()) {
+                    oss << "EDITED: " << path << "\n" << edited;
+                }
+                return oss.str();
             } else {
                 // --- Line-based mode: replace lines start_line..end_line with new_text ---
                 if (new_text.empty()) return "Error: new_text is required in line-based mode.";
@@ -774,9 +804,12 @@ public:
                     return "Error: Cannot write to file '" + path + "'";
                 }
 
-                std::string diff = DiffEdit(old_content, new_text, start_line);
-                return "Successfully replaced lines " + std::to_string(start_line) + "-" +
-                       std::to_string(end_line) + " in '" + path + "'.\n" + diff;
+                std::string edited = EditedLines(old_content, new_text, start_line);
+                std::ostringstream oss;
+                if (!edited.empty()) {
+                    oss << "EDITED: " << path << "\n" << edited;
+                }
+                return oss.str();
             }
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
@@ -1148,6 +1181,9 @@ public:
                     continue;
                 }
 
+                // Capture old content before apply_blocks modifies ef.lines
+                std::string old_content = ef.to_string();
+
                 EditLines result;
                 ef.apply_blocks(result);
 
@@ -1156,10 +1192,14 @@ public:
                     continue;
                 }
 
+                std::string new_content = result.to_string();
                 int new_lines = static_cast<int>(result.lines.size());
                 output += "edited: " + path + " (" + std::to_string(original_lines) + " -> " + std::to_string(new_lines) + " lines)\n";
-                for (const auto& info : ef.replace_info)
-                    output += "  " + info + "\n";
+
+                std::string edited = EditedLines(old_content, new_content, 1);
+                if (!edited.empty()) {
+                    output += edited;
+                }
             }
 
             return output;

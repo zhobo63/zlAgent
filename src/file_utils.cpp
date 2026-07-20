@@ -478,6 +478,124 @@ std::string DiffEdit(const std::string& old_text,
     return oss.str();
 }
 
+// ── EditedLines: show the edited content with line numbers ───────────────────────
+
+std::string EditedLines(const std::string& old_text,
+                        const std::string& new_text,
+                        int start_line) {
+    auto old_lines = split_lines(old_text);
+    auto new_lines = split_lines(new_text);
+
+    // Find LCS to identify common lines (same algorithm as DiffEdit)
+    int m = static_cast<int>(old_lines.size()), n = static_cast<int>(new_lines.size());
+    std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1, 0));
+    for (int i = 1; i <= m; ++i)
+        for (int j = 1; j <= n; ++j)
+            if (old_lines[i - 1] == new_lines[j - 1])
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            else
+                dp[i][j] = std::max(dp[i - 1][j], dp[i][j - 1]);
+
+    // Backtrack to find LCS lines
+    int i = m, j = n;
+    std::vector<std::string> lcs_lines;
+    while (i > 0 && j > 0) {
+        if (old_lines[i - 1] == new_lines[j - 1]) {
+            lcs_lines.push_back(old_lines[i - 1]);
+            --i; --j;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            --i;
+        } else {
+            --j;
+        }
+    }
+    std::reverse(lcs_lines.begin(), lcs_lines.end());
+
+    // Collect diff operations: Context, Remove, Add
+    enum class DiffOp { Context, Remove, Add };
+    struct DiffEntry { DiffOp op; std::string line; };
+    std::vector<DiffEntry> entries;
+
+    int oi = 0, ni = 0, li = 0;
+    while (oi < m || ni < n) {
+        while (oi < m &&
+               (li >= static_cast<int>(lcs_lines.size()) || old_lines[oi] != lcs_lines[li])) {
+            entries.push_back({DiffOp::Remove, old_lines[oi]}); ++oi;
+        }
+        while (ni < n &&
+               (li >= static_cast<int>(lcs_lines.size()) || new_lines[ni] != lcs_lines[li])) {
+            entries.push_back({DiffOp::Add, new_lines[ni]}); ++ni;
+        }
+        if (li < static_cast<int>(lcs_lines.size())) {
+            entries.push_back({DiffOp::Context, lcs_lines[li]});
+            ++oi; ++ni; ++li;
+        }
+    }
+
+    // If no changes, return empty
+    bool has_changes = false;
+    for (const auto& e : entries) {
+        if (e.op != DiffOp::Context) { has_changes = true; break; }
+    }
+    if (!has_changes) return "";
+
+    // Compute new line numbers for each entry
+    std::vector<int> new_line(entries.size(), -1);
+    int nl = start_line;
+    for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
+        switch (entries[k].op) {
+            case DiffOp::Context:
+                new_line[k] = nl++; break;
+            case DiffOp::Remove:
+                // removed line has no new-line mapping
+                break;
+            case DiffOp::Add:
+                new_line[k] = nl++; break;
+        }
+    }
+
+    // Find the range of entries that contain changes (first change to last change)
+    int first_change = -1, last_change = -1;
+    for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
+        if (entries[k].op != DiffOp::Context) {
+            if (first_change < 0) first_change = k;
+            last_change = k;
+        }
+    }
+
+    // Expand the output range to include context lines before and after.
+    // This is important for pure deletions: without expansion, a Remove-only
+    // change would produce no output since Remove entries are skipped.
+    constexpr int CONTEXT_LINES = 3;
+    int out_start = std::max(first_change - CONTEXT_LINES, 0);
+    int out_end   = std::min(last_change + CONTEXT_LINES, static_cast<int>(entries.size()) - 1);
+
+    // Output only the new content lines within the changed region,
+    // including context lines that fall between changes.
+    std::ostringstream oss;
+
+    for (int k = out_start; k <= out_end; ++k) {
+        const auto& e = entries[k];
+        if (e.op == DiffOp::Remove)
+            continue;  // skip removed lines, we only show the result
+
+        char buf[16];
+        int w = static_cast<int>(std::snprintf(buf, sizeof(buf), "%d", new_line[k]));
+        std::string ln(buf, w);
+
+        switch (e.op) {
+            case DiffOp::Context:
+            case DiffOp::Add:
+                oss << " " << ln << " " << e.line << "\n";
+                break;
+            default:
+                break;
+        }
+    }
+
+    return oss.str();
+}
+
 // ── Helpers for GenerateFileOutline ───────────────────────
 
 static bool is_delims(char c, const char* delimiter)
@@ -645,7 +763,7 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 break;
             case '(':
                 has_round_braces = true;
-                if (has_func || brace_depth > cur.depth + 1)
+                if (has_func || brace_depth > cpp_stack.size())
                     break;
                 has_func = true;
                 round_braces_open_pos = l;
@@ -656,8 +774,8 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                     int end = pos + 1;
                     //while (pos >= 0 && (
                     //    std::isalnum(line[pos]) ||
-                    //    line[pos] == '_' || 
-                    //    line[pos] == '~' || 
+                    //    line[pos] == '_' ||
+                    //    line[pos] == '~' ||
                     //    line[pos] == ':')) pos--;
                     pos = 0;
                     func_name = line.substr(pos, end - pos);
