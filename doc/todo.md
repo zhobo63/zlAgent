@@ -12,14 +12,11 @@ doc/llm_provider.md
 - refresh speed
 - 每次按键都重新计算候选项
 - 即使前缀没有变化（比如移动光标），也会重新扫描目录和排序
-- 完整重绘而非增量更新
 - ANSI 字符串频繁分配
 
-[x] 增量渲染（Incremental Redraw）
 [ ] build_candidates() 重複掃描目錄
 [ ] read_key_thread() 推送按鍵時，通知 condition_variable
 [ ] `History::add()` 改用 deque | 歷史記錄操作從 O(n) → O(1) |
-[X] LineBuffer::move_down move_up 錯誤
 
 ## [ ] file_utils.cpp
 
@@ -39,49 +36,6 @@ tmp/ 測試生成一個100行左右的代碼 並測試使用 edit_files 工具`�
 tmp/test_multi_edit.cpp 測試使用 edit_files 工具`同時`修改 5處地方
 
 ## [ ] use read_files
-
-## [ ] parse_cpp_outline
-
-- file_utils.h
-
-namespace agent {
-class SubAgent {
-public:
-    SubAgent(const std::string& name, const std::string& description = "");
-
-    const std::string& get_name() const { return name_; }
-    const std::string& description() const {return description_; }
-
-    // Execute a task and return the result string.
-    std::string execute(const std::string& task);
-
-    // Run a mini reasoning loop (max 5 iterations per sub-agent).
-    virtual ChatResponse run_loop(const std::string& task) { return ChatResponse{}; }
-protected:
-    std::string name_;
-    std::string description_;
-};
-class Agent;
-
-class SubAgentLLM: public SubAgent {
-public:
-    SubAgentLLM(const std::string& name, const std::string& description = "");
-
-    // Set the working directory. This creates an internal Agent that loads
-    // zlagent.ini from the given directory and generates a project overview
-    // as the tool description for LLM routing.
-    void set_workdir(const std::string workdir);
-
-    // Override the system prompt of the internal agent. If empty, the built-in
-    // or config-based system prompt is used instead.
-    void set_system_prompt(const std::string& prompt);
-
-    ChatResponse run_loop(const std::string& task) override;
-private:
-    mutable std::unique_ptr<Agent> agent_;
-};
-
-};
 
 # File outline for multi_agent.h
 

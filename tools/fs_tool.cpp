@@ -1232,6 +1232,13 @@ public:
                 cli.set_connection_timeout(CONNECT_TIMEOUT, 0);
                 cli.set_read_timeout(READ_TIMEOUT, 0);
                 cli.set_write_timeout(WRITE_TIMEOUT, 0);
+                cli.set_follow_location(true);
+                cli.set_default_headers({
+                    {"User-Agent", "Mozilla/5.0 (compatible; zlAgent/1.0)"},
+                });
+#ifdef CPPHTTPLIB_ZLIB_SUPPORT
+                cli.enable_compression(true);
+#endif
                 auto res = cli.Get(path.c_str());
                 if (!res || res->status != 200) {
                     return "Error: HTTP status " + std::to_string(res ? res->status : 0);
@@ -1248,6 +1255,13 @@ public:
                 cli.set_connection_timeout(CONNECT_TIMEOUT, 0);
                 cli.set_read_timeout(READ_TIMEOUT, 0);
                 cli.set_write_timeout(WRITE_TIMEOUT, 0);
+                cli.set_follow_location(true);
+                cli.set_default_headers({
+                    {"User-Agent", "Mozilla/5.0 (compatible; zlAgent/1.0)"},
+                });
+#ifdef CPPHTTPLIB_ZLIB_SUPPORT
+                cli.enable_compression(true);
+#endif
                 auto res = cli.Get(path.c_str());
                 if (!res || res->status != 200) {
                     return "Error: HTTP status " + std::to_string(res ? res->status : 0) +
@@ -1470,7 +1484,7 @@ private:
     }
 
 private:
-    static constexpr size_t MAX_BODY_SIZE = 100 * 1024;   // 5MB
+    static constexpr size_t MAX_BODY_SIZE = 5 * 1024 * 1024;          // 5MB
     static constexpr size_t MAX_MARKDOWN_OUTPUT_SIZE = 50 * 1024;
 
     static std::string truncate_body(const std::string& body) {
