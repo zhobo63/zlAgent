@@ -29,12 +29,15 @@ void main() {
 
     UnitReport main("UnitTest");
 
-    auto outline = agent::GenerateFileOutline("/hg/zlagent/tmp/test.cpp");
+    std::string outline;
+    //outline = agent::GenerateFileOutline("/hg/zlagent/tmp/test.h");
+    //std::cout << outline << "\n";
+    outline = agent::GenerateFileOutline("/hg/zlagent/tmp/server.js");
     std::cout << outline << "\n";
-    outline = agent::GenerateFileOutline("/hg/zlagent/include/key_watcher.h");
-    std::cout << outline << "\n";
-    outline = agent::GenerateFileOutline("/hg/zlagent/src/key_watcher.cpp");
-    std::cout << outline << "\n";
+    //outline = agent::GenerateFileOutline("/hg/zlagent/include/key_watcher.h");
+    //std::cout << outline << "\n";
+    //outline = agent::GenerateFileOutline("/hg/zlagent/src/key_watcher.cpp");
+    //std::cout << outline << "\n";
 
     try {
         //test_example(main);

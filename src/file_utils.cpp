@@ -745,7 +745,6 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
         std::vector<int> braces_pos;
         int round_braces_open_pos = -1;
         int round_braces_close_pos = -1;
-        bool func_declare = false;
         bool has_func = false;
         std::string func_name;
 
@@ -797,9 +796,9 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 round_braces_close_pos = l;
                 break;
             case ';':
-                if (round_braces_close_pos >= 0 && l > round_braces_close_pos) {
-                    func_declare = true;
-                }
+                //if (round_braces_close_pos >= 0 && l > round_braces_close_pos) {
+                //    func_declare = true;
+                //}
                 break;
             }
         }
@@ -829,6 +828,7 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
             if (semicolon != std::string::npos) {
                 is_require_braces_begin = false;
             }
+            continue;
         }
         else {
             if (line.rfind("namespace", 0) == 0) {
@@ -946,39 +946,111 @@ static void parse_python_outline(const std::vector<std::string>& lines,
 static void parse_js_outline(const std::vector<std::string>& lines,
                               const std::string& ext,
                               std::vector<RawSymbol>& out) {
-    (void)ext;
-    int brace_depth = 0;
-    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
-        std::string trimmed = trim_outline(lines[i]);
-        if (trimmed.empty() || is_in_comment_outline(trimmed)) continue;
 
-        auto func_pos = trimmed.find("function ");
-        if (func_pos != std::string::npos) {
-            size_t paren = trimmed.find('(', func_pos);
-            if (paren != std::string::npos && paren > func_pos + 9) {
-                std::string name = trim_outline(trimmed.substr(func_pos + 9, paren - func_pos - 9));
-                if (!name.empty()) {
-                    out.push_back({i + 1, "function", name, brace_depth});
-                }
-            }
-        } else if (trimmed.find("class ") != std::string::npos) {
-            size_t pos = trimmed.find("class ");
-            size_t brace = trimmed.find('{');
-            size_t paren = trimmed.find('(');
-            size_t end = trimmed.size();
-            if (brace != std::string::npos) end = std::min(end, brace);
-            if (paren != std::string::npos) end = std::min(end, paren);
-            if (end > pos + 6) {
-                std::string name = trim_outline(trimmed.substr(pos + 6, end - pos - 6));
-                if (!name.empty()) {
-                    out.push_back({i + 1, "class", name, brace_depth});
-                }
+    bool is_comment = false;
+    bool is_require_braces_begin = false;
+    int brace_depth = 0;
+
+    std::vector<RawSymbol> js_stack;
+    RawSymbol cur;
+
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+        auto line = trim_outline(lines[i]);
+        if (line.empty())
+            continue;
+        if (is_in_comment_outline(line))
+            continue;
+        // TODO: handle /* */ block comments
+        if (is_comment) {
+            if (line.find("*/") != std::string::npos)
+                is_comment = false;
+            continue;
+        }
+        if (line.find("/*") != std::string::npos) {
+            is_comment = true;
+            continue;
+        }
+
+        bool has_braces_open = false;
+        bool has_braces_close = false;
+        std::vector<int> braces_pos;
+
+        for (int l = 0; l < static_cast<int>(line.length()); l++) {
+            switch (line[l]) {
+            case '{':
+                brace_depth++;
+                has_braces_open = true;
+                braces_pos.push_back(l);
+                break;
+            case '}':
+                brace_depth--;
+                has_braces_close = true;
+                break;
             }
         }
 
-        for (char c : trimmed) {
-            if (c == '{') brace_depth++;
-            else if (c == '}') brace_depth = std::max(0, brace_depth - 1);
+        int start_pos = 0;
+        // stack depth management: pop when leaving a scope
+        if (js_stack.size() > 0) {
+            if (brace_depth <= cur.depth) {
+                js_stack.pop_back();
+                if (js_stack.size() > 0)
+                    cur = js_stack[js_stack.size() - 1];
+            }
+        }
+
+        // Phase 1: multi-line accumulation (from previous line's flag)
+        if (is_require_braces_begin) {
+            if (has_braces_open) {
+                cur.name += line.substr(start_pos, braces_pos[0] - start_pos);
+                cur.name = normalize_cpp_name(cur.name);
+                is_require_braces_begin = false;
+                cur.depth = js_stack.size();
+                js_stack.push_back(cur);
+                out.push_back(cur);
+            }
+            else {
+                cur.name += line.substr(start_pos);
+            }
+            // TODO: handle semicolon (forward declaration equivalent)
+            continue;
+        }
+
+        // Phase 2: detect keywords on current line
+        if (line.rfind("class ", 0) == 0) {
+            is_require_braces_begin = true;
+            cur = { i + 1, "class" };
+            start_pos = static_cast<int>(cur.kind.length()) + 1;
+        }
+        // TODO: interface (TS)
+        else if (line.rfind("interface ", 0) == 0) {
+            is_require_braces_begin = true;
+            cur = { i + 1, "interface" };
+            start_pos = static_cast<int>(cur.kind.length()) + 1;
+        }
+        // TODO: function declaration
+        else if (line.rfind("function ", 0) == 0) {
+            // TODO: extract name before '('
+        }
+        // TODO: arrow function / method
+        else {
+            // check function
+            // TODO: detect function patterns
+        }
+
+        // Phase 3: same-line brace resolution (just set flag this line)
+        if (is_require_braces_begin) {
+            if (has_braces_open) {
+                cur.name = line.substr(start_pos, braces_pos[0] - start_pos);
+                cur.name = normalize_cpp_name(cur.name);
+                is_require_braces_begin = false;
+                cur.depth = js_stack.size();
+                js_stack.push_back(cur);
+                out.push_back(cur);
+            }
+            else {
+                cur.name = line.substr(start_pos);
+            }
         }
     }
 }

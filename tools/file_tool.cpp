@@ -825,11 +825,8 @@ public:
     std::string name() const override { return "edit_files"; }
     std::string description() const override {
         return R"(Edit one or more files in a single call.
-Each operation type is specified as a top-level array property.
-The same file can appear in multiple operation types — all operations on that file are applied together.
-All line numbers are based on the original file before any edits.
-Operations within a file are atomic - if any operation fails (e.g., overlapping ranges),
-that entire file is rolled back. Files are independent of each other.)";
+All line numbers are based on the original file before any edits — DO NOT overlap operations on the same lines.
+Operations per file are atomic (failure rolls back that file); files are independent.)";
     }
     std::string parameters_schema() const override {
         static std::string schema = json::parse(R"({
