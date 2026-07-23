@@ -86,11 +86,6 @@ void Tool::show_preview(const std::string& json_args) {
     LOG_INFO(u8"🛠️Tool", name() + " [preview]");
     show_json_text(json_args);
 }
-void Tool::show_result(const std::string& json_args) {
-    LOG_INFO(u8"🛠️Tool", name() + " [result]");
-    show_json_text(json_args);
-}
-
 void ToolRegistry::register_tool(ToolPtr tool) {
     tools_[tool->name()] = std::move(tool);
 }

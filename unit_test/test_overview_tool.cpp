@@ -36,7 +36,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("basic_header", result.find("PROJECT OVERVIEW") != std::string::npos);
 
         safe_remove_all(dir);
@@ -60,7 +60,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("detect_cmake", result.find("CMake") != std::string::npos);
 
         safe_remove_all(dir);
@@ -84,7 +84,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("detect_make", result.find("Make") != std::string::npos);
 
         safe_remove_all(dir);
@@ -108,7 +108,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("detect_npm", result.find("Node.js") != std::string::npos);
 
         safe_remove_all(dir);
@@ -128,7 +128,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("no_build_system", result.find("No known build system detected") != std::string::npos);
 
         safe_remove_all(dir);
@@ -161,7 +161,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("metrics_has_cpp", result.find(".cpp") != std::string::npos);
         UNIT_TEST("metrics_has_h", result.find(".h") != std::string::npos);
 
@@ -182,7 +182,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("no_source_files", result.find("No source files found") != std::string::npos);
 
         safe_remove_all(dir);
@@ -206,7 +206,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("dirsum_has_src", result.find("src") != std::string::npos);
 
         safe_remove_all(dir);
@@ -226,7 +226,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("vcs_status_section", result.find("CURRENT STATUS") != std::string::npos);
 
         safe_remove_all(dir);
@@ -241,7 +241,7 @@ void test_overview_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("default_directory", result.find("PROJECT OVERVIEW") != std::string::npos);
     }
 

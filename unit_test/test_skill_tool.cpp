@@ -46,7 +46,7 @@ void test_create_skill_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         UNIT_TEST("basic_success", result.find("created successfully") != std::string::npos);
         UNIT_TEST("skill_exists_in_registry", registry.find_skill("test_skill_basic") != nullptr);
@@ -264,7 +264,7 @@ void test_delete_skill_tool(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         UNIT_TEST("basic_success", result.find("deleted successfully") != std::string::npos);
         UNIT_TEST("skill_not_in_registry_after_delete", registry.find_skill("test_to_delete") == nullptr);
@@ -412,7 +412,7 @@ void test_get_skill_tool(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         UNIT_TEST("basic_success", result.find("# Test Skill") != std::string::npos);
         UNIT_TEST("has_description", result.find("## Description") != std::string::npos);

@@ -44,7 +44,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("contains_line1", result.find("line1") != std::string::npos);
         UNIT_TEST("contains_line3", result.find("line3") != std::string::npos);
 
@@ -72,7 +72,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("range_contains_line3", result.find("line3") != std::string::npos);
         UNIT_TEST("range_contains_line5", result.find("line5") != std::string::npos);
         UNIT_TEST("range_no_line1", result.find("line1") == std::string::npos);
@@ -90,7 +90,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -104,7 +104,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -116,7 +116,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -128,7 +128,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -151,7 +151,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("outline_mode_triggered", result.find("# File outline for") != std::string::npos);
 
         safe_remove_all(dir);
@@ -177,7 +177,7 @@ void test_read_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("start_only_contains_line8", result.find("line8") != std::string::npos);
         UNIT_TEST("start_only_no_line7", result.find("line7") == std::string::npos);
 
@@ -211,7 +211,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("successfully_wrote", result.find("OK:") != std::string::npos);
         UNIT_TEST("file_exists", fs::exists(fs::path(dir) / "new.txt"));
 
@@ -241,7 +241,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         std::ifstream in(fs::path(dir) / "existing.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -261,7 +261,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -276,7 +276,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -288,7 +288,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -300,7 +300,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -319,7 +319,7 @@ void test_write_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("auto_dir_success", result.find("Error") == std::string::npos);
         UNIT_TEST("auto_dir_file_exists", fs::exists(fs::path(dir) / "sub" / "deep" / "file.txt"));
 
@@ -357,7 +357,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         std::ifstream in(fs::path(dir) / "append.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -382,7 +382,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         UNIT_TEST("append_creates_new_file", fs::exists(fs::path(dir) / "new.txt"));
 
@@ -400,7 +400,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -412,7 +412,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -424,7 +424,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -439,7 +439,7 @@ void test_append_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -475,7 +475,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -505,7 +505,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -526,7 +526,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -538,7 +538,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -550,7 +550,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -574,7 +574,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
 
         std::ifstream in(fs::path(dir) / "insert.txt");
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -596,7 +596,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -612,7 +612,7 @@ void test_insert_file_content_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_content_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -648,7 +648,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("no_error_on_replace", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "edit.txt");
@@ -679,7 +679,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("notfound_returns_error", result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -697,7 +697,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -709,7 +709,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -721,7 +721,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -746,7 +746,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("line_mode_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "edit.txt");
@@ -777,7 +777,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("multiple_matches_returns_error", result.find("matches multiple locations") != std::string::npos);
 
         safe_remove_all(dir);
@@ -805,7 +805,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("both_modes_returns_error", result.find("Cannot use both") != std::string::npos);
 
         safe_remove_all(dir);
@@ -832,7 +832,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("exceeds_length_returns_error", result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -850,7 +850,7 @@ void test_edit_file_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_texts_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -894,7 +894,7 @@ void test_edit_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_line_range_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "a.txt");
@@ -963,7 +963,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_with_blank_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "md.txt");
@@ -1009,7 +1009,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("insert_before_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "b.txt");
@@ -1041,7 +1041,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("insert_after_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "c.txt");
@@ -1073,7 +1073,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("delete_lines_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "d.txt");
@@ -1106,7 +1106,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_text_single_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "e.txt");
@@ -1150,7 +1150,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("multi_ops_same_file_no_error", result.find("Error") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "multi.txt");
@@ -1199,7 +1199,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("multi_file_no_error", result.find("Error") == std::string::npos);
 
         // verify f1
@@ -1233,7 +1233,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("nonexistent_file_has_failed", result.find("failed:") != std::string::npos);
     }
 
@@ -1252,7 +1252,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_no_files_edited", result.empty());
     }
 
@@ -1278,7 +1278,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_notfound_has_error", result.find("Error") != std::string::npos || result.find("not found") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1306,7 +1306,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_empty_old_has_error", result.find("Error") != std::string::npos || result.find("empty") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1320,7 +1320,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1332,7 +1332,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1383,7 +1383,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("mixed_nonoverlap_no_error", result.find("Error") == std::string::npos && result.find("failed:") == std::string::npos);
 
         std::ifstream in(fs::path(dir) / "mix.txt");
@@ -1434,7 +1434,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("mixed_overlap_has_error", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1463,7 +1463,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_end_exceeds_has_failed", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1492,7 +1492,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_start_exceeds_has_failed", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1520,7 +1520,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("insert_start_exceeds_has_failed", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1548,7 +1548,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("delete_end_exceeds_has_failed", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1577,7 +1577,7 @@ confirm_mode = auto_yes   # auto_yes | auto_no | ask_server
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("replace_end_before_start_has_failed", result.find("failed:") != std::string::npos || result.find("Error") != std::string::npos);
 
         safe_remove_all(dir);
@@ -1614,7 +1614,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("contains_file1", result.find("file1.txt") != std::string::npos);
         UNIT_TEST("contains_subdir", result.find("subdir") != std::string::npos);
 
@@ -1631,7 +1631,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("nonexistent_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1645,7 +1645,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_path_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1657,7 +1657,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1669,7 +1669,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1687,7 +1687,7 @@ void test_list_directory_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_dir_no_error", result.find("Error") == std::string::npos);
 
         safe_remove_all(dir);
@@ -1727,10 +1727,10 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("has_file_header_a", raw_result.find("# File for") != std::string::npos);
-        UNIT_TEST("success_count_is_2", (raw_result.find("content of a") != std::string::npos && raw_result.find("content of b") != std::string::npos));
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("has_file_header_a", result.find("# File for") != std::string::npos);
+        UNIT_TEST("success_count_is_2", (result.find("content of a") != std::string::npos && result.find("content of b") != std::string::npos));
 
         safe_remove_all(dir);
     }
@@ -1758,9 +1758,9 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("range_success", (raw_result.find("line3") != std::string::npos && raw_result.find("line5") != std::string::npos));
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("range_success", (result.find("line3") != std::string::npos && result.find("line5") != std::string::npos));
 
         safe_remove_all(dir);
     }
@@ -1788,9 +1788,9 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("glob_success", raw_result.find("txt content") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("glob_success", result.find("txt content") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1805,9 +1805,9 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("error_entry_present", raw_result.find("# Error:") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("error_entry_present", result.find("# Error:") != std::string::npos);
     }
 
     // missing required params returns error
@@ -1819,7 +1819,7 @@ void test_read_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("missing_params_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1833,7 +1833,7 @@ void test_read_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("missing_outline_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1845,7 +1845,7 @@ void test_read_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1857,7 +1857,7 @@ void test_read_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -1880,10 +1880,10 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("outline_success", raw_result.find("foo") != std::string::npos);
-        UNIT_TEST("outline_has_bar", raw_result.find("bar") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("outline_success", result.find("foo") != std::string::npos);
+        UNIT_TEST("outline_has_bar", result.find("bar") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1911,11 +1911,11 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("outline_range_has_func5", raw_result.find("func5") != std::string::npos);
-        UNIT_TEST("outline_range_no_func1", raw_result.find("func1()") == std::string::npos);
-        UNIT_TEST("outline_range_no_func15", raw_result.find("func15()") == std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("outline_range_has_func5", result.find("func5") != std::string::npos);
+        UNIT_TEST("outline_range_no_func1", result.find("func1()") == std::string::npos);
+        UNIT_TEST("outline_range_no_func15", result.find("func15()") == std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1938,9 +1938,9 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("content_verify_has_hello", raw_result.find("hello world") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("content_verify_has_hello", result.find("hello world") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1964,9 +1964,9 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("glob_outline_has_alpha", raw_result.find("alpha") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("glob_outline_has_alpha", result.find("alpha") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -1997,10 +1997,10 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("perfile_outline_has_foo", raw_result.find("foo") != std::string::npos);
-        UNIT_TEST("perfile_content_has_plain", raw_result.find("plain text") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("perfile_outline_has_foo", result.find("foo") != std::string::npos);
+        UNIT_TEST("perfile_content_has_plain", result.find("plain text") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -2023,10 +2023,10 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("mixed_success_count", raw_result.find("content of a") != std::string::npos);
-        UNIT_TEST("mixed_error_count", raw_result.find("# Error:") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("mixed_success_count", result.find("content of a") != std::string::npos);
+        UNIT_TEST("mixed_error_count", result.find("# Error:") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -2074,11 +2074,11 @@ void test_read_files_tools(UnitReport& parent)
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
-        std::string raw_result = tool->execute(args_str);
-        tool->show_result(raw_result);
-        UNIT_TEST("combined_has_paths_content", raw_result.find("paths content") != std::string::npos);
-        UNIT_TEST("combined_has_line_range", raw_result.find("line3") != std::string::npos);
-        UNIT_TEST("combined_has_glob_content", raw_result.find("glob content") != std::string::npos);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("combined_has_paths_content", result.find("paths content") != std::string::npos);
+        UNIT_TEST("combined_has_line_range", result.find("line3") != std::string::npos);
+        UNIT_TEST("combined_has_glob_content", result.find("glob content") != std::string::npos);
 
         safe_remove_all(dir);
     }
@@ -2117,7 +2117,7 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("deleted_file_gone", !fs::exists(fs::path(dir) / "del1.txt"));
         UNIT_TEST("kept_file_exists", fs::exists(fs::path(dir) / "keep.txt"));
 
@@ -2147,7 +2147,6 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         tool->execute(args_str);
-        tool->show_result("");
         UNIT_TEST("glob_deleted_log", !fs::exists(fs::path(dir) / "a.log"));
         UNIT_TEST("glob_kept_txt", fs::exists(fs::path(dir) / "b.txt"));
 
@@ -2164,7 +2163,7 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("error_entry_present", result.find("File not found") != std::string::npos);
     }
 
@@ -2177,7 +2176,7 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("missing_params_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -2189,7 +2188,7 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("invalid_json_returns_error", result.find("Error") != std::string::npos);
     }
 
@@ -2201,7 +2200,7 @@ void test_delete_files_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        tool->show_result(result);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 

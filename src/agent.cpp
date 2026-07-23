@@ -892,9 +892,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             memory_.add(tool_msg);
 
             LOG_INFO(u8"🛠️Tool", "Result: " + std::to_string(result.size()) + " bytes\n");
-            if (tool_ptr) {
-                tool_ptr->show_result(result);
-            }
+            LOG_DEBUG(tc.name.c_str(), result);
         }
 
         // Loop again - LLM will see tool results and decide next action

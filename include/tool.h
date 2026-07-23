@@ -39,8 +39,6 @@ public:
     // Default does nothing.
     virtual void show_preview(const std::string& json_args);
 
-    virtual void show_result(const std::string& json_args);
-
     // Whether this tool requires user confirmation in the given mode.
     // Default: only when Always mode is active.
     virtual bool needs_user_reply(UserReplyMode mode) const {
