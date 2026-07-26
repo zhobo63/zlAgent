@@ -2,7 +2,6 @@
 
 #include "tool.h"
 #include "safety_guard.h"
-#include "safety_guard.h"
 #include "httplib.h"
 #include "file_utils.h"
 #include <iomanip>
@@ -643,12 +642,10 @@ private:
 
     static bool is_in_comment(const std::string& line) {
         // Simple check: first non-whitespace chars are // or /*
-        for (char c : line) {
-            if (c == ' ' || c == '\t' || c == '\r') continue;
-            return (line.size() >= 2 && ((c == '/' && line[1] == '/') ||
-                     (c == '/' && line[1] == '*')));
-        }
-        return false;
+        size_t i = 0;
+        while (i < line.size() && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r')) i++;
+        if (i + 1 >= line.size()) return false;
+        return (line[i] == '/' && (line[i+1] == '/' || line[i+1] == '*'));
     }
 
     static std::string extract_identifier(const std::string& s, size_t pos) {
@@ -940,10 +937,9 @@ private:
         return {errors, warnings};
     }
 
-    // Parse: file.cpp:123:45: error: message
     static bool parse_gcc_style(const std::string& line, CompilerIssue& issue) {
         try {
-            std::regex re(R"((.+?):(\d+)(?::(\d+))?:\s*(error|warning):\s*(.*))");
+            static const std::regex re(R"((.+?):(\d+)(?::(\d+))?:\s*(error|warning):\s*(.*))");
             std::smatch match;
             if (std::regex_search(line, match, re) && match.size() >= 5) {
                 issue.file = trim(match[1].str());
@@ -959,7 +955,7 @@ private:
     // Parse: file.cpp(123): error Cxxxx: message
     static bool parse_msvc_style(const std::string& line, CompilerIssue& issue) {
         try {
-            std::regex re(R"((.+?)\((\d+)\):\s*(warning|error)\s*([Cc]?\w+)?[:\s]*(.*))");
+            static const std::regex re(R"((.+?)\((\d+)\):\s*(warning|error)\s*([Cc]?\w+)?[:\s]*(.*))");
             std::smatch match;
             if (std::regex_search(line, match, re) && match.size() >= 5) {
                 issue.file = trim(match[1].str());
@@ -972,6 +968,7 @@ private:
         } catch (...) {}
         return false;
     }
+
 
     static std::string to_lower_copy(const std::string& s) {
         std::string result = s;

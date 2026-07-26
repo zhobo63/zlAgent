@@ -53,29 +53,30 @@ public:
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
 
-            // Full file read
+            // Read all lines once into memory.
             std::ifstream file(path);
             if (!file.is_open()) {
                 return "Error: Cannot open file '" + path + "'";
             }
-
-            // Count lines to decide whether to show outline
-            int line_count = 0;
+            std::vector<std::string> lines;
             std::string fline;
-            while (std::getline(file, fline)) line_count++;
+            while (std::getline(file, fline)) lines.push_back(fline);
             file.close();
+
+            int line_count = static_cast<int>(lines.size());
             if (end_line < 0) { end_line = line_count; }
+
+            // Line range mode: extract the requested lines.
             if (start_line >= 0 && end_line >= 0 && end_line >= start_line) {
-                std::string content = agent::ReadFileLinesAsString(path, start_line, end_line, line_count);
-                if (content.empty()) {
-                    return "Error: Cannot read file '" + path + "' or line range is out of bounds.";
-                }
                 std::ostringstream oss;
-                oss << "# File for " << path << " (" << line_count << ")\n";
-                oss << content;
-                return oss.str();
+                int width = static_cast<int>(std::to_string(line_count).size());
+                for (int i = start_line - 1; i < end_line && i < line_count; ++i) {
+                    oss << std::setw(width) << (i + 1) << " " << lines[i] << "\n";
+                }
+                return "# File for " + path + " (" + std::to_string(line_count) + ")\n" + oss.str();
             }
 
+            // Large file: show outline instead of full content.
             const int OUTLINE_THRESHOLD = 200; // lines
             if (line_count > OUTLINE_THRESHOLD) {
                 std::string outline = agent::GenerateFileOutline(path);
@@ -84,20 +85,12 @@ public:
                 }
             }
 
-            // Re-read full content for small files
-            file.open(path);
-            if (!file.is_open()) {
-                return "Error: Cannot open file '" + path + "'";
-            }
-
+            // Small file: show full content with line numbers.
             int width = static_cast<int>(std::to_string(line_count).size());
             std::ostringstream oss;
             oss << "# File for " << path << " (" << line_count << ")\n";
-
-            int current = 1;
-            while (std::getline(file, fline)) {
-                oss << std::setw(width) << current << " " << fline << "\n";
-                current++;
+            for (int i = 0; i < line_count; ++i) {
+                oss << std::setw(width) << (i + 1) << " " << lines[i] << "\n";
             }
             return oss.str();
         } catch (const json::parse_error& e) {
@@ -240,23 +233,29 @@ private:
             return;
         }
 
-        // Count total lines for proper width
+        // Read all lines once into memory.
         std::ifstream file(path);
         if (!file.is_open()) {
             oss << "# Error: " << path << " - Cannot open file";
             return;
         }
-        int line_count = 0;
+        std::vector<std::string> lines;
         std::string fline;
-        while (std::getline(file, fline)) line_count++;
+        while (std::getline(file, fline)) lines.push_back(fline);
         file.close();
+
+        int line_count = static_cast<int>(lines.size());
 
         // Line range mode (object mode only)
         if (start_line > 0 && end_line >= start_line) {
-            std::string content = agent::ReadFileLinesAsString(path, start_line, end_line, line_count);
-            if (!content.empty()) {
+            std::ostringstream oss_range;
+            int width = static_cast<int>(std::to_string(line_count).size());
+            for (int i = start_line - 1; i < end_line && i < line_count; ++i) {
+                oss_range << std::setw(width) << (i + 1) << " " << lines[i] << "\n";
+            }
+            if (!oss_range.str().empty()) {
                 oss << "# File for " << path << " (" << line_count << ")\n";
-                oss << content;
+                oss << oss_range.str();
             } else {
                 oss << "# Error: " << path << " - Line range out of bounds or cannot read file";
             }
@@ -266,19 +265,9 @@ private:
         // Full content mode
         int width = static_cast<int>(std::to_string(line_count).size());
         oss << "# File for " << path << " (" << line_count << ")\n";
-
-        file.open(path);
-        if (!file.is_open()) {
-            oss << "# Error: " << path << " - Cannot open file";
-            return;
+        for (int i = 0; i < line_count; ++i) {
+            oss << std::setw(width) << (i + 1) << " " << lines[i] << "\n";
         }
-
-        int current = 1;
-        while (std::getline(file, fline)) {
-            oss << std::setw(width) << current << " " << fline << "\n";
-            current++;
-        }
-        file.close();
     }
 
 public:

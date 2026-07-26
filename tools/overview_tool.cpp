@@ -171,7 +171,7 @@ private:
                     if (!entry.is_directory()) continue;
                     const auto& dname = entry.path().filename().string();
                     // Skip hidden, build, and dependency dirs.
-                    if (dname.substr(0, 1) == "." || dname == "build" || dname == "node_modules") continue;
+                    if (dname.empty() || dname[0] == '.' || dname == "build" || dname == "node_modules") continue;
                     count_files(entry.path().string(), max_depth, current_depth + 1,
                                 file_counts, line_estimates);
                 }
@@ -265,8 +265,7 @@ private:
             for (const auto& entry : fs::directory_iterator(dir)) {
                 if (!entry.is_directory()) continue;
                 const auto& dname = entry.path().filename().string();
-                if (dname.substr(0, 1) == "." || dname == "build" || dname == ".git") continue;
-
+                if (dname.empty() || dname[0] == '.' || dname == "build" || dname == ".git") continue;
                 oss << u8"📁 " << dname << "/\n";
                 // List immediate subdirectories and files.
                 try {

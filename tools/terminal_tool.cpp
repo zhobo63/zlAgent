@@ -2,7 +2,6 @@
 
 #include "tool.h"
 #include "safety_guard.h"
-#include "safety_guard.h"
 #include "json.hpp"
 
 #ifndef _WIN32
