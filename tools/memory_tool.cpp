@@ -12,6 +12,11 @@ using json = nlohmann::json;
 // -----------------------------------------------------------------------
 class SearchMemoriesTool : public Tool {
     LongTermMemory* ltm_;  // non-owning; lifetime managed by Agent
+
+    struct ScoredSession {
+        float score;
+        SessionSummary session;
+    };
 public:
     explicit SearchMemoriesTool(LongTermMemory* memory) : ltm_(memory) {}
 
@@ -38,8 +43,8 @@ public:
             if (args.is_discarded()) {
                 return "Error: Invalid JSON arguments - not json";
             }
-            std::string query = args.value("query", "");
-            int top_k = args.value("top_k", 3);
+        std::string query = args.value("query", "");
+        int top_k = args.value("top_k", 3);
 
             if (query.empty()) return "Error: Query is required.";
             if (!ltm_) return "Error: Long-term memory not initialized.";

@@ -138,7 +138,12 @@ private:
         // Load ignored directories from .gitignore / .hgignore at the search root
         auto ignored_dirs = load_ignored_dirs(resolved);
         if (!ignored_dirs.empty()) {
-            LOG_DEBUG("CodeSearchTool", "ignored dirs: " + std::string("") + ", count=" + std::to_string(ignored_dirs.size()));
+            std::ostringstream oss;
+            for (const auto& d : ignored_dirs) {
+                if (oss.tellp() > 0) oss << ", ";
+                oss << d;
+            }
+            LOG_DEBUG("CodeSearchTool", "ignored dirs: " + oss.str() + ", count=" + std::to_string(ignored_dirs.size()));
         }
 
         m_search_root = resolved;

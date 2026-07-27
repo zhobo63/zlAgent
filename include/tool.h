@@ -49,6 +49,22 @@ public:
     ToolDefinition to_definition() const {
         return {name(), description(), parameters_schema()};
     }
+
+protected:
+    // Parse and validate JSON arguments.
+    // Returns empty string on success (out_args is filled), error message on failure.
+    static std::string parse_json_args(const std::string& json_args, nlohmann::json& out_args) {
+        if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
+        try {
+            out_args = nlohmann::json::parse(json_args);
+            if (out_args.is_discarded()) {
+                return "Error: Invalid JSON arguments - not json";
+            }
+        } catch (const nlohmann::json::parse_error& e) {
+            return std::string("Error: Invalid JSON arguments - ") + e.what();
+        }
+        return {};  // success
+    }
 };
 
 using ToolPtr = std::shared_ptr<Tool>;

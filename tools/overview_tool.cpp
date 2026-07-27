@@ -144,43 +144,6 @@ private:
         return true;
     }
 
-    // Count files and estimate lines in a directory tree.
-    static void count_files(const std::string& dir, int max_depth, int current_depth,
-                            std::unordered_map<std::string, int>& file_counts,
-                            std::unordered_map<std::string, size_t>& line_estimates) {
-        if (current_depth > max_depth) return;
-
-        namespace fs = std::filesystem;
-        try {
-            for (const auto& entry : fs::recursive_directory_iterator(dir)) {
-                if (!entry.is_regular_file()) continue;
-                // Filter out non-source files and build artifacts.
-                if (!is_project_source(entry.path().string())) continue;
-                std::string ext = entry.path().extension().string();
-                file_counts[ext]++;
-                // Rough line estimate: ~50 bytes per line average.
-                line_estimates[ext] += static_cast<size_t>(entry.file_size()) / 50;
-            }
-        } catch (const std::exception& /*e*/) {
-            // Ignore inaccessible directories.
-        }
-
-        if (current_depth < max_depth) {
-            try {
-                for (const auto& entry : fs::directory_iterator(dir)) {
-                    if (!entry.is_directory()) continue;
-                    const auto& dname = entry.path().filename().string();
-                    // Skip hidden, build, and dependency dirs.
-                    if (dname.empty() || dname[0] == '.' || dname == "build" || dname == "node_modules") continue;
-                    count_files(entry.path().string(), max_depth, current_depth + 1,
-                                file_counts, line_estimates);
-                }
-            } catch (const std::exception& /*e*/) {
-                // Ignore.
-            }
-        }
-    }
-
     void append_build_info(std::ostringstream& oss, const std::string& dir) {
         oss << u8"🔧 BUILD SYSTEM\n";
         namespace fs = std::filesystem;

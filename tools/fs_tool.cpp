@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 // -----------------------------------------------------------------------
 // Shared utility: cross-platform command execution (used by run_build + git tools)
 // -----------------------------------------------------------------------
-static std::string execute_shell_command(const std::string& cmd, const std::string& cwd) {
+std::string execute_shell_command(const std::string& cmd, const std::string& cwd) {
     std::string shell_cmd = cmd;
     if (!cwd.empty()) {
         shell_cmd = "cd '" + cwd + "' && " + cmd;
