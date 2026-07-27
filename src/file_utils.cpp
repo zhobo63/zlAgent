@@ -630,6 +630,7 @@ static std::string trim_outline(const std::string& s) {
     if (comment != std::string::npos && comment<end) {
         end = comment;
     }
+    // handle /* */ block comments, including same-line
     return s.substr(start, end - start);
 }
 
@@ -960,14 +961,17 @@ static void parse_js_outline(const std::vector<std::string>& lines,
             continue;
         if (is_in_comment_outline(line))
             continue;
-        // TODO: handle /* */ block comments
         if (is_comment) {
             if (line.find("*/") != std::string::npos)
                 is_comment = false;
             continue;
         }
-        if (line.find("/*") != std::string::npos) {
-            is_comment = true;
+        // handle /* */ block comments, including same-line
+        auto comment_open = line.find("/*");
+        if (comment_open != std::string::npos) {
+            auto comment_close = line.find("*/", comment_open + 2);
+            if (comment_close == std::string::npos)
+                is_comment = true;
             continue;
         }
 
@@ -1012,7 +1016,10 @@ static void parse_js_outline(const std::vector<std::string>& lines,
             else {
                 cur.name += line.substr(start_pos);
             }
-            // TODO: handle semicolon (forward declaration equivalent)
+            auto semicolon = line.find(";");
+            if (semicolon != std::string::npos) {
+                is_require_braces_begin = false;
+            }
             continue;
         }
 
@@ -1022,20 +1029,51 @@ static void parse_js_outline(const std::vector<std::string>& lines,
             cur = { i + 1, "class" };
             start_pos = static_cast<int>(cur.kind.length()) + 1;
         }
-        // TODO: interface (TS)
         else if (line.rfind("interface ", 0) == 0) {
             is_require_braces_begin = true;
             cur = { i + 1, "interface" };
             start_pos = static_cast<int>(cur.kind.length()) + 1;
         }
-        // TODO: function declaration
         else if (line.rfind("function ", 0) == 0) {
-            // TODO: extract name before '('
+            // extract name before '('
+            auto paren_open = line.find('(');
+            if (paren_open != std::string::npos) {
+                int pos = static_cast<int>(paren_open) - 1;
+                while (pos >= 0 && std::isspace(line[pos])) pos--;
+                int end = pos + 1;
+                while (pos >= 0 && (std::isalnum(line[pos]) || line[pos] == '_' || line[pos] == '$')) pos--;
+                std::string fname = line.substr(pos + 1, end - pos - 1);
+                if (!fname.empty()) {
+                    out.push_back({ i + 1, "function", fname, js_stack.size() > 0 ? cur.depth + 1 : 0 });
+                }
+            }
         }
-        // TODO: arrow function / method
         else {
-            // check function
-            // TODO: detect function patterns
+            // detect arrow function / method patterns
+            // e.g. const foo = (...) => {   or   foo(...) {   or   async foo(...) {
+            auto paren_open = line.find('(');
+            if (paren_open != std::string::npos && brace_depth<=js_stack.size()+1) {
+                // scan backwards from '(' to extract the identifier before it
+                int pos = static_cast<int>(paren_open) - 1;
+                while (pos >= 0 && std::isspace(line[pos])) pos--;
+                int end = pos + 1;
+                while (pos >= 0 && (std::isalnum(line[pos]) || line[pos] == '_' || line[pos] == '$')) pos--;
+                std::string fname = line.substr(pos + 1, end - pos - 1);
+
+                if (!fname.empty()) {
+                    // check it's not a control-flow keyword
+                    static const char* keywords[] = {"if", "for", "while", "switch", "catch", "else", "do", "return", "new", "typeof", "instanceof", "void", "delete", "throw", "import", "export", "require", "super", "this", "with", "try", "finally"};
+                    bool is_keyword = false;
+                    for (const auto* kw : keywords) {
+                        if (fname == kw) { is_keyword = true; break; }
+                    }
+
+                    if (!is_keyword && has_braces_open) {
+                        // method-style: foo(...) { ... }
+                        out.push_back({ i + 1, "function", fname, js_stack.size() > 0 ? cur.depth + 1 : 0 });
+                    }
+                }
+            }
         }
 
         // Phase 3: same-line brace resolution (just set flag this line)

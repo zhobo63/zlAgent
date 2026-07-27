@@ -66,13 +66,6 @@ tmp/test_multi_edit.cpp 測試使用 edit_files 工具`同時`修改 5處地方
 
 tools/code_search_tool.cpp | tools/file_tool.cpp | tools/fs_tool.cpp | tools/memory_tool.cpp | tools/overview_tool.cpp | tools/rag_tool.cpp | tools/skill_tool.cpp | tools/terminal_tool.cpp
 
-### 🔴 Bug / 邏輯錯誤
-
-| # | 問題 | 檔案 | 影響 |
-|---|------|------|------|
-| ~~1~~ | ~~`is_in_comment()` bug — `line[1]` 永遠檢查第二個字元，不是 `c` 的下一個~~ | fs_tool.cpp L644-652 | ✅ 已修正：改用索引 i 跳過空白後再檢查 line[i+1] |
-| ~~2~~ | ~~`dname.substr(0, 1)` 空字串越界風險~~ | overview_tool.cpp L174、L268 | ✅ 已修正：改用 dname.empty() \\|\\| dname[0] == '.'
-
 ### 🟡 重複程式碼（可抽取共用）
 
 | # | 問題 | 檔案 | 影響 |
@@ -81,14 +74,6 @@ tools/code_search_tool.cpp | tools/file_tool.cpp | tools/fs_tool.cpp | tools/mem
 | 4 | `trim()` 函式在多個檔案重複定義（fs_tool.cpp 內就有 3 個！） | fs_tool.cpp L589/704/982、code_search_tool.cpp L26-30 | 維護成本 |
 | 5 | JSON 參數驗證 boilerplate 每個工具都重複 | 所有 tools/*.cpp | 可抽取到 Tool 基底類別 |
 | 6 | `execute_shell_command()` 在 fs_tool.cpp 和 overview_tool.cpp 各定義一次 | fs_tool.cpp L23、overview_tool.cpp L452 | 維護成本 |
-
-### 🟠 效能問題
-
-| # | 問題 | 檔案 | 影響 |
-|---|------|------|------|
-| ~~7~~ | ~~`std::regex` 在迴圈中重複編譯（parse_gcc_style / parse_msvc_style）~~ | fs_tool.cpp L946、L962 | ✅ 已修正：改用 `static const std::regex` |
-| ~~8~~ | ~~`ReadFileTool::execute()` 讀取檔案兩次（先計行數再讀內容）~~ | file_tool.cpp L57-66、L88 | ✅ 已修正：一次讀入 vector<string> |
-| ~~9~~ | ~~`ReadFilesTool::process_file()` 同樣讀取兩次~~ | file_tool.cpp L244-251、L270 | ✅ 已修正：一次讀入 vector<string> |
 
 ### 🔵 程式碼品質 / 設計建議
 
@@ -102,27 +87,3 @@ tools/code_search_tool.cpp | tools/file_tool.cpp | tools/fs_tool.cpp | tools/mem
 | 15 | `count_files()` 定義了但似乎沒有被呼叫 | overview_tool.cpp L148-182 | 死碼 |
 | 16 | `ScoredSession` 結構體定義在 execute() 內部，應移到 class level | memory_tool.cpp L56-59 | 可讀性 |
 
-# File outline for multi_agent.h
-
- 14 namespace agent
- 22  class SubAgent
- 26  ├ get_name()
- 27  ├ description()
- 30  ├ execute()
- 33  └ run_loop() [virtual]
- 45  class SubAgentLLM : SubAgent
- 52  ├ set_workdir()
- 56  ├ set_system_prompt()
- 58  └ run_loop() [override]
- 67  class SubAgentNet : SubAgent
- 69  ├ struct Config
- 76  │ ├ load()
- 78  │ └ save()
- 84  ├ start()
- 87  ├ stop()
- 90  ├ is_connected()
- 94  ├ ask_confirm()
-104  ├ connection_loop() [private]
-107  ├ heartbeat_loop() [private]
-110  ├ handle_message() [private]
-114  └ send_confirm_request() [private]
