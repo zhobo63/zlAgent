@@ -733,14 +733,17 @@ private:
         }
 
         // Build trimmed_content: each line in [start_line, end_line] with leading ws removed,
-        // joined by '\n'. Also record the original indent per line.
-        std::vector<std::string> indents;  // indent of each source line
+        // joined by '\n'. Also record the original indent per line and the offset of each
+        // line start within trimmed_content.
+        std::vector<std::string> indents;       // indent of each source line
+        std::vector<size_t> line_offsets;       // byte offset in trimmed_content where each line starts
         std::string trimmed_content;
         for (int i = start_line - 1; i < end_line; ++i) {
             if (!indents.empty()) trimmed_content += "\n";
             const std::string& orig = ef.lines[i];
             std::string trimmed = trim_leading_ws(orig);
             indents.push_back(orig.substr(0, orig.size() - trimmed.size()));
+            line_offsets.push_back(trimmed_content.size());
             trimmed_content += trimmed;
         }
 
@@ -753,51 +756,36 @@ private:
             return;
         }
 
-        // Map the match position back to original line range [match_start, match_end]
-        auto pos_to_range = [&](size_t p) -> std::pair<int, int> {
-            size_t offset = 0;
-            for (int i = 0; i < static_cast<int>(indents.size()); ++i) {
-                size_t line_len = trimmed_content.find('\n', offset);
-                if (line_len == std::string::npos || p <= line_len - offset)
-                    return {start_line + i, start_line + i};
-                offset = line_len + 1;
+        // Map a byte position within trimmed_content to the 1-based source line number.
+        // Uses our recorded offsets — safe even when lines contain literal '\n' characters.
+        auto pos_to_line = [&](size_t p) -> int {
+            for (int i = 0; i < static_cast<int>(line_offsets.size()); ++i) {
+                size_t next_offset = (i + 1 < static_cast<int>(line_offsets.size()))
+                    ? line_offsets[i + 1]
+                    : trimmed_content.size();
+                if (p >= line_offsets[i] && p < next_offset)
+                    return start_line + i;
             }
-            return {static_cast<int>(indents.size()), static_cast<int>(indents.size())};
+            return start_line + static_cast<int>(line_offsets.size()) - 1;
         };
 
-        int match_start = pos_to_range(pos).first;       // 1-based
-        int match_end   = pos_to_range(pos + trimmed_old.size() - 1).second; // 1-based inclusive
+        int match_start = pos_to_line(pos);                          // 1-based
+        int match_end   = pos_to_line(pos + trimmed_old.size() - 1); // 1-based inclusive
 
         if (match_start == match_end) {
             // Single-line match — check if it's a partial inline replacement
             int line_idx = match_start - start_line; // 0-based into indents
-            size_t line_trimmed_len = trimmed_content.size();
-            { // find the length of this specific trimmed line
-                size_t nl = trimmed_content.find('\n', pos);
-                if (nl == std::string::npos)
-                    line_trimmed_len = trimmed_content.size() - pos;
-                else
-                    line_trimmed_len = nl - pos;
-            }
-
-            // Find the start offset of this trimmed line within trimmed_content
-            size_t line_start_in_tc = 0;
-            { // walk back to find where this line starts in trimmed_content
-                size_t cur = pos;
-                while (cur > 0) {
-                    --cur;
-                    if (trimmed_content[cur] == '\n') break;
-                    line_start_in_tc = cur;
-                }
-            }
+            size_t line_start_in_tc = line_offsets[line_idx];
+            size_t line_end_in_tc   = (line_idx + 1 < static_cast<int>(line_offsets.size()))
+                ? line_offsets[line_idx + 1]
+                : trimmed_content.size();
 
             bool is_partial = (pos != line_start_in_tc ||
-                               pos + trimmed_old.size() < line_start_in_tc + line_trimmed_len);
+                               pos + trimmed_old.size() < line_end_in_tc);
 
             if (is_partial) {
                 // Inline replacement: replace only the matched portion within the original line
-                int orig_line_idx = match_start - 1; // 0-based into ef.lines
-                const std::string& orig_line = ef.lines[orig_line_idx];
+                const std::string& orig_line = ef.lines[match_start - 1];
                 size_t indent_len = indents[line_idx].size();
                 size_t match_pos_in_trimmed = pos - line_start_in_tc;
                 size_t orig_match_start = indent_len + match_pos_in_trimmed;
