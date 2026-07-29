@@ -15,13 +15,14 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
         for (auto it = args.begin(); it != args.end(); ++it) {
             auto val = it.value();
             // If value is a string with newlines, show line count instead of raw content
-            if (val.is_string() && val.get<std::string>().find('\n') != std::string::npos) {
-                auto s = val.get<std::string>();
-                int lines = 1;
-                for (char c : s) if (c == '\n') ++lines;
-                std::cout << indent << it.key() << ": " << lines << " lines\n";
-            }
-            else {
+            //if (val.is_string() && val.get<std::string>().find('\n') != std::string::npos) {
+            //    auto s = val.get<std::string>();
+            //    int lines = 1;
+            //    for (char c : s) if (c == '\n') ++lines;
+            //    std::cout << indent << it.key() << ": " << lines << " lines\n";
+            //}
+            //else 
+            {
                 std::cout << indent << it.key() << ": ";
                 show_json(val, depth + 1);
                 std::cout << '\n';
@@ -47,6 +48,7 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
                 show_json(item, depth + 2);
                 std::cout << '\n';
             }
+            std::cout << "\n";
         }
     }
     else if (args.is_number()) {

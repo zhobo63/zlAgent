@@ -66,9 +66,15 @@ struct EditFile: EditLines {
     bool validate_blocks(std::string& error_out) const;
 
     /// Find all occurrences of old_text and return (line_number, content_pos) pairs.
+    /// Treats ' ' and '\t' as equivalent when matching.
     static std::vector<std::pair<int, size_t>> find_occurrences(
             const std::vector<std::string>& lines,
             const std::string& old_text);
+
+    /// Fuzzy-find old_text in content: treats ' ' and '\t' as equivalent.
+    /// Returns the position of the first match, or npos if not found.
+    static size_t fuzzy_find(const std::string& content,
+                             const std::string& old_text);
 
     /// Convert a content position to the 1-based line number it falls on.
     static int pos_to_line(const std::vector<std::string>& lines, size_t pos);

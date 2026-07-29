@@ -290,7 +290,7 @@ void Agent::register_tools()
     add_tool(agent::create_write_files_tool());
     //ag.add_tool(agent::create_append_file_tool());
     //ag.add_tool(agent::create_insert_file_content_tool());
-    //ag.add_tool(agent::create_edit_file_tool());
+    add_tool(agent::create_edit_file_tool());
     add_tool(agent::create_edit_files_tool());
     add_tool(agent::create_list_directory_tool());
     add_tool(agent::create_terminal_tool());

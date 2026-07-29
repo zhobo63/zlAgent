@@ -626,10 +626,12 @@ void test_edit_file_tools(UnitReport& parent)
     UnitReport unit("edit_file");
     LOG_INFO("test_edit_file_tools", "edit_file");
 
-    // text replacement
+    // ── Text-based edits ───────────────────────────────────────
+
+    // basic text replacement (single edit in array)
     {
-        LOG_INFO("edit_file", "test_edit_file_temp");
-        std::string dir = "test_edit_file_temp";
+        LOG_INFO("edit_file", "basic_text_replace_temp");
+        std::string dir = "test_edit_basic_temp";
         if (fs::exists(dir)) fs::remove_all(dir);
         fs::create_directories(dir);
 
@@ -642,8 +644,7 @@ void test_edit_file_tools(UnitReport& parent)
 
         json args;
         args["path"] = dir + "/edit.txt";
-        args["old_text"] = "hello world";
-        args["new_text"] = "goodbye world";
+        args["edits"] = json::parse(R"([{"old_text":"hello world","new_text":"goodbye world"}])");
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
@@ -659,9 +660,265 @@ void test_edit_file_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
+    // text replacement preserves same-line content (the key fix)
+    {
+        LOG_INFO("edit_file", "text_replace_preserves_same_line_temp");
+        std::string dir = "test_edit_preserve_sameline_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        // Line 2 has content after the old_text: "    return 0; // main exit"
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "void foo() {\n";
+        out << "    return 0; // main exit\n";
+        out << "}\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"old_text":"return 0;","new_text":"return -1;"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("contains_return_minus1", content.find("return -1;") != std::string::npos);
+        UNIT_TEST("preserves_comment", content.find("// main exit") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // multi-line old_text preserves boundary line content (the key fix)
+    {
+        LOG_INFO("edit_file", "multiline_preserves_boundary_temp");
+        std::string dir = "test_edit_multiline_boundary_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        // old_text spans lines 2-4, but line 4 has extra content after the match
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "void foo() {\n";
+        out << "    if (x > 0) {\n";
+        out << "        return x;\n";
+        out << "    } else { return -1; }\n";
+        out << "}\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"old_text":"if (x > 0) {\n        return x;\n    }","new_text":"if (x < 0) {\n        return x;\n    }"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("contains_x_lt_0", content.find("x < 0") != std::string::npos);
+        UNIT_TEST("preserves_else_branch", content.find("else { return -1; }") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // new_text changes line count: one line becomes two
+    {
+        LOG_INFO("edit_file", "newtext_increases_lines_temp");
+        std::string dir = "test_edit_newtext_morelines_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "    int x = 0, y = 0;\n";
+        out << "    return x + y;\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"old_text":"int x = 0, y = 0;","new_text":"int x = 0;\n    int y = 0;"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("has_separate_x", content.find("int x = 0;") != std::string::npos);
+        UNIT_TEST("has_separate_y", content.find("    int y = 0;") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // new_text changes line count: two lines become one
+    {
+        LOG_INFO("edit_file", "newtext_decreases_lines_temp");
+        std::string dir = "test_edit_newtext_fewerlines_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "    int x = 0;\n";
+        out << "    int y = 0;\n";
+        out << "    return x + y;\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"old_text":"int x = 0;\n    int y = 0;","new_text":"int x = 0, y = 0;"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("has_combined_line", content.find("int x = 0, y = 0;") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // ── Line-based edits ───────────────────────────────────────
+
+    // line-based mode: replace lines by start_line/end_line
+    {
+        LOG_INFO("edit_file", "line_mode_temp");
+        std::string dir = "test_edit_line_mode_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "line1\nline2\nline3\nline4\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"start_line":2,"end_line":3,"new_text":"replaced"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("line_mode_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("line_mode_contains_replaced", content.find("replaced") != std::string::npos);
+        UNIT_TEST("line_mode_no_line2", content.find("line2") == std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // ── Multiple edits in one call ─────────────────────────────
+
+    // multiple text-based edits
+    {
+        LOG_INFO("edit_file", "multiple_text_edits_temp");
+        std::string dir = "test_edit_multi_text_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "hello world\nfoo bar\nbaz qux\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{"old_text":"hello world","new_text":"goodbye world"},{"old_text":"foo bar","new_text":"bar foo"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("contains_goodbye", content.find("goodbye world") != std::string::npos);
+        UNIT_TEST("contains_bar_foo", content.find("bar foo") != std::string::npos);
+        UNIT_TEST("baz_unchanged", content.find("baz qux") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // mixed text-based and line-based edits in one call
+    {
+        LOG_INFO("edit_file", "mixed_edits_temp");
+        std::string dir = "test_edit_mixed_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "line1\nline2\nline3\nline4\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        // text-based: replace "line1"
+        // line-based: replace lines 3-4
+        args["edits"] = json::parse(R"([{"old_text":"line1","new_text":"modified1"},{"start_line":3,"end_line":4,"new_text":"replaced34"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("contains_modified1", content.find("modified1") != std::string::npos);
+        UNIT_TEST("contains_replaced34", content.find("replaced34") != std::string::npos);
+        UNIT_TEST("line2_unchanged", content.find("line2") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // overlapping blocks returns error
+    {
+        LOG_INFO("edit_file", "overlap_temp");
+        std::string dir = "test_edit_overlap_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "line1\nline2\nline3\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        // Both edits target line 2 — should overlap
+        args["edits"] = json::parse(R"([{"old_text":"line2","new_text":"modified2"},{"start_line":2,"end_line":3,"new_text":"replaced23"}])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("overlap_returns_error", result.find("Error") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
+    // ── Error cases ────────────────────────────────────────────
+
     // nonexistent old_text returns error
     {
-        LOG_INFO("edit_file", "test_edit_notfound_temp");
+        LOG_INFO("edit_file", "notfound_returns_error_temp");
         std::string dir = "test_edit_notfound_temp";
         if (fs::exists(dir)) fs::remove_all(dir);
         fs::create_directories(dir);
@@ -673,8 +930,7 @@ void test_edit_file_tools(UnitReport& parent)
         auto tool = create_edit_file_tool();
         json args;
         args["path"] = dir + "/edit.txt";
-        args["old_text"] = "not found";
-        args["new_text"] = "replacement";
+        args["edits"] = json::parse(R"([{"old_text":"not found","new_text":"replacement"}])");
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
@@ -691,8 +947,7 @@ void test_edit_file_tools(UnitReport& parent)
         auto tool = create_edit_file_tool();
         json args;
         args["path"] = "";
-        args["old_text"] = "a";
-        args["new_text"] = "b";
+        args["edits"] = json::parse(R"([{"old_text":"a","new_text":"b"}])");
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
@@ -725,95 +980,9 @@ void test_edit_file_tools(UnitReport& parent)
         UNIT_TEST("empty_input_returns_error", result.find("Error") != std::string::npos);
     }
 
-    // line-based mode: replace lines by start_line/end_line
-    {
-        LOG_INFO("edit_file", "test_edit_line_mode_temp");
-        std::string dir = "test_edit_line_mode_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
-        fs::create_directories(dir);
-
-        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
-        out << "line1\nline2\nline3\nline4\n";
-        out.close();
-
-        auto tool = create_edit_file_tool();
-        json args;
-        args["path"] = dir + "/edit.txt";
-        args["start_line"] = 2;
-        args["end_line"] = 3;
-        args["new_text"] = "replaced";
-        auto args_str = args.dump();
-        tool->show_arguments(args_str);
-        tool->show_preview(args_str);
-        std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
-        UNIT_TEST("line_mode_no_error", result.find("Error") == std::string::npos);
-
-        std::ifstream in(fs::path(dir) / "edit.txt");
-        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        UNIT_TEST("line_mode_contains_replaced", content.find("replaced") != std::string::npos);
-        UNIT_TEST("line_mode_no_line2", content.find("line2") == std::string::npos);
-
-        safe_remove_all(dir);
-    }
-
-    // old_text matches multiple locations returns error
-    {
-        LOG_INFO("edit_file", "test_edit_multiple_matches_temp");
-        std::string dir = "test_edit_multiple_matches_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
-        fs::create_directories(dir);
-
-        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
-        out << "hello world\nfoo bar\nhello world\n";
-        out.close();
-
-        auto tool = create_edit_file_tool();
-        json args;
-        args["path"] = dir + "/edit.txt";
-        args["old_text"] = "hello world";
-        args["new_text"] = "goodbye";
-        auto args_str = args.dump();
-        tool->show_arguments(args_str);
-        tool->show_preview(args_str);
-        std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
-        UNIT_TEST("multiple_matches_returns_error", result.find("matches multiple locations") != std::string::npos);
-
-        safe_remove_all(dir);
-    }
-
-    // both old_text and start_line/end_line provided returns error
-    {
-        LOG_INFO("edit_file", "test_edit_both_modes_temp");
-        std::string dir = "test_edit_both_modes_temp";
-        if (fs::exists(dir)) fs::remove_all(dir);
-        fs::create_directories(dir);
-
-        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
-        out << "hello world\n";
-        out.close();
-
-        auto tool = create_edit_file_tool();
-        json args;
-        args["path"] = dir + "/edit.txt";
-        args["old_text"] = "hello";
-        args["new_text"] = "bye";
-        args["start_line"] = 1;
-        args["end_line"] = 1;
-        auto args_str = args.dump();
-        tool->show_arguments(args_str);
-        tool->show_preview(args_str);
-        std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
-        UNIT_TEST("both_modes_returns_error", result.find("Cannot use both") != std::string::npos);
-
-        safe_remove_all(dir);
-    }
-
     // end_line exceeds file length returns error
     {
-        LOG_INFO("edit_file", "test_edit_exceeds_length_temp");
+        LOG_INFO("edit_file", "exceeds_length_temp");
         std::string dir = "test_edit_exceeds_length_temp";
         if (fs::exists(dir)) fs::remove_all(dir);
         fs::create_directories(dir);
@@ -825,9 +994,7 @@ void test_edit_file_tools(UnitReport& parent)
         auto tool = create_edit_file_tool();
         json args;
         args["path"] = dir + "/edit.txt";
-        args["start_line"] = 1;
-        args["end_line"] = 5;
-        args["new_text"] = "replaced";
+        args["edits"] = json::parse(R"([{"start_line":1,"end_line":5,"new_text":"replaced"}])");
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
@@ -838,20 +1005,29 @@ void test_edit_file_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
-    // both old_text and new_text empty returns error
+    // missing edits returns error
     {
-        LOG_INFO("edit_file", "empty_texts_returns_error");
+        LOG_INFO("edit_file", "missing_edits_temp");
+        std::string dir = "test_edit_missing_edits_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "hello\n";
+        out.close();
+
         auto tool = create_edit_file_tool();
         json args;
-        args["path"] = "/tmp/test.txt";
-        args["old_text"] = "";
-        args["new_text"] = "";
+        args["path"] = dir + "/edit.txt";
+        // no edits array
         auto args_str = args.dump();
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
         std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
-        UNIT_TEST("empty_texts_returns_error", result.find("Error") != std::string::npos);
+        UNIT_TEST("missing_edits_returns_error", result.find("Error") != std::string::npos);
+
+        safe_remove_all(dir);
     }
 
     parent.report.push_back(unit);

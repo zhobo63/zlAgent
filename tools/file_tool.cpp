@@ -15,6 +15,10 @@ namespace fs = std::filesystem;
 namespace agent {
 using json = nlohmann::json;
 
+static bool is_json_array(const json& obj, const char* key) {
+    return obj.contains(key) && obj[key].is_array();
+}
+
 class ReadFileTool : public Tool {
 public:
     std::string name() const override { return "read_file"; }
@@ -632,23 +636,35 @@ class EditFileTool : public Tool {
 public:
     std::string name() const override { return "edit_file"; }
     std::string description() const override {
-        return "Apply precise edits to an existing file. Two modes: (1) text-based: provide old_text and new_text to find-and-replace; (2) line-based: provide start_line, end_line and new_text to replace a line range. Only one mode should be used at a time.";
+        return R"(Apply precise edits to an existing file.
+Provide an "edits" array. Each element must contain old_text and new_text.
+Optionally provide start_line/end_line to limit the search range for old_text.
+Without start_line, search from line 1; without end_line, search to the last line.
+All line numbers are based on the original file before any edits — DO NOT overlap operations on the same lines.)";
     }
     std::string parameters_schema() const override {
-        json schema;
-        schema["type"] = "object";
-        schema["properties"]["path"]["type"] = "string";
-        schema["properties"]["path"]["description"] = "The file path to edit";
-        schema["properties"]["old_text"]["type"] = "string";
-        schema["properties"]["old_text"]["description"] = "Exact text to find and replace (text-based mode). Must match uniquely.";
-        schema["properties"]["new_text"]["type"] = "string";
-        schema["properties"]["new_text"]["description"] = "The replacement text";
-        schema["properties"]["start_line"]["type"] = "integer";
-        schema["properties"]["start_line"]["description"] = "Starting line number for range-based edit (1-based). Use with end_line instead of old_text.";
-        schema["properties"]["end_line"]["type"] = "integer";
-        schema["properties"]["end_line"]["description"] = "Ending line number for range-based edit (inclusive, 1-based). Use with start_line instead of old_text.";
-        schema["required"] = {"path", "new_text"};
-        return schema.dump();
+        static std::string schema = json::parse(R"({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The file path to edit"},
+                "edits": {
+                    "type": "array",
+                    "description": "Array of edits. Each element must have old_text and new_text. Optionally provide start_line/end_line to limit the search range for old_text. All line numbers are based on the original file.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old_text": {"type": "string", "description": "Exact text to find and replace. Must match exactly."},
+                            "new_text": {"type": "string", "description": "The replacement text"},
+                            "start_line": {"type": "integer", "description": "Optional: starting line number (1-based, inclusive) to limit search range for old_text. Defaults to 1."},
+                            "end_line": {"type": "integer", "description": "Optional: ending line number (1-based, inclusive) to limit search range for old_text. Defaults to last line."}
+                        },
+                        "required": ["old_text", "new_text"]
+                    }
+                }
+            },
+            "required": ["path", "edits"]
+        })").dump();
+        return schema;
     }
 
     void show_preview(const std::string& json_args) override {
@@ -659,29 +675,23 @@ public:
                 return;
             }
             std::string path = args.value("path", "");
-            std::string old_text = args.value("old_text", "");
-            std::string new_text = args.value("new_text", "");
+            if (!is_json_array(args, "edits"))
+                return;
 
-            if (!old_text.empty()) {
-                // Text-based mode
-                std::string diff = DiffEdit(old_text, new_text);
-                std::cout << std::endl << path << std::endl << diff << std::endl;
-            } else {
-                // Line-based mode
-                int start_line = args.value("start_line", 0);
-                int end_line   = args.value("end_line", 0);
-                if (!path.empty() && start_line > 0 && end_line >= start_line) {
-                    std::vector<std::pair<int, std::string>> lines;
-                    if (ReadFileLines(path, start_line, end_line, lines)) {
-                        std::string old_content;
-                        for (const auto& [num, content] : lines) {
-                            old_content += content + "\n";
-                        }
-                        std::string diff = DiffEdit(old_content, new_text, start_line);
-                        std::cout << std::endl << path << " (lines " << start_line << "-" << end_line << ")" << std::endl << diff << std::endl;
-                    }
-                }
+            agent::EditFile ef;
+            if (!ef.read_file(path)) return;
+            for (const auto& edit : args["edits"])
+                apply_single_edit(ef, edit);
+            std::string error;
+            if (!ef.validate_blocks(error)) {
+                std::cerr << "show_preview validation failed: " << path << " - " << error << '\n';
+                return;
             }
+            agent::EditLines result;
+            ef.apply_blocks(result);
+            std::string old_content = ef.to_string();
+            std::string new_content = result.to_string();
+            std::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
         } catch (...) {}
     }
 
@@ -689,6 +699,65 @@ public:
         return mode == UserReplyMode::Edit || mode == UserReplyMode::Always;
     }
 
+private:
+    /// Apply a single edit to an EditFile: finds old_text in the original file,
+    /// optionally limited by start_line/end_line, replaces it within the full line
+    /// context, then adds a block with the resulting full-line content.
+    static void apply_single_edit(agent::EditFile& ef, const json& edit) {
+        std::string old_text = edit.value("old_text", "");
+        std::string new_text = edit.value("new_text", "");
+
+        if (old_text.empty()) {
+            ef.error_message = "old_text is required.";
+            return;
+        }
+
+        // Find all occurrences, then filter by start_line/end_line range.
+        auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
+        if (occurrences.empty()) {
+            ef.error_message = "old_text not found in file. The text to replace must match exactly.";
+            return;
+        }
+
+        int start_line = edit.value("start_line", 1);
+        int end_line   = edit.value("end_line", static_cast<int>(ef.lines.size()));
+
+        // Filter occurrences to the specified line range.
+        auto filtered = std::vector<std::pair<int, size_t>>{};
+        for (const auto& [ln, cpos] : occurrences) {
+            if (ln >= start_line && ln <= end_line)
+                filtered.push_back({ln, cpos});
+        }
+
+        if (filtered.empty()) {
+            ef.error_message = "old_text not found in lines " + std::to_string(start_line) + "-" + std::to_string(end_line) + ". The text to replace must match exactly.";
+            return;
+        }
+
+        // Use the first occurrence within range.
+        auto [ln, cpos] = filtered[0];
+        auto [sl, el]   = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
+
+        // Reconstruct the full content of lines sl..el (with \n between them).
+        std::string range_content;
+        for (int i = sl - 1; i <= el - 1; ++i) {
+            if (!range_content.empty()) range_content += '\n';
+            range_content += ef.lines[i];
+        }
+
+        // Replace old_text with new_text within this full-line context (fuzzy: space/tab equivalent).
+        auto pos = agent::EditFile::fuzzy_find(range_content, old_text);
+        if (pos == std::string::npos) {
+            ef.error_message = "old_text not found in file. The text to replace must match exactly.";
+            return;
+        }
+        range_content.replace(pos, old_text.size(), new_text);
+
+        // Add block with the resulting full-line content.
+        ef.replace_line_range(sl, el, range_content);
+    }
+
+public:
     std::string execute(const std::string& json_args) override {
         try {
             if (json_args.empty()) return "Error: Invalid JSON arguments - empty input";
@@ -697,109 +766,57 @@ public:
                 return "Error: Invalid JSON arguments - not json";
             }
             std::string path = args.value("path", "");
-            std::string old_text = args.value("old_text", "");
-            std::string new_text = args.value("new_text", "");
-            int start_line = args.value("start_line", 0);
-            int end_line   = args.value("end_line", 0);
 
             if (path.empty()) return "Error: No file path provided.";
-            if (new_text.empty() && old_text.empty()) return "Error: Neither old_text nor new_text provided.";
 
-            // Determine mode: text-based or line-based
-            bool text_mode = !old_text.empty();
-            bool line_mode = start_line > 0 && end_line >= start_line;
-
-            if (!text_mode && !line_mode) {
-                return "Error: Must provide either old_text (text-based mode) or start_line/end_line (line-based mode).";
-            }
-            if (text_mode && line_mode) {
-                return "Error: Cannot use both old_text and start_line/end_line at the same time. Choose one mode.";
-            }
-
-            // Safety: integrated path check (working dir + whitelist + strict mode).
+            // Safety: integrated path check.
             auto check_result = SafetyGuard::get_instance().is_path_ok(path);
             if (check_result == PathCheckResult::Denied) {
                 return "Error: Path '" + path + "' is outside allowed directories. Operation denied.";
             }
-            if (text_mode) {
-                std::ifstream infile(path);
-                if (!infile.is_open()) {
-                    return "Error: Cannot open file '" + path + "'";
-                }
-                std::stringstream ss;
-                ss << infile.rdbuf();
-                std::string content = ss.str();
-                infile.close();
 
-                auto pos = content.find(old_text);
-                if (pos == std::string::npos) {
-                    return "Error: old_text not found in file '" + path + "'. "
-                           "The text to replace must match exactly.\n"
-                           "Suggested: read the file first with read_file, then copy the exact text.";
-                }
+            if (!is_json_array(args, "edits"))
+                return "Error: No edits";
 
-                auto pos2 = content.find(old_text, pos + 1);
-                if (pos2 != std::string::npos) {
-                    return "Error: old_text matches multiple locations in '" + path + "'. "
-                           "Provide more surrounding context to make the match unique.";
-                }
-
-                content.replace(pos, old_text.size(), new_text);
-                std::ofstream outfile(path, std::ios::trunc);
-                if (!outfile.is_open()) {
-                    return "Error: Cannot write to file '" + path + "'";
-                }
-                outfile << content;
-                outfile.close();
-
-                // Calculate start_line from position
-                int start_line = 1;
-                for (size_t i = 0; i < pos; ++i) {
-                    if (content[i] == '\n') ++start_line;
-                }
-
-                std::string edited = EditedLines(old_text, new_text, start_line);
-                std::ostringstream oss;
-                if (!edited.empty()) {
-                    oss << "EDITED: " << path << "\n" << edited;
-                }
-                return oss.str();
-            } else {
-                // --- Line-based mode: replace lines start_line..end_line with new_text ---
-                if (new_text.empty()) return "Error: new_text is required in line-based mode.";
-
-                agent::EditFile ef;
-                if (!ef.read_file(path)) {
-                    return "Error: Cannot open file '" + path + "'";
-                }
-
-                if (end_line > static_cast<int>(ef.lines.size())) {
-                    return "Error: end_line " + std::to_string(end_line) +
-                           " exceeds file length (" + std::to_string(ef.lines.size()) + " lines).";
-                }
-
-                // Capture the old content for diff
-                std::string old_content;
-                for (int i = start_line - 1; i <= end_line - 1; ++i) {
-                    old_content += ef.lines[i] + "\n";
-                }
-
-                ef.replace_line_range(start_line, end_line, new_text);
-
-                agent::EditLines result;
-                ef.apply_blocks(result);
-
-                if (!result.write_file(path)) {
-                    return "Error: Cannot write to file '" + path + "'";
-                }
-
-                std::string edited = EditedLines(old_content, new_text, start_line);
-                std::ostringstream oss;
-                if (!edited.empty()) {
-                    oss << "EDITED: " << path << "\n" << edited;
-                }
-                return oss.str();
+            agent::EditFile ef;
+            if (!ef.read_file(path)) {
+                return "Error: Cannot open file '" + path + "'";
             }
+
+            for (const auto& edit : args["edits"])
+                apply_single_edit(ef, edit);
+
+            // Check for errors from text-based resolution.
+            if (!ef.error_message.empty()) {
+                return "Error: " + ef.error_message;
+            }
+
+            std::string error;
+            if (!ef.validate_blocks(error)) {
+                return "Error: " + error;
+            }
+
+            // Capture old content for diff.
+            std::string old_content = ef.to_string();
+
+            agent::EditLines result;
+            ef.apply_blocks(result);
+
+            if (!result.write_file(path)) {
+                return "Error: Cannot write to file '" + path + "'";
+            }
+
+            // Build output.
+            int original_lines = static_cast<int>(ef.lines.size());
+            int new_lines      = static_cast<int>(result.lines.size());
+            std::ostringstream oss;
+            oss << "edited: " << path << " (" << original_lines << " -> " << new_lines << " lines)\n";
+
+            std::string edited = EditedLines(old_content, result.to_string(), 1);
+            if (!edited.empty()) {
+                oss << edited;
+            }
+            return oss.str();
         } catch (const json::parse_error& e) {
             return "Error: Invalid JSON arguments - " + std::string(e.what());
         }
@@ -996,10 +1013,6 @@ Operations per file are atomic (failure rolls back that file); files are indepen
 
 private:
     enum class ReplaceTextMode { All, Interactive };
-
-    static bool is_json_array(const json& obj, const char* key) {
-        return obj.contains(key) && obj[key].is_array();
-    }
 
     /// Resolve a single replace_text into blocks on the given EditFile.
     /// mode == All: replace every occurrence without prompting.

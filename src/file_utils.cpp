@@ -240,6 +240,32 @@ std::pair<int, int> EditFile::text_range_to_lines(
     return {start_line, end_line};
 }
 
+// Treat ' ' and '\t' as equivalent when matching old_text.
+static bool whitespace_eq(char a, char b) {
+    if (a == b) return true;
+    if ((a == ' ' || a == '\t') && (b == ' ' || b == '\t')) return true;
+    return false;
+}
+
+// Check if old_text matches content starting at position pos, treating space/tab as equivalent.
+static bool fuzzy_match(const std::string& content, size_t pos,
+                        const std::string& old_text) {
+    for (size_t i = 0; i < old_text.size(); ++i) {
+        if (pos + i >= content.size()) return false;
+        if (!whitespace_eq(content[pos + i], old_text[i])) return false;
+    }
+    return true;
+}
+
+size_t EditFile::fuzzy_find(const std::string& content, const std::string& old_text) {
+    if (old_text.empty()) return std::string::npos;
+    for (size_t pos = 0; pos <= content.size() - old_text.size(); ++pos) {
+        if (fuzzy_match(content, pos, old_text))
+            return pos;
+    }
+    return std::string::npos;
+}
+
 std::vector<std::pair<int, size_t>> EditFile::find_occurrences(
         const std::vector<std::string>& lines,
         const std::string& old_text) {
@@ -273,13 +299,11 @@ std::vector<std::pair<int, size_t>> EditFile::find_occurrences(
     };
 
     std::vector<std::pair<int, size_t>> results;
-    size_t search_pos = 0;
-    while (true) {
-        auto found = content.find(old_text, search_pos);
-        if (found == std::string::npos) break;
-        int line_num = pos_to_line(found);
-        results.push_back({line_num, found});
-        search_pos = found + 1;
+    for (size_t pos = 0; pos <= content.size() - old_text.size(); ++pos) {
+        if (fuzzy_match(content, pos, old_text)) {
+            int line_num = pos_to_line(pos);
+            results.push_back({line_num, pos});
+        }
     }
     return results;
 }
