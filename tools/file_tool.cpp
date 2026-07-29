@@ -703,6 +703,7 @@ private:
     /// Apply a single edit to an EditFile: finds old_text in the original file,
     /// optionally limited by start_line/end_line, replaces it within the full line
     /// context, then adds a block with the resulting full-line content.
+    /// The matching should be flexible with leading whitespace - tabs and spaces at the start of lines should be ignored when matching
     static void apply_single_edit(agent::EditFile& ef, const json& edit) {
         std::string old_text = edit.value("old_text", "");
         std::string new_text = edit.value("new_text", "");
@@ -712,49 +713,120 @@ private:
             return;
         }
 
-        // Find all occurrences, then filter by start_line/end_line range.
-        auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
-        if (occurrences.empty()) {
-            ef.error_message = "old_text not found in file. The text to replace must match exactly.";
-            return;
-        }
-
         int start_line = edit.value("start_line", 1);
         int end_line   = edit.value("end_line", static_cast<int>(ef.lines.size()));
 
-        // Filter occurrences to the specified line range.
-        auto filtered = std::vector<std::pair<int, size_t>>{};
-        for (const auto& [ln, cpos] : occurrences) {
-            if (ln >= start_line && ln <= end_line)
-                filtered.push_back({ln, cpos});
+        auto trim_leading_ws = [](const std::string& s) -> std::string {
+            size_t p = s.find_first_not_of(" \t");
+            return (p == std::string::npos) ? "" : s.substr(p);
+        };
+
+        EditLines old_el, new_el;
+        old_el.parse(old_text);
+        new_el.parse(new_text);
+
+        // Build trimmed_old: each line of old_text with leading ws removed, joined by '\n'
+        std::string trimmed_old;
+        for (int j = 0; j < static_cast<int>(old_el.lines.size()); ++j) {
+            if (j > 0) trimmed_old += "\n";
+            trimmed_old += trim_leading_ws(old_el.lines[j]);
         }
 
-        if (filtered.empty()) {
-            ef.error_message = "old_text not found in lines " + std::to_string(start_line) + "-" + std::to_string(end_line) + ". The text to replace must match exactly.";
-            return;
+        // Build trimmed_content: each line in [start_line, end_line] with leading ws removed,
+        // joined by '\n'. Also record the original indent per line.
+        std::vector<std::string> indents;  // indent of each source line
+        std::string trimmed_content;
+        for (int i = start_line - 1; i < end_line; ++i) {
+            if (!indents.empty()) trimmed_content += "\n";
+            const std::string& orig = ef.lines[i];
+            std::string trimmed = trim_leading_ws(orig);
+            indents.push_back(orig.substr(0, orig.size() - trimmed.size()));
+            trimmed_content += trimmed;
         }
 
-        // Use the first occurrence within range.
-        auto [ln, cpos] = filtered[0];
-        auto [sl, el]   = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-
-        // Reconstruct the full content of lines sl..el (with \n between them).
-        std::string range_content;
-        for (int i = sl - 1; i <= el - 1; ++i) {
-            if (!range_content.empty()) range_content += '\n';
-            range_content += ef.lines[i];
-        }
-
-        // Replace old_text with new_text within this full-line context (fuzzy: space/tab equivalent).
-        auto pos = agent::EditFile::fuzzy_find(range_content, old_text);
+        // Find trimmed_old in trimmed_content
+        size_t pos = trimmed_content.find(trimmed_old);
         if (pos == std::string::npos) {
-            ef.error_message = "old_text not found in file. The text to replace must match exactly.";
+            std::ostringstream oss;
+            oss << "old_text not found in lines " << start_line << "-" << end_line << ".";
+            ef.error_message = oss.str();
             return;
         }
-        range_content.replace(pos, old_text.size(), new_text);
 
-        // Add block with the resulting full-line content.
-        ef.replace_line_range(sl, el, range_content);
+        // Map the match position back to original line range [match_start, match_end]
+        auto pos_to_range = [&](size_t p) -> std::pair<int, int> {
+            size_t offset = 0;
+            for (int i = 0; i < static_cast<int>(indents.size()); ++i) {
+                size_t line_len = trimmed_content.find('\n', offset);
+                if (line_len == std::string::npos || p <= line_len - offset)
+                    return {start_line + i, start_line + i};
+                offset = line_len + 1;
+            }
+            return {static_cast<int>(indents.size()), static_cast<int>(indents.size())};
+        };
+
+        int match_start = pos_to_range(pos).first;       // 1-based
+        int match_end   = pos_to_range(pos + trimmed_old.size() - 1).second; // 1-based inclusive
+
+        if (match_start == match_end) {
+            // Single-line match — check if it's a partial inline replacement
+            int line_idx = match_start - start_line; // 0-based into indents
+            size_t line_trimmed_len = trimmed_content.size();
+            { // find the length of this specific trimmed line
+                size_t nl = trimmed_content.find('\n', pos);
+                if (nl == std::string::npos)
+                    line_trimmed_len = trimmed_content.size() - pos;
+                else
+                    line_trimmed_len = nl - pos;
+            }
+
+            // Find the start offset of this trimmed line within trimmed_content
+            size_t line_start_in_tc = 0;
+            { // walk back to find where this line starts in trimmed_content
+                size_t cur = pos;
+                while (cur > 0) {
+                    --cur;
+                    if (trimmed_content[cur] == '\n') break;
+                    line_start_in_tc = cur;
+                }
+            }
+
+            bool is_partial = (pos != line_start_in_tc ||
+                               pos + trimmed_old.size() < line_start_in_tc + line_trimmed_len);
+
+            if (is_partial) {
+                // Inline replacement: replace only the matched portion within the original line
+                int orig_line_idx = match_start - 1; // 0-based into ef.lines
+                const std::string& orig_line = ef.lines[orig_line_idx];
+                size_t indent_len = indents[line_idx].size();
+                size_t match_pos_in_trimmed = pos - line_start_in_tc;
+                size_t orig_match_start = indent_len + match_pos_in_trimmed;
+
+                std::string new_line = orig_line.substr(0, orig_match_start) +
+                                       new_text +
+                                       orig_line.substr(orig_match_start + trimmed_old.size());
+
+                ef.replace_line_range(match_start, match_end, new_line);
+            } else {
+                // Full-line replacement: indent + new_text content
+                std::string replacement = indents[line_idx] + new_el.lines[0];
+                ef.replace_line_range(match_start, match_end, replacement);
+            }
+        } else {
+            // Multi-line replacement: for each line of new_text, use the indent from the matched source line.
+            std::string replacement;
+            int n_new = static_cast<int>(new_el.lines.size());
+            for (int j = 0; j < n_new; ++j) {
+                if (j > 0) replacement += "\n";
+                int src_idx = match_start - 1 + j;  // 0-based into indents
+                const std::string& indent = (src_idx < static_cast<int>(indents.size()))
+                    ? indents[src_idx] : "";
+                replacement += indent + new_el.lines[j];
+            }
+
+            ef.replace_line_range(match_start, match_end, replacement);
+        }
+
     }
 
 public:
@@ -896,22 +968,6 @@ Operations per file are atomic (failure rolls back that file); files are indepen
         return schema;
     }
 
-#if 0
-    "replace_text": {
-        "type": "array",
-            "description" : "Replace text content in the file. If old_text appears multiple times, user will be prompted to choose.",
-            "items" : {
-            "type": "object",
-                "required" : ["path", "old_text", "new_text"] ,
-                "properties" : {
-                "path": {"type": "string", "description" : "File path to edit (relative to project root) "},
-                    "old_text" : {"type": "string", "description" : "Exact text to find and replace. Must match exactly."},
-                    "new_text" : {"type": "string", "description" : "Replacement text"}
-            }
-        }
-    }
-#endif
-
     void show_arguments(const std::string& json_args) override {
         Tool::show_arguments(json_args);
         try {
@@ -947,12 +1003,6 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         std::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
-                    } else if (strcmp(type_name, "replace_text") == 0) {
-                        std::string old_text = op.value("old_text", "");
-                        auto new_text = op.value("new_text", "");
-                        std::cout << "# replace_text: '" << path;
-                        std::cout << TUI::ANSI_BRIGHT_BLACK << "\n=== old_text===\n" << old_text;
-                        std::cout << "\n=== new_text===\n" << new_text << TUI::ANSI_RESET << "\n";
                     }
                 }
             };
@@ -965,8 +1015,6 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                 show_ops("insert_after_line", args["insert_after_line"]);
             if (is_json_array(args, "delete_lines"))
                 show_ops("delete_lines", args["delete_lines"]);
-            if (is_json_array(args, "replace_text"))
-                show_ops("replace_text", args["replace_text"]);
 
             std::cout << "  files affected: " << file_op_count.size() << '\n';
         } catch (const std::exception& e) {
@@ -983,7 +1031,7 @@ Operations per file are atomic (failure rolls back that file); files are indepen
             if (args.is_discarded()) return;
 
             std::map<std::string, agent::EditFile> files;
-            parse_operations(args, files, ReplaceTextMode::All);
+            parse_operations(args, files);
 
             for (auto& [path, ef] : files) {
                 std::string old_content = ef.to_string();
@@ -1012,78 +1060,10 @@ Operations per file are atomic (failure rolls back that file); files are indepen
     }
 
 private:
-    enum class ReplaceTextMode { All, Interactive };
-
-    /// Resolve a single replace_text into blocks on the given EditFile.
-    /// mode == All: replace every occurrence without prompting.
-    /// mode == Interactive: prompt user when multiple occurrences exist.
-    static bool resolve_replace_text(agent::EditFile& ef,
-                                     const std::string& path,
-                                     const std::string& old_text,
-                                     const std::string& new_text,
-                                     ReplaceTextMode mode) {
-        if (old_text.empty()) {
-            ef.error_message = "old_text cannot be empty string.";
-            return false;
-        }
-
-        size_t first_pos = ef.to_string().find(old_text);
-        if (first_pos == std::string::npos) {
-            ef.error_message = "old_text not found in file: \"" + old_text + "\".";
-            return false;
-        }
-
-        auto occurrences = agent::EditFile::find_occurrences(ef.lines, old_text);
-
-        if (occurrences.size() == 1 || mode == ReplaceTextMode::All) {
-            for (const auto& [ln, cpos] : occurrences) {
-                auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-                ef.replace_line_range(sl, el, new_text);
-            }
-            if (occurrences.size() > 1)
-                ef.replace_info.push_back("replace_text: user choose replaced all " + std::to_string(occurrences.size()) + " occurrences of \"" + old_text + "\"");
-        } else {
-            // Interactive: prompt user
-            std::ostringstream prompt;
-            prompt << "\n" << path << ": \"" << old_text << "\" found in "
-                   << occurrences.size() << " locations:\n";
-            for (size_t i = 0; i < occurrences.size(); ++i) {
-                int line_num = occurrences[i].first;
-                prompt << "  [" << (i + 1) << "] Line " << line_num
-                       << ": \"" << ef.lines[line_num - 1] << "\"\n";
-            }
-            std::cout << prompt.str();
-
-            std::string choice = KeyWatcher::readline("Choose: [N] skip / [num] replace that one / [A] all:", nullptr);
-
-            if (choice == "N" || choice == "n") {
-                ef.replace_info.push_back("replace_text: user skipped \"" + old_text + "\" (found in " + std::to_string(occurrences.size()) + " locations)");
-            } else if (choice == "A" || choice == "a") {
-                for (const auto& [ln, cpos] : occurrences) {
-                    auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-                    ef.replace_line_range(sl, el, new_text);
-                }
-                ef.replace_info.push_back("replace_text: user choose replaced all " + std::to_string(occurrences.size()) + " occurrences of \"" + old_text + "\"");
-            } else {
-                int idx = 0;
-                try { idx = std::stoi(choice); } catch (...) {}
-                if (idx >= 1 && idx <= static_cast<int>(occurrences.size())) {
-                    auto [ln, cpos] = occurrences[idx - 1];
-                    auto [sl, el] = agent::EditFile::text_range_to_lines(ef.lines, cpos, old_text.size());
-                    ef.replace_line_range(sl, el, new_text);
-                    ef.replace_info.push_back("replace_text: user choose replaced occurrence " + std::to_string(idx) + "/" + std::to_string(occurrences.size()) + " of \"" + old_text + "\"");
-                }
-            }
-        }
-
-        return true;
-    }
-
     /// Parse flat JSON args and populate files map with EditFile objects.
     /// Each EditFile is read from disk and populated with blocks.
     static void parse_operations(const json& args,
-                                 std::map<std::string, agent::EditFile>& files,
-                                 ReplaceTextMode mode) {
+                                 std::map<std::string, agent::EditFile>& files) {
         auto get_ef = [&](const std::string& path) -> agent::EditFile* {
             if (files.find(path) == files.end()) {
                 files[path].read_file(path);
@@ -1125,15 +1105,6 @@ private:
             get_ef(path)->delete_lines(start, end);
         };
 
-        auto process_replace_text = [&](const json& op) {
-            std::string path = op.value("path", "");
-            if (path.empty()) return;
-            std::string old_text = op.value("old_text", "");
-            std::string new_text = op.value("new_text", "");
-            auto* ef = get_ef(path);
-            resolve_replace_text(*ef, path, old_text, new_text, mode);
-        };
-
         if (is_json_array(args, "replace_line_range"))
             for (const auto& op : args["replace_line_range"]) process_replace_line_range(op);
         if (is_json_array(args, "insert_before_line"))
@@ -1142,8 +1113,6 @@ private:
             for (const auto& op : args["insert_after_line"]) process_insert_after_line(op);
         if (is_json_array(args, "delete_lines"))
             for (const auto& op : args["delete_lines"]) process_delete_lines(op);
-        if (is_json_array(args, "replace_text"))
-            for (const auto& op : args["replace_text"]) process_replace_text(op);
     }
 
 public:
@@ -1156,7 +1125,7 @@ public:
             }
 
             std::map<std::string, agent::EditFile> files;
-            parse_operations(args, files, ReplaceTextMode::Interactive);
+            parse_operations(args, files);
 
             std::string output;
 

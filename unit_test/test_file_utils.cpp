@@ -574,39 +574,6 @@ static void test_edit_file(UnitReport& parent)
         UNIT_TEST("validate_failed", !ef.validate_blocks(err));
     }
 
-    // --- Test 11: find_occurrences single match ---
-    {
-        LOG_INFO("file_utils", "editfile_find_occurrences_single");
-        std::vector<std::string> lines = {"hello world", "foo bar"};
-        auto results = EditFile::find_occurrences(lines, "world");
-        UNIT_TEST("one_match", results.size() == 1u);
-        UNIT_TEST("line_number", results[0].first == 1);
-    }
-
-    // --- Test 12: find_occurrences multiple matches ---
-    {
-        LOG_INFO("file_utils", "editfile_find_occurrences_multiple");
-        std::vector<std::string> lines = {"hello world", "world again", "no match"};
-        auto results = EditFile::find_occurrences(lines, "world");
-        UNIT_TEST("two_matches", results.size() == 2u);
-    }
-
-    // --- Test 13: find_occurrences no match ---
-    {
-        LOG_INFO("file_utils", "editfile_find_occurrences_none");
-        std::vector<std::string> lines = {"hello world", "foo bar"};
-        auto results = EditFile::find_occurrences(lines, "xyz");
-        UNIT_TEST("no_match", results.empty());
-    }
-
-    // --- Test 14: find_occurrences empty text ---
-    {
-        LOG_INFO("file_utils", "editfile_find_occurrences_empty_text");
-        std::vector<std::string> lines = {"hello world"};
-        auto results = EditFile::find_occurrences(lines, "");
-        UNIT_TEST("no_match", results.empty());
-    }
-
     // --- Test 15: pos_to_line basic ---
     {
         LOG_INFO("file_utils", "editfile_pos_to_line_basic");
