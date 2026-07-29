@@ -790,6 +790,47 @@ void test_edit_file_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
+    // whitespace-insensitive match preserves original indentation (single-line inline)
+    {
+        LOG_INFO("edit_file", "whitespace_insensitive_inline_temp");
+        std::string dir = "test_edit_ws_insensitive_inline_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        // Source uses 8-space indent; old_text/new_text also use 8-space indent.
+        // The match should succeed and preserve surrounding context on the same line.
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << R"(    double add(double a, double b) {
+        result = a + b;
+        history += "\nAdd: " + std::to_string(a) + " + " + std::to_string(b);
+        return result;
+    }
+)";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::parse(R"([{
+            "old_text": "history += \"\\nAdd: \" + std::to_string(a) + \" + \" + std::to_string(b);",
+            "new_text": "history += \"\\n加法: \" + std::to_string(a) + \" + \" + std::to_string(b);"
+        }])");
+        auto args_str = args.dump();
+        tool->show_arguments(args_str);
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        UNIT_TEST("no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("contains_chinese", content.find("加法") != std::string::npos);
+        UNIT_TEST("no_english_add", content.find("Add:") == std::string::npos);
+        UNIT_TEST("preserves_indent_and_context", content.find("        history += \"\\n加法: \" + std::to_string(a) + \" + \" + std::to_string(b);") != std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
     // ── Line-based edits ───────────────────────────────────────
 
     // line-based mode: replace lines by start_line/end_line
