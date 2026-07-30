@@ -637,9 +637,7 @@ public:
     std::string name() const override { return "edit_file"; }
     std::string description() const override {
         return R"(Apply precise edits to an existing file.
-Provide an "edits" array. Each element must contain old_text and new_text.
-Optionally provide start_line/end_line to limit the search range for old_text.
-Without start_line, search from line 1; without end_line, search to the last line.
+Provide an "edits" array with old_text and new_text for each edit operation.
 All line numbers are based on the original file before any edits — DO NOT overlap operations on the same lines.)";
     }
     std::string parameters_schema() const override {
@@ -649,7 +647,7 @@ All line numbers are based on the original file before any edits — DO NOT over
                 "path": {"type": "string", "description": "The file path to edit"},
                 "edits": {
                     "type": "array",
-                    "description": "Array of edits. Each element must have old_text and new_text. Optionally provide start_line/end_line to limit the search range for old_text. All line numbers are based on the original file.",
+                    "description": "Array of edit operations. Each must have old_text and new_text.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -796,20 +794,40 @@ private:
 
                 ef.replace_line_range(match_start, match_end, new_line);
             } else {
-                // Full-line replacement: indent + new_text content
-                std::string replacement = indents[line_idx] + new_el.lines[0];
+                // Full-line replacement: if new_text has its own indent, use it; otherwise inherit source indent
+                const std::string& new_line = new_el.lines[0];
+                bool has_own_indent = !new_line.empty() && (new_line.front() == ' ' || new_line.front() == '\t');
+                std::string replacement = has_own_indent ? new_line : indents[line_idx] + new_line;
                 ef.replace_line_range(match_start, match_end, replacement);
             }
         } else {
-            // Multi-line replacement: for each line of new_text, use the indent from the matched source line.
+            // Multi-line replacement: each line of new_text uses its own indent if present,
+            // otherwise inherits the indent from the corresponding matched source line.
             std::string replacement;
             int n_new = static_cast<int>(new_el.lines.size());
+
             for (int j = 0; j < n_new; ++j) {
                 if (j > 0) replacement += "\n";
+                const std::string& new_line = new_el.lines[j];
+                bool has_own_indent = !new_line.empty() && (new_line.front() == ' ' || new_line.front() == '\t');
                 int src_idx = match_start - 1 + j;  // 0-based into indents
-                const std::string& indent = (src_idx < static_cast<int>(indents.size()))
-                    ? indents[src_idx] : "";
-                replacement += indent + new_el.lines[j];
+                const std::string& indent = (src_idx < static_cast<int>(indents.size())) ? indents[src_idx] : "";
+                replacement += has_own_indent ? new_line : indent + new_line;
+            }
+
+            // Preserve trailing content on the last matched source line if old_text ended mid-line
+            int last_line_idx = match_end - start_line;  // index into indents/line_offsets
+            size_t last_line_start_in_tc = line_offsets[last_line_idx];
+            size_t last_line_end_in_tc   = (last_line_idx + 1 < static_cast<int>(line_offsets.size()))
+                ? line_offsets[last_line_idx + 1]
+                : trimmed_content.size();
+
+            if (pos + trimmed_old.size() < last_line_end_in_tc) {
+                // old_text ended mid-line; preserve the rest of that original line
+                size_t remaining_offset = pos + trimmed_old.size() - last_line_start_in_tc;
+                const std::string& orig_last = ef.lines[match_end - 1];  // 0-based into ef.lines
+                size_t indent_len = indents[last_line_idx].size();
+                replacement += orig_last.substr(indent_len + remaining_offset);
             }
 
             ef.replace_line_range(match_start, match_end, replacement);

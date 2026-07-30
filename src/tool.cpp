@@ -32,7 +32,7 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
     else if (args.is_string()) {
         auto s = args.get<std::string>();
         // Truncate long single-line strings
-        if (s.size() > 80) s = s.substr(0, 77) + "...";
+        //if (s.size() > 80) s = s.substr(0, 77) + "...";
         std::cout << '"' << s << '"';
     }
     else if (args.is_array()) {
