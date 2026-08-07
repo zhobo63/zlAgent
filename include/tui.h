@@ -75,7 +75,7 @@ public:
     static constexpr const char* ANSI_BG_CYAN    = "\033[46m";
     static constexpr const char* ANSI_BG_WHITE   = "\033[47m";
 
-    // ── Bright background colors ──────────────────
+    // ── Bright background colors ──────────────────    
     static constexpr const char* ANSI_BRIGHT_BG_BLACK  = "\033[100m";
     static constexpr const char* ANSI_BRIGHT_BG_RED    = "\033[101m";
     static constexpr const char* ANSI_BRIGHT_BG_GREEN  = "\033[102m";

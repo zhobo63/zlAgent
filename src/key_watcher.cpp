@@ -471,7 +471,7 @@ void KeyWatcher::LineBuffer::draw()
     size_t p;
     for (p = draw_pos; p < text.size(); p++) {
         auto& k = text[p];
-        draw_text.append(reinterpret_cast<const char*>(k.code), k.size);
+            draw_text.append(reinterpret_cast<const char*>(k.code), k.size);
     }
     std::cout << draw_text;
     draw_pos = pos;

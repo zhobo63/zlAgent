@@ -21,7 +21,7 @@ void test_vector_store(UnitReport& parent);
 void main() {
 #ifdef _WIN32
     // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
-    setlocale(LC_ALL, "zh_TW.UTF-8");
+    // setlocale(LC_ALL, "zh_TW.UTF-8");
     // Set console input/output code pages to UTF-8 so emoji and all Unicode display correctly.
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
