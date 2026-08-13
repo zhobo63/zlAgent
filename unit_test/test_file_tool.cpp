@@ -1049,6 +1049,75 @@ void test_edit_file_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
+    // invalid start/end line ranges return errors without modifying the file
+    {
+        LOG_INFO("edit_file", "invalid_line_ranges_temp");
+        std::string dir = "test_edit_invalid_line_ranges_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "line1\nline2\nline3\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        const std::string path = dir + "/edit.txt";
+
+        auto execute_range = [&](int start_line, int end_line) {
+            json args;
+            args["path"] = path;
+            args["edits"] = json::array({{
+                {"start_line", start_line},
+                {"end_line", end_line},
+                {"old_text", "line1"},
+                {"new_text", "changed"}
+            }});
+            return tool->execute(args.dump());
+        };
+
+        UNIT_TEST("zero_start_line_returns_error",
+                  execute_range(0, 1).find("Error") != std::string::npos);
+        UNIT_TEST("end_before_start_returns_error",
+                  execute_range(2, 1).find("Error") != std::string::npos);
+        UNIT_TEST("start_after_file_returns_error",
+                  execute_range(4, 4).find("Error") != std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("invalid_ranges_do_not_modify_file", content == "line1\nline2\nline3\n");
+
+        safe_remove_all(dir);
+    }
+
+    // old_text containing only leading whitespace returns an error
+    {
+        LOG_INFO("edit_file", "whitespace_only_old_text_temp");
+        std::string dir = "test_edit_whitespace_only_old_text_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.txt", std::ios::binary);
+        out << "hello\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.txt";
+        args["edits"] = json::array({{
+            {"old_text", " \t  "},
+            {"new_text", "replacement"}
+        }});
+        std::string result = tool->execute(args.dump());
+        UNIT_TEST("whitespace_only_old_text_returns_error",
+                  result.find("Error") != std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.txt");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("whitespace_only_old_text_does_not_modify_file", content == "hello\n");
+
+        safe_remove_all(dir);
+    }
+
     // missing edits returns error
     {
         LOG_INFO("edit_file", "missing_edits_temp");

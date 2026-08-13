@@ -1,0 +1,3 @@
+[submodule "zltui"]
+	path = zltui
+	url = https://github.com/zhobo63/zltui
