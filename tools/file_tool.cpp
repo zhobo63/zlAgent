@@ -719,6 +719,16 @@ private:
             return (p == std::string::npos) ? "" : s.substr(p);
         };
 
+        if (start_line < 1 ||
+            end_line < start_line ||
+            end_line > static_cast<int>(ef.lines.size())) {
+            std::ostringstream oss;
+            oss << "Invalid line range " << start_line << "-" << end_line
+                << " for file with " << ef.lines.size() << " lines.";
+            ef.error_message = oss.str();
+            return;
+        }
+
         EditLines old_el, new_el;
         old_el.parse(old_text);
         new_el.parse(new_text);
@@ -728,6 +738,10 @@ private:
         for (int j = 0; j < static_cast<int>(old_el.lines.size()); ++j) {
             if (j > 0) trimmed_old += "\n";
             trimmed_old += trim_leading_ws(old_el.lines[j]);
+        }
+        if (trimmed_old.empty()) {
+            ef.error_message = "old_text must contain non-whitespace text.";
+            return;
         }
 
         // Build trimmed_content: each line in [start_line, end_line] with leading ws removed,
