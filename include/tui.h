@@ -290,9 +290,17 @@ public:
     /// Enable or disable all TUI::out() / TUI::err() calls. Default: true.
     static void set_output_enabled(bool enabled);
 
+    struct OStream : std::ostringstream
+    {
+        
+    };
+
+    static OStream cout;
 private:
     static std::mutex& s_mutex();
     static bool       s_enabled;
 };
+
+TUI::OStream& operator<< (TUI::OStream&, const std::string &text);
 
 #endif // TUI_H
