@@ -784,13 +784,19 @@ private:
         int match_start = pos_to_line(pos);                          // 1-based
         int match_end   = pos_to_line(pos + trimmed_old.size() - 1); // 1-based inclusive
 
+        // Return the end of the line content, excluding the synthetic '\n'
+        // separator added between entries in trimmed_content.
+        auto line_content_end = [&](int line_idx) -> size_t {
+            if (line_idx + 1 < static_cast<int>(line_offsets.size()))
+                return line_offsets[line_idx + 1] - 1;
+            return trimmed_content.size();
+        };
+
         if (match_start == match_end) {
             // Single-line match — check if it's a partial inline replacement
             int line_idx = match_start - start_line; // 0-based into indents
             size_t line_start_in_tc = line_offsets[line_idx];
-            size_t line_end_in_tc   = (line_idx + 1 < static_cast<int>(line_offsets.size()))
-                ? line_offsets[line_idx + 1]
-                : trimmed_content.size();
+            size_t line_end_in_tc   = line_content_end(line_idx);
 
             bool is_partial = (pos != line_start_in_tc ||
                                pos + trimmed_old.size() < line_end_in_tc);
@@ -808,10 +814,16 @@ private:
 
                 ef.replace_line_range(match_start, match_end, new_line);
             } else {
-                // Full-line replacement: if new_text has its own indent, use it; otherwise inherit source indent
-                const std::string& new_line = new_el.lines[0];
-                bool has_own_indent = !new_line.empty() && (new_line.front() == ' ' || new_line.front() == '\t');
-                std::string replacement = has_own_indent ? new_line : indents[line_idx] + new_line;
+                // Full-line replacement: apply every new line. If a new line has
+                // its own indent, keep it; otherwise inherit the source indent.
+                std::string replacement;
+                for (int j = 0; j < static_cast<int>(new_el.lines.size()); ++j) {
+                    if (j > 0) replacement += "\n";
+                    const std::string& new_line = new_el.lines[j];
+                    bool has_own_indent = !new_line.empty() &&
+                        (new_line.front() == ' ' || new_line.front() == '\t');
+                    replacement += has_own_indent ? new_line : indents[line_idx] + new_line;
+                }
                 ef.replace_line_range(match_start, match_end, replacement);
             }
         } else {
@@ -832,9 +844,7 @@ private:
             // Preserve trailing content on the last matched source line if old_text ended mid-line
             int last_line_idx = match_end - start_line;  // index into indents/line_offsets
             size_t last_line_start_in_tc = line_offsets[last_line_idx];
-            size_t last_line_end_in_tc   = (last_line_idx + 1 < static_cast<int>(line_offsets.size()))
-                ? line_offsets[last_line_idx + 1]
-                : trimmed_content.size();
+            size_t last_line_end_in_tc   = line_content_end(last_line_idx);
 
             if (pos + trimmed_old.size() < last_line_end_in_tc) {
                 // old_text ended mid-line; preserve the rest of that original line

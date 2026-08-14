@@ -1143,6 +1143,47 @@ void test_edit_file_tools(UnitReport& parent)
         safe_remove_all(dir);
     }
 
+    // single-line old_text replaced with multiple lines preserves indentation
+    {
+        LOG_INFO("edit_file", "multiline_new_text_indentation_temp");
+        std::string dir = "test_edit_multiline_new_text_indentation_temp";
+        if (fs::exists(dir)) fs::remove_all(dir);
+        fs::create_directories(dir);
+
+        std::ofstream out(fs::path(dir) / "edit.cpp", std::ios::binary);
+        out << "class Window {\n";
+        out << "    virtual WinPtr Clone() const;\n";
+        out << "    virtual void AddChild(WinPtr obj);\n";
+        out << "    virtual void Click() { if (on_click) on_click(); }\n";
+        out << "};\n";
+        out.close();
+
+        auto tool = create_edit_file_tool();
+        json args;
+        args["path"] = dir + "/edit.cpp";
+        json edit;
+        edit["old_text"] = "    virtual void AddChild(WinPtr obj);";
+        edit["new_text"] =
+            "    virtual void AddChild(WinPtr obj);\n"
+            "    virtual void RemoveChild(const WinPtr& obj);";
+        args["edits"] = json::array({edit});
+
+        auto args_str = args.dump();
+        tool->show_preview(args_str);
+        std::string result = tool->execute(args_str);
+        UNIT_TEST("multiline_new_text_no_error", result.find("Error") == std::string::npos);
+
+        std::ifstream in(fs::path(dir) / "edit.cpp");
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UNIT_TEST("multiline_new_text_preserves_expected_indent",
+                  content.find("    virtual void AddChild(WinPtr obj);\n"
+                               "    virtual void RemoveChild(const WinPtr& obj);") != std::string::npos);
+        UNIT_TEST("multiline_new_text_no_extra_indent",
+                  content.find("        virtual void AddChild(WinPtr obj);") == std::string::npos);
+
+        safe_remove_all(dir);
+    }
+
     parent.report.push_back(unit);
 }
 
@@ -1219,11 +1260,11 @@ void test_edit_files_tools(UnitReport& parent)
 
         auto tool = create_edit_files_tool();
         json args;
-        
+
         // Replace lines 2-7 (includes blank lines at 3 and 7)
         // new_text must also include the blank lines to keep line count correct
         {
-            std::string new_text = 
+            std::string new_text =
             "`confirm_response` | Server -> Client\n"
             "\n"
             "#### Config setup\n"
@@ -1231,7 +1272,7 @@ void test_edit_files_tools(UnitReport& parent)
             "[net_agent]\n"
             "confirm_mode = auto_yes   # auto_yes | auto_no | ask_server\n"
             "```\n";
-        
+
             args["replace_line_range"] = json::parse(R"([{"path":"REPLACE_PATH","start_line":2,"end_line":7,"new_text":"REPLACE_TEXT"}])");
             args["replace_line_range"][0]["path"] = dir + "/md.txt";
             args["replace_line_range"][0]["new_text"] = new_text;
