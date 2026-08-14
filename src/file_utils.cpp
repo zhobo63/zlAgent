@@ -412,7 +412,7 @@ std::string DiffEdit(const std::string& old_text,
                 case DiffOp::Context: {
                     std::string ln = fmt_line_num(old_line[k]);
                     if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TUI::ANSI_RESET << " " << e.line << "\n";
+                    oss << ln << TUI::ANSI_RESET << "  " << e.line << "\n";
                     break;
                 }
                 case DiffOp::Remove: {
