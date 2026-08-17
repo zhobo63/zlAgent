@@ -65,29 +65,29 @@ UserReplyResult prompt_user_reply(
     bool is_error = !error_message.empty();
 
     // Display the intervention prompt.
-    std::cout << u8"\n\u23F8  [User Reply]";
+    TUI::cout << u8"\n\u23F8  [User Reply]";
     if (is_error) {
-        std::cout << " Tool failed: " << tool_name;
+        TUI::cout << " Tool failed: " << tool_name;
     } else {
-        std::cout << " Tool: " << tool_name;
+        TUI::cout << " Tool: " << tool_name;
     }
-    std::cout << "\n"
+    TUI::cout << "\n"
               << "    Args: " << json_args << "\n";
 
     if (is_error) {
         // Show only the first line of the error for brevity.
         auto nl = error_message.find('\n');
         std::string err_preview = (nl != std::string::npos) ? error_message.substr(0, nl) : error_message;
-        std::cout << "    Error: " << truncate(err_preview, 120) << "\n";
+        TUI::cout << "    Error: " << truncate(err_preview, 120) << "\n";
     }
 
     // Action descriptions differ slightly depending on whether this is an error or a pre-check.
-    std::cout << "\n"
+    TUI::cout << "\n"
               << "    What would you like to do?\n"
               << "    y/yes   - Retry with same arguments\n"
               << "    n/no    - Skip this tool call\n";
 
-    std::cout << "\n    Reply: ";
+    TUI::cout << "\n    Reply: ";
 
     bool confirmed = SafetyGuard::ask_user_confirm(
         is_error ? ("Retry tool call? (y=retry, n=skip)") : ("Proceed with tool call? (y=yes, n=no)"), 60);

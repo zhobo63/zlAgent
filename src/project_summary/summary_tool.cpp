@@ -591,19 +591,19 @@ void ProjectSummaryEngine::generate_summary(std::ostream& out) const {
 // ── Preview printing ──────────────────────────────────────
 
 void ProjectSummaryEngine::print_preview() const {
-    std::cout << u8"=== 專案摘要 ===\n\n";
+    TUI::cout << u8"=== 專案摘要 ===\n\n";
 
     auto modules = group_modules();
 
     for (const auto& [name, module] : modules) {
-        std::cout << u8"📁 " << name
+        TUI::cout << u8"📁 " << name
                   << u8" — " << module.files.size() << " files"
                   << u8", " << module.total_lines << " lines"
                   << u8", " << module.class_count << " classes"
                   << u8", " << module.function_count << " functions\n";
     }
 
-    std::cout << u8"\n📊 Total: "
+    TUI::cout << u8"\n📊 Total: "
               << total_files << " files, "
               << total_lines << " lines, "
               << total_classes << " classes, "

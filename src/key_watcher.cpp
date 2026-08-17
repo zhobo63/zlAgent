@@ -443,7 +443,7 @@ void KeyWatcher::LineBuffer::clear_prompt()
 {
     // Build a single ANSI string: position → erase each line and move down → restore cursor.
 
-    std::cout << TUI::cursor_pos(prompt_row, 1) <<
+    TUI::cout << TUI::cursor_pos(prompt_row, 1) <<
         TUI::ANSI_CLEAR_TO_END <<
         TUI::cursor_pos(prompt_row, 1) << TUI::ANSI_RESET;
 }
@@ -456,7 +456,7 @@ void KeyWatcher::LineBuffer::clear()
         draw_col = cached_prompt_col;
         cal_display_pos(text, draw_pos, draw_col, draw_row);
     }
-    std::cout << TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) <<
+    TUI::cout << TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) <<
         TUI::ANSI_CLEAR_TO_END <<
         TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_RESET;
 }
@@ -464,7 +464,7 @@ void KeyWatcher::LineBuffer::clear()
 void KeyWatcher::LineBuffer::draw()
 {
     if (draw_pos < 0) {
-        std::cout << prompt;
+        TUI::cout << prompt;
         draw_pos = 0;
     }
     std::string draw_text;
@@ -473,7 +473,7 @@ void KeyWatcher::LineBuffer::draw()
         auto& k = text[p];
             draw_text.append(reinterpret_cast<const char*>(k.code), k.size);
     }
-    std::cout << draw_text;
+    TUI::cout << draw_text;
     draw_pos = pos;
 }
 
@@ -642,7 +642,7 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
         TUI::setCursorPos(H, 1);
         prompt_row -= scroll_amount;
         std::string cmd(scroll_amount, '\n');
-        std::cout << cmd;
+        TUI::cout << cmd;
         draw_pos = -1;
     }
     auto pos = TUI::getCursorPos();
@@ -1112,8 +1112,6 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
 
         if (buf.is_display_dirty) {
             buf.recompute();
-            //buf.clear_prompt();
-            //std::cout << buf.display_text();
 
             buf.clear();
             buf.draw();

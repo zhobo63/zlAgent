@@ -657,7 +657,7 @@ void register_command_handlers(
 
         std::ostringstream out;
         generate_report(path, out);
-        std::cout << out.str();
+        TUI::cout << out.str();
         //quick_summary(path);
     });
 

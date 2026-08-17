@@ -84,14 +84,14 @@ inline void emit(LogLevel lvl, const char* component, const std::string& msg) {
     if (lvl < g_log_level) return;
 
     bool use_stderr = (lvl >= LogLevel::Warn);
-    auto& stream = use_stderr ? std::cerr : std::cout;
+    auto& stream = use_stderr ? TUI::cerr : TUI::cout;
 
     stream << detail::level_color(lvl)
            << "[" << detail::level_tag(lvl) << "] "
            << "[" << component << "] "
            << msg
            << detail::reset_color()
-           << std::endl;
+           << "\n";
 
     if (use_stderr) stream.flush();
 }

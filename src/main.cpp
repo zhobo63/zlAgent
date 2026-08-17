@@ -28,7 +28,7 @@
 // ── Input history ─────────
 static const int MAX_HISTORY = 50;
 
-// ── Status bar renderer (pure std::cout + ANSI via TUI) ───
+// ── Status bar renderer
 static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent::LongTermMemory>& ltm) {
 
     auto memory_count = static_cast<int>(ag.get_memory().get_messages().size());
@@ -89,7 +89,7 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
 
     bar << u8"\n";
 
-    std::cout << bar.str();
+    TUI::cout << bar.str();
 }
 
 bool run_interactive(
@@ -129,14 +129,6 @@ bool run_interactive(
     const int spinner_len = 8;
 
     TUI::out("\nAgent: ");
-    //for (int i = 0; i < 3; ++i) {  // spin a few times while waiting for first token
-    //    if (i > 0)
-    //        std::cout << "\b";    // each Braille char is 1 display cell, so just \b once
-    //    std::cout << spinners[i % spinner_len] << std::flush;
-    //    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    //}
-    //// Erase the last spinner character (1 display cell)
-    //std::cout << " \b";
 
     // Capture token usage from the LLM response
     agent::ChatResponse usage_info{};
@@ -179,8 +171,6 @@ bool run_interactive(
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
-    // Set C runtime locale so std::cout handles multibyte (UTF-8) characters correctly.
-    // setlocale(LC_ALL, "zh_TW.UTF-8");
     // Set console input/output code pages to UTF-8 so emoji and all Unicode display correctly.
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
@@ -295,13 +285,13 @@ int main(int argc, char* argv[]) {
             input = agent::KeyWatcher::readline(prompt.c_str(), [&](const agent::Key& k) {
                 if (k == agent::Key::K_CTRL_C) {
                     running = false;
-                    std::cout << std::endl;  // ensure newline after Ctrl-C
+                    TUI::cout << "\n";  // ensure newline after Ctrl-C
                 }
                 });
             // Stop background Ctrl-C watcher.
             agent::KeyWatcher::close_keyboard();
 
-			std::cout << std::endl;  // ensure newline after input
+			TUI::cout << "\n";  // ensure newline after input
         }
         if (input.empty()) {
             continue;  // just an empty Enter, stay in loop

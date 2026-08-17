@@ -35,14 +35,14 @@ void TUI::out(const char* fmt, ...) {
     std::vsnprintf(buf.data(), static_cast<size_t>(len) + 1, fmt, args);
     va_end(args);
 
-    std::cout << buf << std::flush;
+    std::cout << buf;
 
     agent::send_event("out", buf);
 }
 
 void TUI::out(const std::string& text) {
     if (!s_enabled) return;
-    std::cout << text << std::flush;
+    std::cout << text;
     agent::send_event("out", text);
 }
 
@@ -73,3 +73,28 @@ void TUI::err(const char* fmt, ...) {
 void TUI::set_output_enabled(bool enabled) {
     s_enabled = enabled;
 }
+
+TUI::OStream TUI::cout;
+TUI::OStream TUI::cerr;
+
+TUI::OStream& TUI::OStream::operator<<(const std::string& text)
+{
+    std::cout << text;
+    return *this;
+}
+
+TUI::OStream& TUI::OStream::operator<<(int value)
+{
+    std::cout << value;
+    return *this;
+}
+
+void TUI::OStream::flush()
+{
+    std::cout.flush();
+}
+
+//TUI::OStream& operator<< (TUI::OStream& cout, const std::string& text)
+//{
+//    return cout << text;
+//}

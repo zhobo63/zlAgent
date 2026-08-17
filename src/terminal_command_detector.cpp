@@ -236,7 +236,7 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
 
     char buffer[4096] = { 0 };
     while (fgets(buffer, sizeof(buffer), pipe)) {
-        std::cout << buffer;
+        TUI::cout << buffer;
         response += buffer;
     }
 
@@ -259,7 +259,7 @@ bool TerminalCommandDetector::detect_and_execute(const std::string& input, std::
 
     case CommandConfidence::Low: {
         // Low confidence — ask user to confirm.
-        std::cout << u8"\u26A0 Detected possible terminal command: "
+        TUI::cout << u8"\u26A0 Detected possible terminal command: "
             << input << "\n"
             << u8"   Execute directly? [y/N]: ";
 

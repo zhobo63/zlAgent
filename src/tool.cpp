@@ -14,18 +14,10 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
     if (args.is_object()) {
         for (auto it = args.begin(); it != args.end(); ++it) {
             auto val = it.value();
-            // If value is a string with newlines, show line count instead of raw content
-            //if (val.is_string() && val.get<std::string>().find('\n') != std::string::npos) {
-            //    auto s = val.get<std::string>();
-            //    int lines = 1;
-            //    for (char c : s) if (c == '\n') ++lines;
-            //    std::cout << indent << it.key() << ": " << lines << " lines\n";
-            //}
-            //else 
             {
-                std::cout << indent << it.key() << ": ";
+                TUI::cout << indent << it.key() << ": ";
                 show_json(val, depth + 1);
-                std::cout << '\n';
+                TUI::cout << '\n';
             }
         }
     }
@@ -33,42 +25,42 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
         auto s = args.get<std::string>();
         // Truncate long single-line strings
         //if (s.size() > 80) s = s.substr(0, 77) + "...";
-        std::cout << '"' << s << '"';
+        TUI::cout << '"' << s << '"';
     }
     else if (args.is_array()) {
         int size = static_cast<int>(args.size());
         // Large or complex arrays: show count, then items indented
-        std::cout << '[' << size << " items]\n";
+        TUI::cout << '[' << size << " items]\n";
         for (const auto& item : args) {
             if (item.is_object()) {
                 show_json(item, depth + 1);
             }
             else {
-                std::cout << indent << "- ";
+                TUI::cout << indent << "- ";
                 show_json(item, depth + 2);
-                std::cout << '\n';
+                TUI::cout << '\n';
             }
-            std::cout << "\n";
+            TUI::cout << "\n";
         }
     }
     else if (args.is_number()) {
-        std::cout << args.dump();
+        TUI::cout << args.dump();
     }
     else if (args.is_boolean()) {
-        std::cout << (args.get<bool>() ? "true" : "false");
+        TUI::cout << (args.get<bool>() ? "true" : "false");
     }
     else if (args.is_null()) {
-        std::cout << "null";
+        TUI::cout << "null";
     }
     return true;
 }
 
 void Tool::show_text(const std::string& args) {
-    std::cout << args << '\n';    
+    TUI::cout << args << '\n';    
 }
 
 void Tool::show_json_text(const std::string& json_args) {
-    std::cout << TUI::ANSI_BRIGHT_BLACK;
+    TUI::cout << TUI::ANSI_BRIGHT_BLACK;
     try {
         auto args = nlohmann::json::parse(json_args);
         if (!show_json(args, 0)) {
@@ -77,7 +69,7 @@ void Tool::show_json_text(const std::string& json_args) {
     } catch (...) {
         show_text(json_args);
     }
-    std::cout << TUI::ANSI_RESET;
+    TUI::cout << TUI::ANSI_RESET;
 }
 
 void Tool::show_arguments(const std::string& json_args) {
