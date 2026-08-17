@@ -17,7 +17,7 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
             {
                 TUI::cout << indent << it.key() << ": ";
                 show_json(val, depth + 1);
-                TUI::cout << '\n';
+                TUI::cout << "\n";
             }
         }
     }
@@ -38,7 +38,7 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
             else {
                 TUI::cout << indent << "- ";
                 show_json(item, depth + 2);
-                TUI::cout << '\n';
+                TUI::cout << "\n";
             }
             TUI::cout << "\n";
         }
@@ -56,7 +56,7 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
 }
 
 void Tool::show_text(const std::string& args) {
-    TUI::cout << args << '\n';    
+    TUI::cout << args << "\n";    
 }
 
 void Tool::show_json_text(const std::string& json_args) {

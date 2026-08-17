@@ -72,7 +72,7 @@ bool write_file_lines(const std::string& path,
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
         outfile << lines[i];
         if (i < static_cast<int>(lines.size()) - 1)
-            outfile << '\n';
+            outfile << "\n";
     }
     outfile.close();
     return true;

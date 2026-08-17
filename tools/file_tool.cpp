@@ -180,11 +180,11 @@ public:
                     if (start_line > 0 && end_line >= start_line) {
                         TUI::cout << "    - '" << path << "' lines " << start_line << "-" << end_line;
                         if (outline) TUI::cout << " [outline]";
-                        TUI::cout << '\n';
+                        TUI::cout << "\n";
                     } else {
                         TUI::cout << "    - '" << path << "'";
                         if (outline) TUI::cout << " [outline]";
-                        TUI::cout << '\n';
+                        TUI::cout << "\n";
                     }
                 }
             }
@@ -197,7 +197,7 @@ public:
                 TUI::cout << "  directory: '" << dir << "'";
                 if (glob != "*") TUI::cout << " glob: '" << glob << "'";
                 if (outline) TUI::cout << " [outline]";
-                TUI::cout << '\n';
+                TUI::cout << "\n";
             }
 
             // top-level outline flag (when not already shown)
@@ -682,7 +682,7 @@ All line numbers are based on the original file before any edits — DO NOT over
                 apply_single_edit(ef, edit);
             std::string error;
             if (!ef.validate_blocks(error)) {
-                std::cerr << "show_preview validation failed: " << path << " - " << error << '\n';
+                std::cerr << "show_preview validation failed: " << path << " - " << error << "\n";
                 return;
             }
             agent::EditLines result;
@@ -1017,22 +1017,22 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << '\n';
+                        TUI::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << "\n";
                         TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# insert_before_line: '" << path << "' before line " << line_num << '\n';
+                        TUI::cout << "# insert_before_line: '" << path << "' before line " << line_num << "\n";
                         TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# insert_after_line: '" << path << "' after line " << line_num << '\n';
+                        TUI::cout << "# insert_after_line: '" << path << "' after line " << line_num << "\n";
                         TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        TUI::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << '\n';
+                        TUI::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << "\n";
                     }
                 }
             };
@@ -1046,9 +1046,9 @@ Operations per file are atomic (failure rolls back that file); files are indepen
             if (is_json_array(args, "delete_lines"))
                 show_ops("delete_lines", args["delete_lines"]);
 
-            TUI::cout << "  files affected: " << file_op_count.size() << '\n';
+            TUI::cout << "  files affected: " << file_op_count.size() << "\n";
         } catch (const std::exception& e) {
-            TUI::cerr << "show_arguments error: " << e.what() << '\n';
+            TUI::cerr << "show_arguments error: " << e.what() << "\n";
         } catch (...) {
             TUI::cerr << "unknown error in show_arguments\n";
         }
@@ -1068,7 +1068,7 @@ Operations per file are atomic (failure rolls back that file); files are indepen
 
                 std::string error;
                 if (!ef.validate_blocks(error)) {
-                    std::cerr << "show_preview validation failed: " << path << " - " << error << '\n';
+                    std::cerr << "show_preview validation failed: " << path << " - " << error << "\n";
                     continue;
                 }
 
@@ -1079,7 +1079,7 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                 TUI::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
             }
         } catch (const std::exception& e) {
-            TUI::cerr << "show_preview error: " << e.what() << '\n';
+            TUI::cerr << "show_preview error: " << e.what() << "\n";
         } catch (...) {
             TUI::cerr << "unknown error in show_preview\n";
         }
@@ -1399,7 +1399,7 @@ public:
             }
             TUI::cout << "  path: '" << args.value("path", "") << "'\n";
             int line_number = args.value("line_number", 0);
-            TUI::cout << "  line_number: " << line_number << '\n';
+            TUI::cout << "  line_number: " << line_number << "\n";
             std::string content = args.value("content", "");
             int line_count = 1;
             for (const auto& ch : content) {
