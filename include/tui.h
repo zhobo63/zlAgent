@@ -278,7 +278,7 @@ public:
 
     // ── Unified output entry point ────────────────
 
-    /// Enable or disable all TUI::out() / TUI::err() calls. Default: true.
+    /// Enable or disable all TUI::cout / TUI::cerr calls. Default: true.
     static void set_output_enabled(bool enabled);
 
     struct OStream 
