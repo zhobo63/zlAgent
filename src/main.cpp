@@ -102,7 +102,7 @@ bool run_interactive(
 
     if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
         // Save session to long-term memory before exiting.
-        TUI::out(u8"\nGoodbye!\n");
+        TUI::cout << "\nGoodbye!\n";
         return false;
     }
 
@@ -128,7 +128,7 @@ bool run_interactive(
     //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
     const int spinner_len = 8;
 
-    TUI::out("\nAgent: ");
+    TUI::cout << "\nAgent: ";
 
     // Capture token usage from the LLM response
     agent::ChatResponse usage_info{};
@@ -146,7 +146,7 @@ bool run_interactive(
             TUI::reset();
         }
 
-        TUI::out("%s", token.c_str());
+        TUI::cout << token;
         TUI::flush();
         return true;  // keep streaming
         }, &usage_info);
@@ -159,12 +159,12 @@ bool run_interactive(
 
     // Display token usage if available
     if (usage_info.total_tokens() > 0) {
-        TUI::out(u8"\n\n⏱  Tokens: ");
-        TUI::out("prompt=%d", usage_info.prompt_tokens);
-        TUI::out(", completion=%d", usage_info.completion_tokens);
+        TUI::cout << u8"\n\n⏱  Tokens: ";
+        TUI::cout << "prompt=" << usage_info.prompt_tokens <<
+            ", completion=" << usage_info.completion_tokens;
         if (usage_info.max_tokens > 0)
-            TUI::out("/%d", usage_info.max_tokens);
-        TUI::out(", total=%d\n", usage_info.total_tokens());
+            TUI::cout << "/" << usage_info.max_tokens;
+        TUI::cout << ", total=" << usage_info.total_tokens() << "\n";
     }
     return true;
 }
@@ -184,11 +184,11 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
             if (arg == "-h" || arg == "--help") {
-                TUI::out("Usage: zlagent [options]\n"
+                TUI::cout << "Usage: zlagent [options]\n"
                          "\nOptions:\n"
                          "  -m <model>    Override LLM model name (does not write to config)\n"
                          "  -p <prompt>   Run a single prompt and exit\n"
-                         "  -h, --help    Show this help message\n");
+                         "  -h, --help    Show this help message\n";
                 return 0;
             } else if (arg == "-m" && i + 1 < argc) {
                 cli_model = argv[++i];
@@ -200,9 +200,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    TUI::out(u8"╭─────────────────────────────╮\n");
-    TUI::out(u8"│  ZL Agent - Code Assistant  │\n");
-    TUI::out(u8"╰─────────────────────────────╯\n");
+    TUI::cout << u8"╭─────────────────────────────╮\n";
+    TUI::cout << u8"│  ZL Agent - Code Assistant  │\n";
+    TUI::cout << u8"╰─────────────────────────────╯\n";
 
     agent::Agent ag;
     set_global_agent(&ag);
@@ -253,14 +253,14 @@ int main(int argc, char* argv[]) {
         });
 
         telegram_client->start();
-        TUI::out(u8"\n🤖 Telegram bot connected. Listening for messages...\n");
+        TUI::cout << u8"\n🤖 Telegram bot connected. Listening for messages...\n";
     }
 
 
     // Print initial status bar
-    TUI::out(u8"\nReady. Type your request (or '/help' '/h' for commands):\n");
+    TUI::cout << u8"\nReady. Type your request (or '/help' '/h' for commands):\n";
     if (cfg.terminal_commands.enabled) {
-        TUI::out(u8"  💡 Shell commands are auto-detected and executed directly.\n");
+        TUI::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
     }
 
     // If -p was provided, use it as the single prompt instead of reading interactively.
@@ -271,7 +271,7 @@ int main(int argc, char* argv[]) {
 	bool running = true;
     while (running) {
         print_status_bar(ag, long_term_memory);
-        TUI::out("\n");
+        TUI::cout << "\n";
         
         std::string input;
         if (!cli_input.empty()) {

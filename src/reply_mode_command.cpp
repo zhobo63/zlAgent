@@ -16,16 +16,16 @@ void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag) {
         // No arguments — show current mode and usage.
         if (args.size() <= 1) {
             auto mode = ag->get_user_reply_mode();
-            TUI::out("\n--- User Reply Mode ---\n"
-                      "  Current mode: %s\n"
-                      "\n"
-                      "  Modes:\n"
-                      "    off       - Fully automatic, no intervention\n"
-                      "    on_error  - Pause when a tool call fails\n"
-                      "    always    - Pause before every tool call\n"
-                      "\n"
-                      "  Usage: /reply-mode <mode>\n",
-                    reply_mode_to_string(mode));
+            TUI::cout << "\n--- User Reply Mode ---\n"
+                    "  Current mode: %s\n"
+                    "\n"
+                    "  Modes:\n"
+                    "    off       - Fully automatic, no intervention\n"
+                    "    on_error  - Pause when a tool call fails\n"
+                    "    always    - Pause before every tool call\n"
+                    "\n"
+                    "  Usage: /reply-mode <mode>\n" <<
+                    reply_mode_to_string(mode);
             return;
         }
 
@@ -33,12 +33,12 @@ void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag) {
         auto new_mode = parse_reply_mode(args[1]);
 
         if (new_mode == ag->get_user_reply_mode()) {
-            TUI::out("\n  User reply mode is already: %s\n", reply_mode_to_string(new_mode));
+            TUI::cout << "\n  User reply mode is already: " << reply_mode_to_string(new_mode) << "\n";
             return;
         }
 
         ag->set_user_reply_mode(new_mode);
-        TUI::out("\n  User reply mode changed to: %s\n", reply_mode_to_string(new_mode));
+        TUI::cout << "\n  User reply mode changed to: " << reply_mode_to_string(new_mode) << "\n";
     });
 }
 

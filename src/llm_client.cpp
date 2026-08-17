@@ -536,7 +536,7 @@ ChatResponse chat_stream_impl(
         resp.has_tool_calls = false;
         resp.tool_calls.clear();
     }
-	TUI::out("\n");  // ensure prompt is on a new line after streaming output
+	TUI::cout << "\n";  // ensure prompt is on a new line after streaming output
     LOG(Color::CYAN, "RESPONSE:%s", resp.content);
     LOG(Color::CYAN, "RESPONSE SIZE:%llu", resp.content.size());
 

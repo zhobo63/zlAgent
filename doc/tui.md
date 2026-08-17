@@ -1,193 +1,168 @@
-# TUI 統一輸出改造
+# TUI
 
-## 背景
+`TUI` 是项目的终端输出层（`include/tui.h` / `src/tui.cpp`），提供两种输出方式：
 
-目前專案中 `std::cout` 散落在多個原始檔中，缺乏統一的輸出控制點。這使得：
+| 接口 | 风格 | 目标流 | 说明 |
+|------|------|--------|------|
+| `TUI::cout` | 流式 `operator<<` | `std::cout` | 支持 `std::string` / `int`，链式调用，`flush()` 手动刷新 |
+| `TUI::cerr` | 流式 `operator<<` | `std::cerr` | 错误输出（logger 的 Warn/Error 级别走此流） |
+| `TUI::out(fmt, ...)` | printf 风格 | `std::cout` | 线程安全（互斥锁），自动 flush，并触发 `agent::send_event("out", ...)` |
+| `TUI::err(fmt, ...)` | printf 风格 | `std::cerr` | 线程安全，自动 flush（当前无调用方） |
+| `TUI::set_output_enabled(bool)` | — | — | 全局开关，默认 `true`，关闭后 `out`/`err`/`printDim` 全部静默 |
 
-- 難以集中管理輸出格式（如 ANSI 色彩、緩衝行為）
-- 無法方便地切換/重導向輸出目標（如寫入檔案、關閉除錯訊息）
-- 多執行緒環境下缺少互斥保護，可能產生交錯輸出
+> 注意：`TUI::cout` / `TUI::cerr` 的 `operator<<` 目前**不检查** `s_enabled`，也不加锁；
+> 而 `TUI::out()` 会检查 `s_enabled`、加锁并广播事件（供远程/客户端接收输出）。
 
-## 目標
+---
 
-建立 `TUI::out(const char* fmt, ...)` 作為所有終端輸出的統一入口，取代各處的 `std::cout`。
+## 一、TUI::cout 使用点（流式输出）
 
-## 現有狀況
+### 1. `include/logger.h` — 日志系统
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 87 | `auto& stream = use_stderr ? TUI::cerr : TUI::cout;` | `detail::emit()` 中：Warn/Error 走 `TUI::cerr`，Debug/Info 走 `TUI::cout`，输出 `[级别] [组件] 消息` 并着色 |
 
-### 已有基礎
+### 2. `src/main.cpp` — 主程序
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 92 | `TUI::cout << bar.str();` | 打印状态栏（回复模式图标、Msg/Fact 计数、SafetyGuard 状态） |
+| 288 | `TUI::cout << "\n";` | Ctrl-C 后补换行（KeyWatcher 回调内） |
+| 294 | `TUI::cout << "\n";` | readline 结束后补换行 |
 
-- `include/tui.h` — TUI class，包含 ANSI escape code 常數、色彩工具函式（`color()`、`bold()`、`dim()`）、游標控制（`cls()`、`flush()`）等
-- `include/logger.h` — 結構化日誌系統（LOG_DEBUG/INFO/WARN/ERROR），走 `std::cout` / `std::cerr`
+### 3. `src/key_watcher.cpp` — 行编辑器（LineBuffer）
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 446-448 | `TUI::cout << TUI::cursor_pos(prompt_row, 1) << TUI::ANSI_CLEAR_TO_END << ...` | `clear_prompt()`：定位光标并清除整行 |
+| 459-461 | `TUI::cout << TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_CLEAR_TO_END << ...` | `clear()`：清除已绘制的输入文本 |
+| 467 | `TUI::cout << prompt;` | `draw()`：首次绘制提示符 |
+| 476 | `TUI::cout << draw_text;` | `draw()`：增量绘制输入文本 |
+| 645 | `TUI::cout << cmd;` | 菜单打开前滚动屏幕（输出 N 个换行） |
 
-### std::cout 散佈位置
+### 4. `src/command_handlers.cpp` — 斜杠命令
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 660 | `TUI::cout << out.str();` | `/scan` 命令：打印项目扫描报告 |
 
-#### 已遷移至 TUI::out()（Phase 2 完成）
+### 5. `src/tool.cpp` — 工具参数展示
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 18, 20 | `TUI::cout << indent << it.key() << ": ";` / `TUI::cout << '\n';` | `show_json()`：对象键值对 |
+| 28 | `TUI::cout << '"' << s << '"';` | 字符串值 |
+| 33 | `TUI::cout << '[' << size << " items]\n";` | 数组大小 |
+| 39, 41, 43 | `TUI::cout << indent << "- ";` 等 | 数组元素缩进列表 |
+| 47 | `TUI::cout << args.dump();` | 数字值 |
+| 50 | `TUI::cout << (args.get<bool>() ? "true" : "false");` | 布尔值 |
+| 53 | `TUI::cout << "null";` | null 值 |
+| 59 | `TUI::cout << args << '\n';` | `show_text()`：纯文本 |
+| 63, 72 | `TUI::cout << TUI::ANSI_BRIGHT_BLACK;` / `TUI::cout << TUI::ANSI_RESET;` | `show_json_text()`：灰色包裹 JSON 参数展示 |
 
-| 檔案 | 用途 |
+### 6. `src/user_reply.cpp` — 用户回复模式
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 68 | `TUI::cout << u8"\n\u23F8  [User Reply]";` | 干预提示头 |
+| 70, 72 | `TUI::cout << " Tool failed: " << tool_name;` / `" Tool: "` | 工具名（失败/预检） |
+| 74-75 | `TUI::cout << "\n" << "    Args: " << json_args << "\n";` | 参数展示 |
+| 81 | `TUI::cout << "    Error: " << truncate(err_preview, 120) << "\n";` | 错误首行预览 |
+| 85-88 | `TUI::cout << "\n" << "    What would you like to do?\n" ...` | 操作说明（y 重试 / n 跳过） |
+| 90 | `TUI::cout << "\n    Reply: ";` | 等待输入提示 |
+
+### 7. `src/terminal_command_detector.cpp` — 终端命令检测
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 239 | `TUI::cout << buffer;` | `execute_directly()`：逐块打印命令输出（popen） |
+| 262-264 | `TUI::cout << u8"\u26A0 Detected possible terminal command: " << input << "\n" << u8"   Execute directly? [y/N]: ";` | 低置信度命令确认提示 |
+
+### 8. `src/project_summary/summary_tool.cpp` — 项目摘要
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 594 | `TUI::cout << u8"=== 專案摘要 ===\n\n";` | `print_preview()` 标题 |
+| 599-603 | `TUI::cout << u8"📁 " << name << ...` | 每个模块的文件/行数/类/函数统计 |
+| 606-610 | `TUI::cout << u8"\n📊 Total: " << ...` | 总计行 |
+
+### 9. `tools/file_tool.cpp` — read_files 工具
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 163-166 | `TUI::cout << "  paths: " << count << " file(s)\n";` 等 | `show_arguments()`：paths 模式 |
+| 173-188 | `TUI::cout << "  files: " << count << " file(s)\n";` 等 | files 模式（含行范围、[outline] 标记） |
+| 197-200 | `TUI::cout << "  directory: '" << dir << "'";` 等 | directory + glob 模式 |
+| 206 | `TUI::cout << "  outline: true\n";` | 顶层 outline 标志 |
+| 1051, 1053 | `TUI::cerr << "show_arguments error: " << e.what() << '\n';` | 异常走 `TUI::cerr` |
+| 1082, 1084 | `TUI::cerr << "show_preview error: " << e.what() << '\n';` | 异常走 `TUI::cerr` |
+
+---
+
+## 二、TUI::out 使用点（printf 风格）
+
+### 1. `src/main.cpp` — 主程序
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 105 | `TUI::out(u8"\nGoodbye!\n");` | 退出前告别语 |
+| 131 | `TUI::out("\nAgent: ");` | 响应前缀 |
+| 149 | `TUI::out("%s", token.c_str());` | LLM 流式 token 逐段输出 |
+| 162-167 | `TUI::out(u8"\n\n⏱  Tokens: ");` 等 | Token 用量统计（prompt/completion/total） |
+| 187 | `TUI::out("Usage: zlagent [options]\n" ...);` | 命令行帮助 |
+| 203-205 | `TUI::out(u8"╭────...╮\n");` 等 | 启动横幅（ZL Agent - Code Assistant） |
+| 256 | `TUI::out(u8"\n🤖 Telegram bot connected. Listening for messages...\n");` | Telegram 模式提示 |
+| 261 | `TUI::out(u8"\nReady. Type your request (or '/help' '/h' for commands):\n");` | 就绪提示 |
+| 263 | `TUI::out(u8"  💡 Shell commands are auto-detected and executed directly.\n");` | Shell 自动检测提示 |
+| 274 | `TUI::out("\n");` | 循环内补换行 |
+
+### 2. `src/agent.cpp` — Agent 核心
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 543 | `TUI::out("\nSaving session to long-term memory...\n");` | `save_session()` 提示 |
+| 800 | `TUI::out("%s", run_planned(user_input, resp, on_token).c_str());` | 任务规划流水线结果输出 |
+
+### 3. `src/command_dispatcher.cpp` — 命令分发
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 27 | `TUI::out("\n");` | 执行斜杠命令前补换行 |
+
+### 4. `src/llm_client.cpp` — LLM 客户端
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 539 | `TUI::out("\n");` | 流式输出结束后补换行，保证提示符在新行 |
+
+### 5. `src/safety_guard.cpp` — 安全守卫
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 57 | `TUI::out(u8"⚠  Dangerous operation: %s\n", operation.c_str());` | 危险操作警告 |
+| 71 | `TUI::out("   %s\n", message.c_str());` | `ask_user_confirm()` 确认消息 |
+| 72 | `TUI::out("   Type 'y' to confirm, anything else to cancel: ");` | 确认输入提示 |
+
+### 6. `src/multi_agent.cpp` — 多 Agent 网络
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 472 | `TUI::out(u8"\n⏸  [Remote Confirm] Client: %s\n", chat_id.c_str());` | 远程确认请求头 |
+| 473 | `TUI::out("   %s\n", message.c_str());` | 确认消息内容 |
+| 474 | `TUI::out("   Type 'y' to confirm, anything else to cancel: ");` | 确认输入提示 |
+
+### 7. `src/reply_mode_command.cpp` — /reply-mode 命令
+| 行号 | 代码 | 说明 |
+|------|------|------|
+| 19-28 | `TUI::out("\n--- User Reply Mode ---\n" ...);` | 显示当前模式与用法说明 |
+| 36 | `TUI::out("\n  User reply mode is already: %s\n", ...);` | 模式未变化提示 |
+| 41 | `TUI::out("\n  User reply mode changed to: %s\n", ...);` | 模式切换成功提示 |
+
+---
+
+## 三、TUI::err / TUI::cerr 使用点
+
+| 位置 | 说明 |
 |------|------|
-| `src/main.cpp` | 歡迎訊息、狀態列、提示字元、Token 統計、Spinner |
-| `src/agent.cpp` | 計畫執行結果輸出 |
-| `src/command_dispatcher.cpp` | 命令分派換行 |
-| `src/llm_client.cpp` | Stream 完成後換行 |
-| `src/reply_mode_command.cpp` | Reply mode 狀態顯示 |
-| `src/safety_guard.cpp` | 危險操作確認提示 |
+| `src/tui.cpp:49` | `TUI::err(fmt, ...)` 定义（printf 风格 → `std::cerr`，自动 flush） |
+| `src/tui.cpp:78` | `TUI::OStream TUI::cerr;` 静态成员定义 |
+| `include/logger.h:87` | Warn/Error 级别日志走 `TUI::cerr` |
+| `tools/file_tool.cpp:1051,1053,1082,1084` | `show_arguments` / `show_preview` 异常信息走 `TUI::cerr` |
 
-#### 仍使用 std::cout（Phase 2 未完成）
+> `TUI::err()`（函数）目前**没有任何调用方**，仅声明与定义存在。
 
-##### src/main.cpp
-    
-    | 行號 | 用途 | 說明 |
-|------|------|------|
-| 92 | Status bar renderer | `std::cout << bar.str();` 狀態列渲染器 |
-| 298 | Ctrl-C newline | `std::cout << std::endl;` Ctrl-C 後確保換行 |
-| 304 | Input newline | `std::cout << std::endl;` 輸入後確保換行 |
+---
 
-##### src/key_watcher.cpp（~5 處）
+## 四、使用约定总结
 
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 446 | Cursor positioning | `TUI::cursor_pos()` 游標定位 + prompt 輸出 |
-| 459 | Draw area cursor | 繪製區域游標定位 |
-| 467 | Prompt display | 提示字串顯示 |
-| 476 | Draw text | 繪製文字輸出 |
-| 645 | Command echo | 命令回顯 |
-
-##### src/command_handlers.cpp（1 處）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 660 | Output display | `std::cout << out.str();` 輸出顯示 |
-
-##### src/project_summary/summary_tool.cpp（3 處）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 594 | Summary header | `=== 專案摘要 ===` 標題 |
-| 599 | Folder listing | 📁 資料夾列表輸出 |
-| 606 | Total stats | 📊 統計資訊輸出 |
-
-##### src/tool.cpp（~12 處）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 26-28 | JSON object printing | `print_json_value()` 物件鍵值輸出 |
-| 36 | String value | 字串值輸出（含引號） |
-| 41 | Array size | 陣列大小顯示 |
-| 47-51 | Array items | 陣列項目逐行輸出 |
-| 55 | JSON dump | `args.dump()` 完整 JSON 輸出 |
-| 58 | Boolean value | bool 值輸出 |
-| 61 | Null value | null 值輸出 |
-| 67 | Scalar value | 純量值輸出 |
-| 71, 80 | ANSI color | `TUI::ANSI_BRIGHT_BLACK` / `TUI::ANSI_RESET` 色彩控制 |
-
-##### src/terminal_command_detector.cpp（2 處）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 239 | Detection output | `std::cout << buffer;` 偵測結果輸出 |
-| 262 | Warning message | ⚠ 終端命令警告訊息 |
-
-##### src/user_reply.cpp（~7 處）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 68-74 | Status header | `[User Reply]` 狀態列 + Tool 名稱 |
-| 81 | Error preview | 錯誤預覽輸出 |
-| 85-90 | Command display | 命令顯示 + Reply 提示 |
-
-##### tools/file_tool.cpp（~30+ 處）
-
-| 行號範圍 | 用途 | 說明 |
-|----------|------|------|
-| 163-206 | read_files echo | 回顯讀取參數（paths/files/directory/glob/outline） |
-| 381-410 | write_files info | 寫入檔案資訊 + diff 輸出 |
-| 692 | edit_file diff | Diff 輸出 |
-| 1020-1049 | edit_files echo | 回顯編輯操作（replace/insert/delete）+ ANSI 色彩 |
-| 1079 | edit_files diff | Diff 輸出 |
-| 1300-1328 | create_file info | 建立檔案資訊 + diff 輸出 |
-| 1400-1462 | insert_content_at_line info | 插入內容資訊 + diff 輸出 |
-| 1657 | delete_files diff | Diff 輸出 |
-
-##### src/tui.cpp（2 處 — TUI::out() 內部實作）
-
-| 行號 | 用途 | 說明 |
-|------|------|------|
-| 38 | `TUI::out()` impl | `std::cout << buf << std::flush;` out() 的實際寫入 |
-| 45 | `TUI::err()` impl | `std::cout << text << std::flush;` err() 的實際寫入 |
-
-> **注意**：`src/tui.cpp` 中的 `std::cout` 是 `TUI::out()` / `TUI::err()` 的底層實作，屬於統一出口本身，不需遷移。
-
-## 設計
-
-### TUI::out() API
-
-```cpp
-// include/tui.h 新增
-static void out(const char* fmt, ...);           // printf-style，寫入 stdout
-static void err(const char* fmt, ...);           // printf-style，寫入 stderr（錯誤/警告）
-static void set_output_enabled(bool enabled);    // 開關輸出
-```
-
-### 設計決策
-
-| 項目 | 決定 | 理由 |
-|------|------|------|
-| 緩衝策略 | 每次 `out()` 自動 flush | 終端互動需要即時可見，避免訊息延遲 |
-| 執行緒安全 | 內部加 mutex | 防止多執行緒交錯輸出 |
-| 開關控制 | `set_output_enabled()` | 方便測試/批次模式時靜音 |
-| 與 logger 關係 | **不取代** logger | logger 走結構化日誌（含時間戳、等級），TUI::out 走直接輸出。logger 內部仍用 std::cout/std::cerr |
-
-### 執行緒安全架構
-
-```
-TUI::out(fmt, ...)
-    ├── mutex lock
-    ├── va_list 展開 → vsnprintf → buffer
-    ├── std::cout << buffer << std::flush
-    └── mutex unlock
-```
-
-## 實作步驟
-
-### Phase 1: 核心實作
-
-- [x] Step 1.1 — `include/tui.h`：宣告 `TUI::out()`、`TUI::err()`、`set_output_enabled()`，新增必要 member（mutex、enabled flag）
-- [x] Step 1.2 — `src/tui.cpp`：實作 `TUI::out()`、`TUI::err()`、`set_output_enabled()`
-
-### Phase 2: 遷移 std::cout → TUI::out()
-
-- [x] Step 2.1 — `src/main.cpp`：大部分 `std::cout` 已替換為 `TUI::out()`（歡迎訊息、狀態列、提示字元、Token 統計、Spinner）
-- [x] Step 2.2 — `src/agent.cpp`：替換 `std::cout`
-- [x] Step 2.3 — `src/command_dispatcher.cpp`：替換 `std::cout`
-- [x] Step 2.4 — `src/llm_client.cpp`：替換 `std::cout`
-- [x] Step 2.5 — `src/reply_mode_command.cpp`：替換 `std::cout`
-- [x] Step 2.6 — `src/safety_guard.cpp`：替換 `std::cout`
-
-### Phase 2 未完成項目（仍需處理）
-
-以下檔案仍有 `std::cout` 未遷移至 `TUI::out()`，共 **~60+ 處**：
-
-| 檔案 | 數量 | 說明 |
-|------|------|------|
-| `src/main.cpp` | ~3 | Status bar renderer、Ctrl-C/Input newline |
-| `src/key_watcher.cpp` | ~5 | Cursor positioning、prompt display、draw text、command echo |
-| `src/command_handlers.cpp` | 1 | Output display |
-| `src/project_summary/summary_tool.cpp` | 3 | Summary header、folder listing、total stats |
-| `src/tool.cpp` | ~12 | `print_json_value()` JSON 列印函式（含 ANSI color） |
-| `src/terminal_command_detector.cpp` | 2 | Detection output、warning message |
-| `src/user_reply.cpp` | ~7 | User reply status header、error preview、command display |
-| `tools/file_tool.cpp` | ~30+ | read_files/write_files/edit_file/edit_files/create_file diff echo |
-
-> **注意**：`src/tui.cpp` 中的 `std::cout` 是 `TUI::out()` / `TUI::err()` 的底層實作，屬於統一出口本身，不需遷移。
-
-### Phase 3: TUI 內部方法改用 out()
-
-- [x] Step 3.1 — `tui.h` 中的 inline 方法（`cls()`、`flush()`、`clearScreen()` 等）**維持直接操作 std::cout**，避免遞迴呼叫。這是有意設計。
-- [x] Step 3.2 — `include/tui.h` **保留** `#include <iostream>`，因為低層級 inline 方法需要它
-
-## 注意事項
-
-1. **TUI inline 方法避免遞迴**：`cls()`、`flush()` 等 inline 函式若改用 `TUI::out()` 會造成遞迴。這些低層級方法應直接操作 `std::cout`，或讓 `TUI::out()` 內部呼叫它們而非相反。
-2. **CMakeLists.txt**：需將 `src/tui.cpp` 加入編譯來源列表
-3. **Windows UTF-8**：`main.cpp` 中的 `SetConsoleCP(65001)` 等初始化保持不變，在 `TUI::out()` 呼叫之前完成
-4. **logger.h 不改造**：logger 是結構化日誌系統，與 TUI::out 的用途不同，維持現狀
+1. **流式拼接 / ANSI 控制序列** → 用 `TUI::cout <<`（如 key_watcher 的光标定位、tool.cpp 的 JSON 展示）。
+2. **printf 格式化 / 需要广播到远程客户端** → 用 `TUI::out(fmt, ...)`（内部会 `agent::send_event("out", buf)`）。
+3. **错误 / 警告** → `TUI::cerr <<` 或 `TUI::err()`。
+4. **日志** → 统一走 `LOG_DEBUG/INFO/WARN/ERROR` 宏（`include/logger.h`），底层落到 `TUI::cout` / `TUI::cerr`。
+5. 全局静默：`TUI::set_output_enabled(false)` 只影响 `out`/`err`/`printDim`，不影响 `TUI::cout` 流式输出。

@@ -278,15 +278,6 @@ public:
 
     // ── Unified output entry point ────────────────
 
-    /// printf-style output to stdout, auto-flush, thread-safe.
-    static void out(const char* fmt, ...);
-
-    /// Output a string directly to stdout, auto-flush, thread-safe.
-    static void out(const std::string& text);
-
-    /// printf-style output to stderr, auto-flush, thread-safe.
-    static void err(const char* fmt, ...);
-
     /// Enable or disable all TUI::out() / TUI::err() calls. Default: true.
     static void set_output_enabled(bool enabled);
 

@@ -40,36 +40,6 @@ void TUI::out(const char* fmt, ...) {
     agent::send_event("out", buf);
 }
 
-void TUI::out(const std::string& text) {
-    if (!s_enabled) return;
-    std::cout << text;
-    agent::send_event("out", text);
-}
-
-void TUI::err(const char* fmt, ...) {
-    if (!s_enabled) return;
-
-    va_list args;
-    va_start(args, fmt);
-    std::lock_guard<std::mutex> lock(s_mutex());
-
-    va_list args_copy;
-    va_copy(args_copy, args);
-    int len = std::vsnprintf(nullptr, 0, fmt, args_copy);
-    va_end(args_copy);
-
-    if (len < 0) {
-        va_end(args);
-        return;
-    }
-
-    std::string buf(static_cast<size_t>(len), '\0');
-    std::vsnprintf(buf.data(), static_cast<size_t>(len) + 1, fmt, args);
-    va_end(args);
-
-    std::cerr << buf << std::flush;
-}
-
 void TUI::set_output_enabled(bool enabled) {
     s_enabled = enabled;
 }
@@ -79,13 +49,17 @@ TUI::OStream TUI::cerr;
 
 TUI::OStream& TUI::OStream::operator<<(const std::string& text)
 {
+    if (!s_enabled) return *this;
     std::cout << text;
+    agent::send_event("out", text);
     return *this;
 }
 
 TUI::OStream& TUI::OStream::operator<<(int value)
 {
+    if (!s_enabled) return *this;
     std::cout << value;
+    agent::send_event("out", std::to_string(value));
     return *this;
 }
 

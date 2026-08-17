@@ -540,7 +540,7 @@ void Agent::save_session()
 {
     if (long_term_memory_) {
         // Fast save — no LLM calls. Just stores timestamp and message count.
-        TUI::out("\nSaving session to long-term memory...\n");
+        TUI::cout << "\nSaving session to long-term memory...\n";
         long_term_memory_->save_session(memory_);
     }
 
@@ -797,7 +797,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
         // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
         if (task_planning_ && needs_planning(resp)) {
-            TUI::out("%s", run_planned(user_input, resp, on_token).c_str());
+            TUI::cout << run_planned(user_input, resp, on_token);
             return resp;
         }
 
