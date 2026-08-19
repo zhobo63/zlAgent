@@ -284,7 +284,10 @@ public:
     struct OStream 
     {
         OStream& operator<<(const std::string& text);
+        OStream& operator<<(const char* text);
+        OStream& operator<<(const char ch);
         OStream& operator<<(int value);
+        OStream& operator<<(size_t value);
 
         void flush();
     };
@@ -295,7 +298,5 @@ private:
     static std::mutex& s_mutex();
     static bool       s_enabled;
 };
-
-//TUI::OStream& operator<< (TUI::OStream&, const std::string &text);
 
 #endif // TUI_H

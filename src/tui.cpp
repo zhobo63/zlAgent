@@ -27,20 +27,27 @@ TUI::OStream& TUI::OStream::operator<<(const std::string& text)
     return *this;
 }
 
+TUI::OStream& TUI::OStream::operator<<(const char* text)
+{
+    return this->operator<<(std::string(text));
+}
+
+TUI::OStream& TUI::OStream::operator<<(const char ch)
+{
+    return this->operator<<(std::to_string(ch));
+}
+
 TUI::OStream& TUI::OStream::operator<<(int value)
 {
-    if (!s_enabled) return *this;
-    std::cout << value;
-    agent::send_event("out", std::to_string(value));
-    return *this;
+    return this->operator<<(std::to_string(value));
+}
+
+TUI::OStream& TUI::OStream::operator<<(size_t value)
+{
+    return this->operator<<(std::to_string(value));
 }
 
 void TUI::OStream::flush()
 {
     std::cout.flush();
 }
-
-//TUI::OStream& operator<< (TUI::OStream& cout, const std::string& text)
-//{
-//    return cout << text;
-//}
