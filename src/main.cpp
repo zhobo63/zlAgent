@@ -147,7 +147,7 @@ bool run_interactive(
         }
 
         TUI::cout << token;
-        TUI::flush();
+        TUI::cout.flush();
         return true;  // keep streaming
         }, &usage_info);
 

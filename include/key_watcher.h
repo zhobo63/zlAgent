@@ -60,6 +60,12 @@ using ReadlineCallback = std::function<void(const Key& k)>;
 /// Global key watcher: background thread for input detection and interactive readline with history/completion.
 class KeyWatcher {
 public:
+	/// Cursor position (1-based row/col).
+	struct CursorPos {
+		int row = 1;
+		int col = 1;
+	};
+
 	// ── Original API ────────────────────────────────────────
 
 	static std::vector<Key> utf8_to_keys(const std::string& s);

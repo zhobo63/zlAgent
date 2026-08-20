@@ -69,6 +69,28 @@ void KeyWatcher::close_keyboard() {
     }
 }
 
+static inline int getTerminalWidth() {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+        return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    return 120;
+}
+
+static inline int getTerminalHeight() {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+        return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    return 24;
+}
+
+/// Get current cursor position. Falls back to {1, 1} on failure.
+static KeyWatcher::CursorPos getCursorPos() {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+        return { 1, 1 };
+    return { static_cast<int>(csbi.dwCursorPosition.Y + 1), static_cast<int>(csbi.dwCursorPosition.X + 1) };
+}
+
 #else
 #include <stdio.h>
 #include <termios.h>
@@ -105,7 +127,47 @@ static int getch() {
     return getchar();
 }
 
+/// Get terminal width in columns. Falls back to 80.
+static inline int getTerminalWidth() {
+    struct winsize ws {};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+        return ws.ws_col;
+    return 80;
+}
+
+/// Get terminal height in rows. Falls back to 24.
+static inline int getTerminalHeight() {
+    struct winsize ws {};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0)
+        return ws.ws_row;
+    return 24;
+}
+
+/// Get current cursor position. Falls back to {1, 1} on failure.
+static KeyWatcher::CursorPos getCursorPos() {
+    // Send DSR request and read response (non-blocking, 50ms timeout)
+    printf("\033[6n");
+    fflush(stdout);
+    struct timeval tv = { 0, 50000 };
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    if (select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) <= 0)
+        return { 1, 1 };
+    char buf[32];
+    ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+    if (n < 5 || buf[n - 1] != 'R')
+        return { 1, 1 };
+    int row = 0, col = 0;
+    sscanf(buf + 2, "%d;%d", &row, &col);
+    return { row, col };
+}
+
 #endif
+
+static std::string cursor_pos(int row, int col) {
+    return "\x1b[" + std::to_string(row) + ";" + std::to_string(col) + "H";
+}
 
 // ============================================================================
 // Static members
@@ -260,7 +322,7 @@ void KeyWatcher::LineBuffer::set_prompt(const std::string& p) {
 }
 
 static void cal_display_pos(const std::vector<Key> &text, int pos, int& col, int& row) {
-    int term_width = TUI::getTerminalWidth();
+    int term_width = getTerminalWidth();
     for (size_t i = 0; i < pos && i < text.size(); ++i) {
         if (text[i].char_width == 0 || text[i].ch == '\n') { 
             row++; col = 1; 
@@ -281,7 +343,7 @@ static int get_display_pos(const std::vector<Key>& text,
     int pos = 0;
     if (row < prompt_row)
         return pos;
-    int term_width = TUI::getTerminalWidth();
+    int term_width = getTerminalWidth();
     int r = prompt_row;
     int c = prompt_col;
     for (size_t i = 0; i < text.size(); i++) {
@@ -302,7 +364,7 @@ static int get_display_pos(const std::vector<Key>& text,
 }
 
 void KeyWatcher::LineBuffer::recompute() {
-    int term_width = TUI::getTerminalWidth();
+    int term_width = getTerminalWidth();
 
     // Prompt is single-line; input starts right after it on the same line.
     row = 1;
@@ -317,7 +379,7 @@ void KeyWatcher::LineBuffer::recompute() {
             col = 1;
         }
     }
-    int term_height = TUI::getTerminalHeight();
+    int term_height = getTerminalHeight();
     int new_line = (prompt_row + row - 1) - term_height;
 
     if (new_line>0) {
@@ -360,7 +422,7 @@ void KeyWatcher::LineBuffer::move_right() {
 }
 
 bool KeyWatcher::LineBuffer::move_up(int term_width) {
-    auto cp = TUI::getCursorPos();
+    auto cp = getCursorPos();
     if (cp.row <= prompt_row)
         return false;
     cp.row--;
@@ -370,7 +432,7 @@ bool KeyWatcher::LineBuffer::move_up(int term_width) {
 }
 
 bool KeyWatcher::LineBuffer::move_down(int term_width) {
-    auto cp = TUI::getCursorPos();
+    auto cp = getCursorPos();
     int old = pos;
     pos = get_display_pos(text, cached_prompt_col, prompt_row, cp.col, cp.row + 1);
     draw_pos = pos;
@@ -443,9 +505,9 @@ void KeyWatcher::LineBuffer::clear_prompt()
 {
     // Build a single ANSI string: position → erase each line and move down → restore cursor.
 
-    TUI::cout << TUI::cursor_pos(prompt_row, 1) <<
+    TUI::cout << cursor_pos(prompt_row, 1) <<
         TUI::ANSI_CLEAR_TO_END <<
-        TUI::cursor_pos(prompt_row, 1) << TUI::ANSI_RESET;
+        cursor_pos(prompt_row, 1) << TUI::ANSI_RESET;
 }
 
 void KeyWatcher::LineBuffer::clear()
@@ -456,9 +518,9 @@ void KeyWatcher::LineBuffer::clear()
         draw_col = cached_prompt_col;
         cal_display_pos(text, draw_pos, draw_col, draw_row);
     }
-    TUI::cout << TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) <<
+    TUI::cout << cursor_pos(prompt_row + draw_row - 1, draw_col) <<
         TUI::ANSI_CLEAR_TO_END <<
-        TUI::cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_RESET;
+        cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_RESET;
 }
 
 void KeyWatcher::LineBuffer::draw()
@@ -629,23 +691,23 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     is_completion_active = true;
     is_display_dirty = true; // menu opened, need redraw
 
-    int H = TUI::getTerminalHeight();
+    int H = getTerminalHeight();
     size_t max_displayed = std::min(candidates.size(), MAX_DISPLAYED);
     // 1 line per candidate + 1 info line when paginated
     size_t total_menu_lines = max_displayed;
     if (candidates.size() > MAX_DISPLAYED)
         total_menu_lines++;
-    auto pos_before = TUI::getCursorPos();
+    auto pos_before = getCursorPos();
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     // Build a single string with all newlines instead of N printf calls
     if (scroll_amount > 0) {
-        TUI::setCursorPos(H, 1);
+        TUI::cout << cursor_pos(H, 1);
         prompt_row -= scroll_amount;
         std::string cmd(scroll_amount, '\n');
         TUI::cout << cmd;
         draw_pos = -1;
     }
-    auto pos = TUI::getCursorPos();
+    auto pos = getCursorPos();
     pos.col = pos_before.col;
     input_col = pos.col;
     if (scroll_amount > 0) {
@@ -1088,7 +1150,7 @@ void KeyWatcher::add_keywords(const std::vector<std::string>& keywords) {
 std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     const char* prompt_text = (prompt ? prompt : "");
     int prompt_len = static_cast<int>(strlen(prompt_text));
-    int term_width = TUI::getTerminalWidth();
+    int term_width = getTerminalWidth();
 
     LineBuffer buf;
 
@@ -1102,7 +1164,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
     std::string original_text;
     bool was_browsing = false;
     // Get cursor position before printing (prompt's starting row)
-    auto cursor_pos = TUI::getCursorPos();
+    auto cursor_pos = getCursorPos();
     buf.prompt_row = cursor_pos.row;
     buf.is_display_dirty = true;
 
@@ -1128,12 +1190,12 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             if (buf.is_completion_active) {
                 buf.draw_completion_menu(final_row);
             }
-            TUI::setCursorPos(final_row, buf.col);
+            std::cout << agent::cursor_pos(final_row, buf.col);
         } else {
             // Only cursor moved — recompute position and move cursor
             buf.recompute();
             final_row = buf.row + buf.prompt_row - 1;
-            TUI::setCursorPos(final_row, buf.col);
+            std::cout <<  agent::cursor_pos(final_row, buf.col);
         }
         buf.is_display_dirty = false;
 
@@ -1281,7 +1343,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
         if (k == Key::K_ALT_ENTER || k == Key::K_CTRL_ENTER || k == Key::K_SHIFT_ENTER) {
             Key knl{}; knl.code[0] = '\n'; knl.size = 1;
             buf.insert_char(knl);
-            int exceed_line = buf.prompt_row + buf.row - TUI::getTerminalHeight();
+            int exceed_line = buf.prompt_row + buf.row - getTerminalHeight();
             if (exceed_line > 1) {
                 buf.prompt_row--;
                 printf("\n");
