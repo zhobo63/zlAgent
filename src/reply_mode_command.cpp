@@ -16,7 +16,7 @@ void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag) {
         // No arguments — show current mode and usage.
         if (args.size() <= 1) {
             auto mode = ag->get_user_reply_mode();
-            TUI::cout << "\n--- User Reply Mode ---\n"
+            TOUT::cout << "\n--- User Reply Mode ---\n"
                     "  Current mode: %s\n"
                     "\n"
                     "  Modes:\n"
@@ -33,12 +33,12 @@ void register_reply_mode_command(CommandDispatcher& dispatcher, Agent* ag) {
         auto new_mode = parse_reply_mode(args[1]);
 
         if (new_mode == ag->get_user_reply_mode()) {
-            TUI::cout << "\n  User reply mode is already: " << reply_mode_to_string(new_mode) << "\n";
+            TOUT::cout << "\n  User reply mode is already: " << reply_mode_to_string(new_mode) << "\n";
             return;
         }
 
         ag->set_user_reply_mode(new_mode);
-        TUI::cout << "\n  User reply mode changed to: " << reply_mode_to_string(new_mode) << "\n";
+        TOUT::cout << "\n  User reply mode changed to: " << reply_mode_to_string(new_mode) << "\n";
     });
 }
 

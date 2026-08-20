@@ -160,17 +160,17 @@ public:
             // paths mode
             if (args.contains("paths") && args["paths"].is_array()) {
                 int count = static_cast<int>(args["paths"].size());
-                TUI::cout << "  paths: " << count << " file(s)\n";
+                TOUT::cout << "  paths: " << count << " file(s)\n";
                 for (const auto& p : args["paths"]) {
                     if (p.is_string())
-                        TUI::cout << "    - '" << p.get<std::string>() << "'\n";
+                        TOUT::cout << "    - '" << p.get<std::string>() << "'\n";
                 }
             }
 
             // files mode
             if (args.contains("files") && args["files"].is_array()) {
                 int count = static_cast<int>(args["files"].size());
-                TUI::cout << "  files: " << count << " file(s)\n";
+                TOUT::cout << "  files: " << count << " file(s)\n";
                 for (const auto& f : args["files"]) {
                     if (!f.is_object()) continue;
                     std::string path = f.value("path", "?");
@@ -178,13 +178,13 @@ public:
                     int start_line = f.value("start_line", 0);
                     int end_line   = f.value("end_line", 0);
                     if (start_line > 0 && end_line >= start_line) {
-                        TUI::cout << "    - '" << path << "' lines " << start_line << "-" << end_line;
-                        if (outline) TUI::cout << " [outline]";
-                        TUI::cout << "\n";
+                        TOUT::cout << "    - '" << path << "' lines " << start_line << "-" << end_line;
+                        if (outline) TOUT::cout << " [outline]";
+                        TOUT::cout << "\n";
                     } else {
-                        TUI::cout << "    - '" << path << "'";
-                        if (outline) TUI::cout << " [outline]";
-                        TUI::cout << "\n";
+                        TOUT::cout << "    - '" << path << "'";
+                        if (outline) TOUT::cout << " [outline]";
+                        TOUT::cout << "\n";
                     }
                 }
             }
@@ -194,16 +194,16 @@ public:
                 std::string dir = args.value("directory", "");
                 std::string glob = args.value("glob", "*");
                 bool outline = args.value("outline", false);
-                TUI::cout << "  directory: '" << dir << "'";
-                if (glob != "*") TUI::cout << " glob: '" << glob << "'";
-                if (outline) TUI::cout << " [outline]";
-                TUI::cout << "\n";
+                TOUT::cout << "  directory: '" << dir << "'";
+                if (glob != "*") TOUT::cout << " glob: '" << glob << "'";
+                if (outline) TOUT::cout << " [outline]";
+                TOUT::cout << "\n";
             }
 
             // top-level outline flag (when not already shown)
             if (!args.contains("directory") && args.contains("outline") && args["outline"].is_boolean()) {
                 bool outline = args.value("outline", false);
-                if (outline) TUI::cout << "  outline: true\n";
+                if (outline) TOUT::cout << "  outline: true\n";
             }
         } catch (...) {}
     }
@@ -378,7 +378,7 @@ public:
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
-            TUI::cout << "  path: '" << args.value("path", "") << "'\n";
+            TOUT::cout << "  path: '" << args.value("path", "") << "'\n";
             std::string content = args.value("content", "");
             // Show content line-by-line with line numbers
             int line_num = 1;
@@ -387,7 +387,7 @@ public:
                     ++line_num;
                 }
             }
-            TUI::cout << "  content: " << line_num << " lines\n";
+            TOUT::cout << "  content: " << line_num << " lines\n";
         } catch (...) {}
     }
 
@@ -407,7 +407,7 @@ public:
                     std::string old_content = ss.str();
                     existing.close();
                     std::string diff = DiffEdit(old_content, new_content, 1);
-                    TUI::cout << "\n" << path << "\n" << diff << "\n";
+                    TOUT::cout << "\n" << path << "\n" << diff << "\n";
                 }
             }
         } catch (...) {}
@@ -689,7 +689,7 @@ All line numbers are based on the original file before any edits — DO NOT over
             ef.apply_blocks(result);
             std::string old_content = ef.to_string();
             std::string new_content = result.to_string();
-            TUI::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
+            TOUT::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
         } catch (...) {}
     }
 
@@ -1017,22 +1017,22 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << "\n";
-                        TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
+                        TOUT::cout << "# replace_line_range: '" << path << "' lines " << start << "-" << end << "\n";
+                        TOUT::cout << TOUT::ANSI_BRIGHT_BLACK << new_text << TOUT::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_before_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# insert_before_line: '" << path << "' before line " << line_num << "\n";
-                        TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
+                        TOUT::cout << "# insert_before_line: '" << path << "' before line " << line_num << "\n";
+                        TOUT::cout << TOUT::ANSI_BRIGHT_BLACK << new_text << TOUT::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "insert_after_line") == 0) {
                         int line_num = op.value("start_line", 0);
                         auto new_text = op.value("new_text", "");
-                        TUI::cout << "# insert_after_line: '" << path << "' after line " << line_num << "\n";
-                        TUI::cout << TUI::ANSI_BRIGHT_BLACK << new_text << TUI::ANSI_RESET << "\n";
+                        TOUT::cout << "# insert_after_line: '" << path << "' after line " << line_num << "\n";
+                        TOUT::cout << TOUT::ANSI_BRIGHT_BLACK << new_text << TOUT::ANSI_RESET << "\n";
                     } else if (strcmp(type_name, "delete_lines") == 0) {
                         int start = op.value("start_line", 0);
                         int end   = op.value("end_line", 0);
-                        TUI::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << "\n";
+                        TOUT::cout << "# delete_lines: '" << path << "' lines " << start << "-" << end << "\n";
                     }
                 }
             };
@@ -1046,11 +1046,11 @@ Operations per file are atomic (failure rolls back that file); files are indepen
             if (is_json_array(args, "delete_lines"))
                 show_ops("delete_lines", args["delete_lines"]);
 
-            TUI::cout << "  files affected: " << file_op_count.size() << "\n";
+            TOUT::cout << "  files affected: " << file_op_count.size() << "\n";
         } catch (const std::exception& e) {
-            TUI::cerr << "show_arguments error: " << e.what() << "\n";
+            TOUT::cerr << "show_arguments error: " << e.what() << "\n";
         } catch (...) {
-            TUI::cerr << "unknown error in show_arguments\n";
+            TOUT::cerr << "unknown error in show_arguments\n";
         }
     }
 
@@ -1076,12 +1076,12 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                 ef.apply_blocks(result);
 
                 std::string new_content = result.to_string();
-                TUI::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
+                TOUT::cout << "\n" << path << "\n" << DiffEdit(old_content, new_content, 1) << "\n";
             }
         } catch (const std::exception& e) {
-            TUI::cerr << "show_preview error: " << e.what() << "\n";
+            TOUT::cerr << "show_preview error: " << e.what() << "\n";
         } catch (...) {
-            TUI::cerr << "unknown error in show_preview\n";
+            TOUT::cerr << "unknown error in show_preview\n";
         }
     }
 
@@ -1297,13 +1297,13 @@ public:
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;
-            TUI::cout << "  path: '" << args.value("path", "") << "'\n";
+            TOUT::cout << "  path: '" << args.value("path", "") << "'\n";
             std::string content = args.value("content", "");
             int line_num = 1;
             for (const auto& ch : content) {
                 if (ch == '\n') ++line_num;
             }
-            TUI::cout << "  content: " << line_num << " lines\n";
+            TOUT::cout << "  content: " << line_num << " lines\n";
         } catch (...) {}
     }
 
@@ -1325,7 +1325,7 @@ public:
                     existing.close();
                     std::string new_content = old_content + content;
                     std::string diff = DiffEdit(old_content, new_content, 1);
-                    TUI::cout << "\n" << path << "\n" << diff << "\n";
+                    TOUT::cout << "\n" << path << "\n" << diff << "\n";
                 }
             }
         } catch (...) {}
@@ -1397,15 +1397,15 @@ public:
                 Tool::show_arguments(json_args);
                 return;
             }
-            TUI::cout << "  path: '" << args.value("path", "") << "'\n";
+            TOUT::cout << "  path: '" << args.value("path", "") << "'\n";
             int line_number = args.value("line_number", 0);
-            TUI::cout << "  line_number: " << line_number << "\n";
+            TOUT::cout << "  line_number: " << line_number << "\n";
             std::string content = args.value("content", "");
             int line_count = 1;
             for (const auto& ch : content) {
                 if (ch == '\n') ++line_count;
             }
-            TUI::cout << "  content: " << line_count << " lines\n";
+            TOUT::cout << "  content: " << line_count << " lines\n";
         } catch (...) {}
     }
 
@@ -1459,7 +1459,7 @@ public:
                         }
 
                         std::string diff = DiffEdit(old_content, new_content);
-                        TUI::cout << "\n" << path << " (insert at line " << line_number << ")" << "\n" << diff << "\n";
+                        TOUT::cout << "\n" << path << " (insert at line " << line_number << ")" << "\n" << diff << "\n";
                     }
                 }
             }
@@ -1654,7 +1654,7 @@ public:
                         std::string old_content = ss.str();
                         existing.close();
                         std::string diff = DiffEdit(old_content, new_content);
-                        TUI::cout << "\n" << path << "\n" << diff << "\n";
+                        TOUT::cout << "\n" << path << "\n" << diff << "\n";
                     }
                 }
             }

@@ -3,23 +3,23 @@
 
 // ── Static member definitions ───────────────────────
 
-bool TUI::s_enabled = true;
+bool TOUT::s_enabled = true;
 
-std::mutex& TUI::s_mutex() {
+std::mutex& TOUT::s_mutex() {
     static std::mutex mtx;
     return mtx;
 }
 
 // ── Unified output ──────────────────────────────────
 
-void TUI::set_output_enabled(bool enabled) {
+void TOUT::set_output_enabled(bool enabled) {
     s_enabled = enabled;
 }
 
-TUI::OStream TUI::cout;
-TUI::OStream TUI::cerr;
+TOUT::OStream TOUT::cout;
+TOUT::OStream TOUT::cerr;
 
-TUI::OStream& TUI::OStream::operator<<(const std::string& text)
+TOUT::OStream& TOUT::OStream::operator<<(const std::string& text)
 {
     if (!s_enabled) return *this;
     std::cout << text;
@@ -27,27 +27,27 @@ TUI::OStream& TUI::OStream::operator<<(const std::string& text)
     return *this;
 }
 
-TUI::OStream& TUI::OStream::operator<<(const char* text)
+TOUT::OStream& TOUT::OStream::operator<<(const char* text)
 {
     return this->operator<<(std::string(text));
 }
 
-TUI::OStream& TUI::OStream::operator<<(const char ch)
+TOUT::OStream& TOUT::OStream::operator<<(const char ch)
 {
     return this->operator<<(std::to_string(ch));
 }
 
-TUI::OStream& TUI::OStream::operator<<(int value)
+TOUT::OStream& TOUT::OStream::operator<<(int value)
 {
     return this->operator<<(std::to_string(value));
 }
 
-TUI::OStream& TUI::OStream::operator<<(size_t value)
+TOUT::OStream& TOUT::OStream::operator<<(size_t value)
 {
     return this->operator<<(std::to_string(value));
 }
 
-void TUI::OStream::flush()
+void TOUT::OStream::flush()
 {
     std::cout.flush();
 }

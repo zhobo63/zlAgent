@@ -54,7 +54,7 @@ bool SafetyGuard::is_command_dangerous(const std::string& command) {
 
 bool SafetyGuard::confirm_dangerous_operation(const std::string& operation) {
     LOG_WARN("Safety", "Dangerous operation detected: " + operation);
-    TUI::cout << u8"⚠  Dangerous operation: " << operation << "\n";
+    TOUT::cout << u8"⚠  Dangerous operation: " << operation << "\n";
     return ask_user_confirm("Confirm this dangerous operation?", 60);
 }
 
@@ -68,8 +68,8 @@ bool SafetyGuard::ask_user_confirm(const std::string& message, int timeout_secon
     }
 
     // Local confirmation via KeyWatcher.
-    TUI::cout << "   " << message << "\n";
-    TUI::cout << "   Type 'y' to confirm, anything else to cancel: ";
+    TOUT::cout << "   " << message << "\n";
+    TOUT::cout << "   Type 'y' to confirm, anything else to cancel: ";
 
     auto k = KeyWatcher::read_key();
     char ch = 0;

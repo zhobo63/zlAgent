@@ -38,7 +38,7 @@ void test_create_directory_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("basic_success", result.find("Successfully created") != std::string::npos);
         UNIT_TEST("dir_exists", fs::exists(fs::path(dir) / "new_folder"));
 
@@ -59,7 +59,7 @@ void test_create_directory_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("already_exists_no_error", result.find("Error") == std::string::npos);
 
         safe_remove_all(dir);
@@ -79,7 +79,7 @@ void test_create_directory_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("nested_success", result.find("Successfully created") != std::string::npos);
         UNIT_TEST("nested_dir_exists", fs::exists(fs::path(dir) / "a" / "b" / "c"));
 
@@ -143,7 +143,7 @@ void test_delete_path_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("delete_file_success", result.find("Successfully deleted") != std::string::npos);
         UNIT_TEST("file_does_not_exist_after_delete", !fs::exists(fs::path(dir) / "test.txt"));
 
@@ -175,7 +175,7 @@ void test_delete_path_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("delete_directory_success", result.find("Successfully deleted") != std::string::npos);
         UNIT_TEST("directory_does_not_exist_after_delete", !fs::exists(dir));
     }
@@ -248,7 +248,7 @@ void test_copy_path_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("copy_file_success", result.find("Successfully copied") != std::string::npos);
         UNIT_TEST("source_exists_after_copy", fs::exists(fs::path(dir) / "source.txt"));
         UNIT_TEST("dest_exists_after_copy", fs::exists(fs::path(dir) / "dest.txt"));
@@ -290,7 +290,7 @@ void test_copy_path_tool(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("copy_directory_success", result.find("Successfully copied") != std::string::npos);
 
         // verify directory structure is preserved

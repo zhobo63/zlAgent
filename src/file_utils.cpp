@@ -411,20 +411,20 @@ std::string DiffEdit(const std::string& old_text,
             switch (e.op) {
                 case DiffOp::Context: {
                     std::string ln = fmt_line_num(old_line[k]);
-                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TUI::ANSI_RESET << "  " << e.line << "\n";
+                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TOUT::ANSI_RESET << "  " << e.line << "\n";
                     break;
                 }
                 case DiffOp::Remove: {
                     std::string ln = fmt_line_num(old_line[k]);
-                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TUI::ANSI_RESET << " " << TUI::ANSI_FG_RED << "-" << e.line << TUI::ANSI_RESET << "\n";
+                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TOUT::ANSI_RESET << " " << TOUT::ANSI_FG_RED << "-" << e.line << TOUT::ANSI_RESET << "\n";
                     break;
                 }
                 case DiffOp::Add: {
                     std::string ln = fmt_line_num(new_line[k]);
-                    if (!ln.empty()) oss << TUI::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TUI::ANSI_RESET << " " << TUI::ANSI_FG_GREEN << "+" << e.line << TUI::ANSI_RESET << "\n";
+                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
+                    oss << ln << TOUT::ANSI_RESET << " " << TOUT::ANSI_FG_GREEN << "+" << e.line << TOUT::ANSI_RESET << "\n";
                     break;
                 }
             }

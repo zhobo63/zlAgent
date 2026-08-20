@@ -505,9 +505,9 @@ void KeyWatcher::LineBuffer::clear_prompt()
 {
     // Build a single ANSI string: position → erase each line and move down → restore cursor.
 
-    TUI::cout << cursor_pos(prompt_row, 1) <<
-        TUI::ANSI_CLEAR_TO_END <<
-        cursor_pos(prompt_row, 1) << TUI::ANSI_RESET;
+    TOUT::cout << cursor_pos(prompt_row, 1) <<
+        TOUT::ANSI_CLEAR_TO_END <<
+        cursor_pos(prompt_row, 1) << TOUT::ANSI_RESET;
 }
 
 void KeyWatcher::LineBuffer::clear()
@@ -518,15 +518,15 @@ void KeyWatcher::LineBuffer::clear()
         draw_col = cached_prompt_col;
         cal_display_pos(text, draw_pos, draw_col, draw_row);
     }
-    TUI::cout << cursor_pos(prompt_row + draw_row - 1, draw_col) <<
-        TUI::ANSI_CLEAR_TO_END <<
-        cursor_pos(prompt_row + draw_row - 1, draw_col) << TUI::ANSI_RESET;
+    TOUT::cout << cursor_pos(prompt_row + draw_row - 1, draw_col) <<
+        TOUT::ANSI_CLEAR_TO_END <<
+        cursor_pos(prompt_row + draw_row - 1, draw_col) << TOUT::ANSI_RESET;
 }
 
 void KeyWatcher::LineBuffer::draw()
 {
     if (draw_pos < 0) {
-        TUI::cout << prompt;
+        TOUT::cout << prompt;
         draw_pos = 0;
     }
     std::string draw_text;
@@ -535,7 +535,7 @@ void KeyWatcher::LineBuffer::draw()
         auto& k = text[p];
             draw_text.append(reinterpret_cast<const char*>(k.code), k.size);
     }
-    TUI::cout << draw_text;
+    TOUT::cout << draw_text;
     draw_pos = pos;
 }
 
@@ -557,7 +557,7 @@ void KeyWatcher::LineBuffer::set_text(const std::string& _text)
 }
 
 void KeyWatcher::LineBuffer::print_hint() {
-	TUI::setAnsiCode(2); // dim
+    TOUT::setAnsiCode(2); // dim
     for (size_t i = 0; i < hint.size(); ++i) {
         if (hint[i] == '\n') {
             printf("\n");
@@ -701,10 +701,10 @@ int KeyWatcher::LineBuffer::show_completion_menu(std::vector<std::string>& _cand
     int scroll_amount = std::max(0, static_cast<int>(pos_before.row + total_menu_lines - H));
     // Build a single string with all newlines instead of N printf calls
     if (scroll_amount > 0) {
-        TUI::cout << cursor_pos(H, 1);
+        TOUT::cout << cursor_pos(H, 1);
         prompt_row -= scroll_amount;
         std::string cmd(scroll_amount, '\n');
-        TUI::cout << cmd;
+        TOUT::cout << cmd;
         draw_pos = -1;
     }
     auto pos = getCursorPos();
@@ -1181,7 +1181,7 @@ std::string KeyWatcher::readline(const char* prompt, ReadlineCallback cb) {
             // Print hint in dim color
             if (!buf.hint.empty()) {
                 buf.print_hint();
-                TUI::setAnsiCode(0); // reset color
+                TOUT::setAnsiCode(0); // reset color
             }
 
             final_row = buf.row + buf.prompt_row - 1;

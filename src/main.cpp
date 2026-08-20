@@ -63,11 +63,11 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
     bar << u8"\n";
     //bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
     //bar << TUI::color(u8"💸 " + std::to_string(tokens_used) + "/" + std::to_string(max_tokens), token_fg) << u8" │ ";
-    bar << TUI::color(u8"💸 " + std::to_string(tokens_used), token_fg) << u8" │ ";
-    bar << TUI::color(u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations), iter_fg) << u8" │ ";
-    bar << TUI::check(u8"Plan", task_planning) << " ";
-    bar << TUI::check(u8"Reflect", self_reflection) << " ";
-    bar << TUI::check(u8"MultiAgent", multi_agent) << u8" │ ";
+    bar << TOUT::color(u8"💸 " + std::to_string(tokens_used), token_fg) << u8" │ ";
+    bar << TOUT::color(u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations), iter_fg) << u8" │ ";
+    bar << TOUT::check(u8"Plan", task_planning) << " ";
+    bar << TOUT::check(u8"Reflect", self_reflection) << " ";
+    bar << TOUT::check(u8"MultiAgent", multi_agent) << u8" │ ";
 
     // User reply mode display
     const char* reply_mode_icon = "";
@@ -78,18 +78,18 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
         case agent::UserReplyMode::Edit:    reply_mode_icon = u8"✏️ edit"; reply_fg = AnsiColor::Cyan; break;
         case agent::UserReplyMode::Always:  reply_mode_icon = u8"🔄 always"; reply_fg = AnsiColor::Magenta; break;
     }
-    bar << u8"⛔: " << TUI::color(reply_mode_icon, reply_fg) << u8" │ ";
+    bar << u8"⛔: " << TOUT::color(reply_mode_icon, reply_fg) << u8" │ ";
 
-    bar << TUI::color(u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count), AnsiColor::Magenta);
+    bar << TOUT::color(u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count), AnsiColor::Magenta);
 
     // SafetyGuard status
     const char* mode_icon = strict_mode ? u8"🔒" : u8"🔓";
     AnsiColor mode_fg = strict_mode ? AnsiColor::Red : AnsiColor::Green;
-    bar << u8" │ " << TUI::color(mode_icon, mode_fg) << u8" 📄:" << std::to_string(whitelist_count);
+    bar << u8" │ " << TOUT::color(mode_icon, mode_fg) << u8" 📄:" << std::to_string(whitelist_count);
 
     bar << u8"\n";
 
-    TUI::cout << bar.str();
+    TOUT::cout << bar.str();
 }
 
 bool run_interactive(
@@ -102,7 +102,7 @@ bool run_interactive(
 
     if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
         // Save session to long-term memory before exiting.
-        TUI::cout << "\nGoodbye!\n";
+        TOUT::cout << "\nGoodbye!\n";
         return false;
     }
 
@@ -128,7 +128,7 @@ bool run_interactive(
     //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
     const int spinner_len = 8;
 
-    TUI::cout << "\nAgent: ";
+    TOUT::cout << "\nAgent: ";
 
     // Capture token usage from the LLM response
     agent::ChatResponse usage_info{};
@@ -138,36 +138,83 @@ bool run_interactive(
         // First reasoning token: show thinking indicator (dim)
         if (is_reasoning_flag && !in_reasoning) {
             in_reasoning = true;
-            TUI::printDim(u8"[🤔 thinking]");
+            TOUT::printDim(u8"[🤔 thinking]");
         }
         // Transition from reasoning to content: restore normal brightness
         else if (!is_reasoning_flag && in_reasoning) {
             in_reasoning = false;
-            TUI::reset();
+            TOUT::reset();
         }
 
-        TUI::cout << token;
-        TUI::cout.flush();
+        TOUT::cout << token;
+        TOUT::cout.flush();
         return true;  // keep streaming
         }, &usage_info);
 
     // Ensure terminal is back to normal even if reasoning was the last output.
     if (in_reasoning) {
         in_reasoning = false;
-        TUI::reset();
+        TOUT::reset();
     }
 
     // Display token usage if available
     if (usage_info.total_tokens() > 0) {
-        TUI::cout << u8"\n\n⏱  Tokens: ";
-        TUI::cout << "prompt=" << usage_info.prompt_tokens <<
+        TOUT::cout << u8"\n\n⏱  Tokens: ";
+        TOUT::cout << "prompt=" << usage_info.prompt_tokens <<
             ", completion=" << usage_info.completion_tokens;
         if (usage_info.max_tokens > 0)
-            TUI::cout << "/" << usage_info.max_tokens;
-        TUI::cout << ", total=" << usage_info.total_tokens() << "\n";
+            TOUT::cout << "/" << usage_info.max_tokens;
+        TOUT::cout << ", total=" << usage_info.total_tokens() << "\n";
     }
     return true;
 }
+
+void run_key_watcher(agent::Agent& ag)
+{
+    TOUT::cout << u8"╭─────────────────────────────╮\n";
+    TOUT::cout << u8"│  ZL Agent - Code Assistant  │\n";
+    TOUT::cout << u8"╰─────────────────────────────╯\n";
+
+    // Print initial status bar
+    TOUT::cout << u8"\nReady. Type your request (or '/help' '/h' for commands):\n";
+    auto& cfg = ag.get_config();
+    if (cfg.terminal_commands.enabled) {
+        TOUT::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
+    }
+
+    agent::KeyWatcher::start();
+    // Interactive loop with streaming output.
+    bool running = true;
+    while (running) {
+        print_status_bar(ag, ag.get_long_term_memory());
+        TOUT::cout << "\n";
+
+        std::string input;
+        {
+            agent::KeyWatcher::init_keyboard();
+            std::string prompt = "You:[" + ag.get_llm().get_model() + "]>";
+            input = agent::KeyWatcher::readline(prompt.c_str(), [&](const agent::Key& k) {
+                if (k == agent::Key::K_CTRL_C) {
+                    running = false;
+                    TOUT::cout << "\n";  // ensure newline after Ctrl-C
+                }
+                });
+            // Stop background Ctrl-C watcher.
+            agent::KeyWatcher::close_keyboard();
+
+            TOUT::cout << "\n";  // ensure newline after input
+        }
+        if (input.empty()) {
+            continue;  // just an empty Enter, stay in loop
+        }
+
+        std::string response;
+        running = run_interactive(input, ag.get_dispatcher(), ag.get_terminal_detector(), ag, response);
+    }
+    agent::KeyWatcher::stop();
+}
+
+void tui_main(agent::Agent& ag);
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
@@ -179,12 +226,14 @@ int main(int argc, char* argv[]) {
     std::string cli_model;
     std::string cli_prompt;
 
+    bool use_tui = false;
+
     // Parse CLI arguments: -m <model>  -p <prompt>
     {
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
             if (arg == "-h" || arg == "--help") {
-                TUI::cout << "Usage: zlagent [options]\n"
+                TOUT::cout << "Usage: zlagent [options]\n"
                          "\nOptions:\n"
                          "  -m <model>    Override LLM model name (does not write to config)\n"
                          "  -p <prompt>   Run a single prompt and exit\n"
@@ -197,12 +246,12 @@ int main(int argc, char* argv[]) {
                 cli_prompt = argv[++i];
                 cli_mode = true;
             }
+            else if (arg == "-tui") {
+                use_tui = true;
+            }
         }
     }
 
-    TUI::cout << u8"╭─────────────────────────────╮\n";
-    TUI::cout << u8"│  ZL Agent - Code Assistant  │\n";
-    TUI::cout << u8"╰─────────────────────────────╯\n";
 
     agent::Agent ag;
     set_global_agent(&ag);
@@ -253,54 +302,20 @@ int main(int argc, char* argv[]) {
         });
 
         telegram_client->start();
-        TUI::cout << u8"\n🤖 Telegram bot connected. Listening for messages...\n";
-    }
-
-
-    // Print initial status bar
-    TUI::cout << u8"\nReady. Type your request (or '/help' '/h' for commands):\n";
-    if (cfg.terminal_commands.enabled) {
-        TUI::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
+        TOUT::cout << u8"\n🤖 Telegram bot connected. Listening for messages...\n";
     }
 
     // If -p was provided, use it as the single prompt instead of reading interactively.
-    std::string cli_input = cli_prompt;
-
-    agent::KeyWatcher::start();
-    // Interactive loop with streaming output.
-	bool running = true;
-    while (running) {
-        print_status_bar(ag, long_term_memory);
-        TUI::cout << "\n";
-        
-        std::string input;
-        if (!cli_input.empty()) {
-            input = cli_input;
-            cli_input.clear();  // consume once
-            running = false;    // Exit after one interaction in CLI mode
-        }
-        else {
-            agent::KeyWatcher::init_keyboard();
-            std::string prompt = "You:[" + ag.get_llm().get_model() + "]>";
-            input = agent::KeyWatcher::readline(prompt.c_str(), [&](const agent::Key& k) {
-                if (k == agent::Key::K_CTRL_C) {
-                    running = false;
-                    TUI::cout << "\n";  // ensure newline after Ctrl-C
-                }
-                });
-            // Stop background Ctrl-C watcher.
-            agent::KeyWatcher::close_keyboard();
-
-			TUI::cout << "\n";  // ensure newline after input
-        }
-        if (input.empty()) {
-            continue;  // just an empty Enter, stay in loop
-        }
-
-			std::string response;
-        running = run_interactive(input, dispatcher, terminal_detector, ag, response);
+    if (!cli_prompt.empty()) {
+        std::string response;
+        run_interactive(cli_prompt, dispatcher, terminal_detector, ag, response);
     }
-    agent::KeyWatcher::stop();
+    else if(use_tui) {
+        tui_main(ag);
+    }
+    else {
+        run_key_watcher(ag);
+    }
 
     // === Cleanup on exit ===
     ag.save_session();

@@ -41,7 +41,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("basic_search_matches", result.find("int main()") != std::string::npos);
 
         safe_remove_all(dir);
@@ -67,7 +67,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("case_insensitive_match", result.find("INT MAIN()") != std::string::npos);
 
         safe_remove_all(dir);
@@ -94,7 +94,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("regex_vector_match", result.find("std::vector<int>") != std::string::npos);
         UNIT_TEST("regex_string_match", result.find("std::string s") != std::string::npos);
 
@@ -121,7 +121,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("no_matches_found", result.find("No matches found") != std::string::npos);
 
         safe_remove_all(dir);
@@ -152,7 +152,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("filter_cpp_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("filter_cpp_no_foo", result.find("void foo()") == std::string::npos);
 
@@ -184,7 +184,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("filter_h_no_main", result.find("int main()") == std::string::npos);
         UNIT_TEST("filter_h_has_foo", result.find("void foo()") != std::string::npos);
 
@@ -226,7 +226,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("whitelist_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("whitelist_has_foo", result.find("void foo()") != std::string::npos);
         // Non-code files should not appear in results
@@ -257,7 +257,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("override_has_main", result.find("int main()") != std::string::npos);
 
         safe_remove_all(dir);
@@ -295,7 +295,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
 
         for (const auto& t : tests) {
             UNIT_TEST((std::string("ext_has_") + t.ext), result.find(t.content) != std::string::npos);
@@ -331,7 +331,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("recursive_has_top", result.find("int top()") != std::string::npos);
         UNIT_TEST("recursive_has_mid", result.find("int mid()") != std::string::npos);
         UNIT_TEST("recursive_has_bottom", result.find("int bottom()") != std::string::npos);
@@ -362,7 +362,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("hidden_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("hidden_no_secret", result.find("secret_data") == std::string::npos);
 
@@ -397,7 +397,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("gitignore_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("gitignore_no_binary", result.find("binary_data") == std::string::npos);
 
@@ -438,7 +438,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("nested_gitignore_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("nested_gitignore_no_game_loop", result.find("void game_loop()") == std::string::npos);
         UNIT_TEST("nested_gitignore_has_serve", result.find("void serve()") != std::string::npos);
@@ -474,7 +474,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("hgignore_has_main", result.find("int main()") != std::string::npos);
         UNIT_TEST("hgignore_no_bundled", result.find("bundled_code") == std::string::npos);
 
@@ -528,7 +528,7 @@ void test_code_search_tools(UnitReport& parent)
         tool->show_arguments(args_str);
         tool->show_preview(args_str);
         std::string result = tool->execute(args_str);
-        std::cout << TUI::ANSI_BRIGHT_BLACK << result << TUI::ANSI_RESET;
+        std::cout << TOUT::ANSI_BRIGHT_BLACK << result << TOUT::ANSI_RESET;
         UNIT_TEST("non_existent_directory_no_matches", result.find("No matches found") != std::string::npos);
     }
 

@@ -95,6 +95,9 @@ set(CORE_IMPL
     src/telegram_client.cpp
     # Project summary tool
     src/project_summary/summary_tool.cpp
+
+    # TUI
+    src/tui/tui_main.cpp
 )
 
 # Tool source files
@@ -109,8 +112,16 @@ set(TOOL_SOURCES
     tools/overview_tool.cpp
 )
 
+# zlTUI source files
+set(ZLTUI_SOURCES
+    zltui/src/zltui.cpp
+)
+
 # Include directories
-include_directories(include)
+include_directories(
+    include
+    zltui/include
+)
 
 # OpenSSL configuration for HTTPS support
 if(MSVC AND EXISTS "${CMAKE_BINARY_DIR}/packages/openssl-native.3.5.5/include")
@@ -124,8 +135,12 @@ add_library(zlagent_core STATIC
     ${CORE_SOURCES}
     ${CORE_IMPL}
     ${TOOL_SOURCES}
+    ${ZLTUI_SOURCES}
 )
-target_include_directories(zlagent_core PRIVATE include)
+target_include_directories(zlagent_core PRIVATE
+    include
+    zltui/include
+)
 target_precompile_headers(zlagent_core PRIVATE include/pch.h)
 if(MSVC)
     target_compile_options(zlagent_core PRIVATE /utf-8 /wd4566)
