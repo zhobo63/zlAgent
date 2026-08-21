@@ -58,6 +58,10 @@ TOUT::OutputMode_ TOUT::output_mode = TOUT::OutputMode_cout;
 TOUT::OStream TOUT::cout;
 TOUT::OStream TOUT::cerr;
 
+TOUT::fn_message TOUT::on_message;
+TOUT::fn_append TOUT::on_append;
+TOUT::fn_token TOUT::on_token;
+
 std::mutex& TOUT::s_mutex() {
     static std::mutex mtx;
     return mtx;
@@ -89,6 +93,17 @@ static const char* level_color(int lvl) {
     }
 }
 
+static TUI::Color level_tui_color(int lvl)
+{
+    switch (lvl) {
+    case 0: return TUI::AnsiColor_Bright_Black;
+    case 1: return TUI::AnsiColor_Cyan;
+    case 2: return TUI::AnsiColor_Yellow;
+    case 3: return TUI::AnsiColor_Red;
+    default: return TUI::AnsiColor_White;
+    }
+}
+
 
 void TOUT::log(int lv, const char* component, const std::string& msg)
 {
@@ -98,7 +113,10 @@ void TOUT::log(int lv, const char* component, const std::string& msg)
             << component << " " << msg << TUI::ANSI_RESET << "\n";
         break;
     case OutputMode_TUI:
-
+        if (on_message) {
+            on_message(level_tui_color(lv),
+                       level_tag(lv) + std::string(component) + " " + msg);
+        }
         break;
     }
 }
@@ -110,7 +128,9 @@ void TOUT::message(const TUI::Color color, const std::string& msg)
         cout << color.toAnsi(true) << msg << TUI::ANSI_RESET << "\n";
         break;
     case OutputMode_TUI:
-
+        if (on_message) {
+            on_message(color, msg);
+        }
         break;
     }
 }
@@ -131,7 +151,9 @@ void TOUT::append(const std::string& msg)
         cout << msg;
         break;
     case OutputMode_TUI:
-
+        if (on_append) {
+            on_append(msg);
+        }
         break;
     }
 }
@@ -140,6 +162,20 @@ void TOUT::append(const TUI::Color& fgcolor, const std::string& msg)
 {
     set_style(fgcolor);
     append(msg);
+}
+
+void TOUT::token(bool reasoning, const std::string& msg)
+{
+    switch (output_mode) {
+    case OutputMode_cout:
+        append(msg);
+        break;
+    case OutputMode_TUI:
+        if (on_token) {
+            on_token(reasoning, msg);
+        }
+        break;
+    }
 }
 
 void TOUT::check(const std::string& text, bool checked) {

@@ -147,7 +147,7 @@ bool run_interactive(
             TOUT::set_style(TUI::AnsiColor_White);
         }
 
-        TOUT::append(token);
+        TOUT::token(is_reasoning_flag, token);
         return true;  // keep streaming
         }, &usage_info);
 

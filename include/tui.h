@@ -23,6 +23,13 @@ public:
 
     // ── Utility functions ─────────────────────────
 
+    using fn_message = std::function<void(const TUI::Color color, const std::string& msg)>;
+    using fn_append = std::function<void(const std::string& msg)>;
+    using fn_token = std::function<void(bool reasoning, const std::string& msg)>;
+    static fn_message on_message;
+    static fn_append on_append;
+    static fn_token on_token;
+
     static void log(int lv, const char* component, const std::string& msg);
     static void message(const TUI::Color color, const std::string& msg);
 
@@ -31,6 +38,7 @@ public:
     static void set_style(const TUI::Color& fgcolor);
     static void append(const std::string& msg);
     static void append(const TUI::Color& fgcolor, const std::string& msg);
+    static void token(bool reasoning, const std::string& msg);
     static void check(const std::string& text, bool checked);
     static void diff(const std::string& path, const agent::Diff& diff);
     static void markdown(const std::string& msg);
