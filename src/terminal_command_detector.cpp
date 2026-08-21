@@ -233,10 +233,11 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
         response = err_msg;
         return false;
     }
+    TOUT::set_style(TUI::AnsiColor_White);
 
     char buffer[4096] = { 0 };
     while (fgets(buffer, sizeof(buffer), pipe)) {
-        TOUT::cout << buffer;
+        TOUT::append(buffer);
         response += buffer;
     }
 
@@ -259,9 +260,9 @@ bool TerminalCommandDetector::detect_and_execute(const std::string& input, std::
 
     case CommandConfidence::Low: {
         // Low confidence — ask user to confirm.
-        TOUT::cout << u8"\u26A0 Detected possible terminal command: "
-            << input << "\n"
-            << u8"   Execute directly? [y/N]: ";
+        TOUT::append(TUI::AnsiColor_Bright_Red, u8"\u26A0 Detected possible terminal command: "
+            + input + "\n"
+            + u8"   Execute directly? [y/N]: ");
 
         bool confirmed = SafetyGuard::ask_user_confirm(
             "Execute this terminal command?", 30);

@@ -65,29 +65,27 @@ UserReplyResult prompt_user_reply(
     bool is_error = !error_message.empty();
 
     // Display the intervention prompt.
-    TOUT::cout << u8"\n\u23F8  [User Reply]";
+    TOUT::append(TUI::AnsiColor_Yellow, u8"\n\u23F8  [User Reply]");
     if (is_error) {
-        TOUT::cout << " Tool failed: " << tool_name;
+        TOUT::append(TUI::AnsiColor_Bright_Red, " Tool failed: " + tool_name);
     } else {
-        TOUT::cout << " Tool: " << tool_name;
+        TOUT::append(" Tool: " + tool_name);
     }
-    TOUT::cout << "\n"
-              << "    Args: " << json_args << "\n";
+    TOUT::append("\n    Args: " + json_args + "\n");
 
     if (is_error) {
         // Show only the first line of the error for brevity.
         auto nl = error_message.find('\n');
         std::string err_preview = (nl != std::string::npos) ? error_message.substr(0, nl) : error_message;
-        TOUT::cout << "    Error: " << truncate(err_preview, 120) << "\n";
+        TOUT::message(TUI::AnsiColor_Bright_Red, "    Error: " + truncate(err_preview, 120));
     }
 
     // Action descriptions differ slightly depending on whether this is an error or a pre-check.
-    TOUT::cout << "\n"
-              << "    What would you like to do?\n"
-              << "    y/yes   - Retry with same arguments\n"
-              << "    n/no    - Skip this tool call\n";
+    TOUT::append("\n    What would you like to do?\n"
+        "    y/yes   - Retry with same arguments\n"
+        "    n/no    - Skip this tool call\n");
 
-    TOUT::cout << "\n    Reply: ";
+    TOUT::append("\n    Reply: ");
 
     bool confirmed = SafetyGuard::ask_user_confirm(
         is_error ? ("Retry tool call? (y=retry, n=skip)") : ("Proceed with tool call? (y=yes, n=no)"), 60);

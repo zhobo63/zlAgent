@@ -24,7 +24,7 @@ bool CommandDispatcher::dispatch(const std::string& raw_input, std::string& resp
         LOG_ERROR("CommandDispatcher", response);
         return true; // handled - don't send to LLM
     }
-    TOUT::cout << "\n";
+    TOUT::append("\n");
     it->second(args, response);
     return true;
 }

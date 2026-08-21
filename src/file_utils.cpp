@@ -293,7 +293,7 @@ namespace agent {
 
 // ── Helpers for DiffEdit ───────────────────────────────
 
-std::string DiffEdit(const std::string& old_text,
+Diff DiffEdit(const std::string& old_text,
                      const std::string& new_text,
                      int start_line) {
     auto old_lines = split_lines(old_text);
@@ -325,22 +325,22 @@ std::string DiffEdit(const std::string& old_text,
     std::reverse(lcs_lines.begin(), lcs_lines.end());
 
     // Collect diff operations: Context, Remove, Add
-    enum class DiffOp { Context, Remove, Add };
-    struct DiffEntry { DiffOp op; std::string line; };
+    // enum class DiffOp { Context, Remove, Add };
+    struct DiffEntry { Diff::OP_ op; std::string line; };
     std::vector<DiffEntry> entries;
 
     int oi = 0, ni = 0, li = 0;
     while (oi < m || ni < n) {
         while (oi < m &&
                (li >= static_cast<int>(lcs_lines.size()) || old_lines[oi] != lcs_lines[li])) {
-            entries.push_back({DiffOp::Remove, old_lines[oi]}); ++oi;
+            entries.push_back({Diff::Remove, old_lines[oi]}); ++oi;
         }
         while (ni < n &&
                (li >= static_cast<int>(lcs_lines.size()) || new_lines[ni] != lcs_lines[li])) {
-            entries.push_back({DiffOp::Add, new_lines[ni]}); ++ni;
+            entries.push_back({Diff::Add, new_lines[ni]}); ++ni;
         }
         if (li < static_cast<int>(lcs_lines.size())) {
-            entries.push_back({DiffOp::Context, lcs_lines[li]});
+            entries.push_back({Diff::Context, lcs_lines[li]});
             ++oi; ++ni; ++li;
         }
     }
@@ -349,7 +349,7 @@ std::string DiffEdit(const std::string& old_text,
     constexpr int CONTEXT_LINES = 3;
     std::ostringstream oss;
 
-    if (entries.empty()) return "";
+    if (entries.empty()) return {};
 
     // Compute old/new line numbers for each entry
     std::vector<int> old_line(entries.size(), -1); // -1 means no old-line mapping
@@ -357,11 +357,11 @@ std::string DiffEdit(const std::string& old_text,
     int ol = start_line, nl = start_line;
     for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
         switch (entries[k].op) {
-            case DiffOp::Context:
+            case Diff::Context:
                 old_line[k] = ol++; new_line[k] = nl++; break;
-            case DiffOp::Remove:
+            case Diff::Remove:
                 old_line[k] = ol++; break;
-            case DiffOp::Add:
+            case Diff::Add:
                 new_line[k] = nl++; break;
         }
     }
@@ -369,7 +369,7 @@ std::string DiffEdit(const std::string& old_text,
     // Find indices of change entries (Remove or Add)
     std::vector<int> change_indices;
     for (int k = 0; k < static_cast<int>(entries.size()); ++k) {
-        if (entries[k].op != DiffOp::Context)
+        if (entries[k].op != Diff::Context)
             change_indices.push_back(k);
     }
 
@@ -388,12 +388,14 @@ std::string DiffEdit(const std::string& old_text,
         groups.push_back({ci, ci});
     }
 
-    auto fmt_line_num = [&](int ln) -> std::string {
-        if (start_line <= 0 || ln < 0) return "";
-        char buf[16];
-        int w = static_cast<int>(std::snprintf(buf, sizeof(buf), "%d", ln));
-        return std::string(buf, w);
-    };
+    //auto fmt_line_num = [&](int ln) -> std::string {
+    //    if (start_line <= 0 || ln < 0) return "";
+    //    char buf[16];
+    //    int w = static_cast<int>(std::snprintf(buf, sizeof(buf), "%d", ln));
+    //    return std::string(buf, w);
+    //};
+
+    Diff diff;
 
     for (int gi = 0; gi < static_cast<int>(groups.size()); ++gi) {
         auto& [gfirst, glast] = groups[gi];
@@ -404,34 +406,35 @@ std::string DiffEdit(const std::string& old_text,
         int start = std::max(first_change - CONTEXT_LINES, 0);
         int end   = std::min(last_change + CONTEXT_LINES, static_cast<int>(entries.size()) - 1);
 
-        if (gi > 0) oss << "---\n";
-
+        if (gi > 0) {
+            //oss << "---\n";
+            diff.lines.push_back({Diff::Separator});
+        }
         for (int k = start; k <= end; ++k) {
             const auto& e = entries[k];
-            switch (e.op) {
-                case DiffOp::Context: {
-                    std::string ln = fmt_line_num(old_line[k]);
-                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TOUT::ANSI_RESET << "  " << e.line << "\n";
-                    break;
-                }
-                case DiffOp::Remove: {
-                    std::string ln = fmt_line_num(old_line[k]);
-                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TOUT::ANSI_RESET << " " << TOUT::ANSI_FG_RED << "-" << e.line << TOUT::ANSI_RESET << "\n";
-                    break;
-                }
-                case DiffOp::Add: {
-                    std::string ln = fmt_line_num(new_line[k]);
-                    if (!ln.empty()) oss << TOUT::ANSI_FG_WHITE << "\033[2m";
-                    oss << ln << TOUT::ANSI_RESET << " " << TOUT::ANSI_FG_GREEN << "+" << e.line << TOUT::ANSI_RESET << "\n";
-                    break;
-                }
-            }
+            diff.lines.push_back({ e.op, old_line[k], e.line });
+            diff.max_line = std::max(diff.max_line, old_line[k]);
+            //switch (e.op) {
+            //    case DiffOp::Context: {
+            //        std::string ln = fmt_line_num(old_line[k]);
+            //        oss << ln << "  " << e.line << "\n";
+            //        break;
+            //    }
+            //    case DiffOp::Remove: {
+            //        std::string ln = fmt_line_num(old_line[k]);
+            //        oss << ln << " -" << e.line << "\n";
+            //        break;
+            //    }
+            //    case DiffOp::Add: {
+            //        std::string ln = fmt_line_num(new_line[k]);
+            //        oss << ln << " +" << e.line << "\n";
+            //        break;
+            //    }
+            //}
         }
     }
 
-    return oss.str();
+    return std::move(diff);
 }
 
 // ── EditedLines: show the edited content with line numbers ───────────────────────

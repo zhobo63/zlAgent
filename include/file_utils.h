@@ -96,7 +96,26 @@ std::string ReadFileLinesAsString(const std::string& path, int startLine, int en
 /// Context lines (unchanged) are shown without color. Line numbers are prefixed in gray.
 /// start_line is the 1-based line number of the first line of old_text; new_text continues
 /// from there. If start_line <= 0, no line numbers are printed.
-std::string DiffEdit(const std::string& old_text,
+
+struct Diff {
+    enum OP_ {
+        Context,
+        Remove,
+        Add,
+        Separator,
+    };
+
+    struct Line {
+        OP_ op;
+        int number = 0;
+        std::string line = "";
+    };
+    int max_line = 0;
+    std::vector<Line> lines;
+};
+
+
+Diff DiffEdit(const std::string& old_text,
                      const std::string& new_text,
                      int start_line = 0);
 

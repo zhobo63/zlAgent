@@ -591,23 +591,23 @@ void ProjectSummaryEngine::generate_summary(std::ostream& out) const {
 // ── Preview printing ──────────────────────────────────────
 
 void ProjectSummaryEngine::print_preview() const {
-    TOUT::cout << u8"=== 專案摘要 ===\n\n";
+    TOUT::append(TUI::AnsiColor_White, u8"=== 專案摘要 ===\n\n");
 
     auto modules = group_modules();
 
     for (const auto& [name, module] : modules) {
-        TOUT::cout << u8"📁 " << name
-                  << u8" — " << module.files.size() << " files"
-                  << u8", " << module.total_lines << " lines"
-                  << u8", " << module.class_count << " classes"
-                  << u8", " << module.function_count << " functions\n";
+        TOUT::append(u8"📁 " + name
+            + u8" — " + std::to_string(module.files.size()) + " files"
+            + u8", " + std::to_string(module.total_lines) + " lines"
+            + u8", " + std::to_string(module.class_count) + " classes"
+            + u8", " + std::to_string(module.function_count) + " functions\n");
     }
 
-    TOUT::cout << u8"\n📊 Total: "
-              << total_files << " files, "
-              << total_lines << " lines, "
-              << total_classes << " classes, "
-              << total_functions << " functions\n";
+    TOUT::append(u8"\n📊 Total: "
+        + std::to_string(total_files) + " files, "
+        + std::to_string(total_lines) + " lines, "
+        + std::to_string(total_classes) + " classes, "
+        + std::to_string(total_functions) + " functions\n");
 }
 
 // ── Convenience functions ─────────────────────────────────

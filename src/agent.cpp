@@ -540,7 +540,7 @@ void Agent::save_session()
 {
     if (long_term_memory_) {
         // Fast save — no LLM calls. Just stores timestamp and message count.
-        TOUT::cout << "\nSaving session to long-term memory...\n";
+        TOUT::message(TUI::AnsiColor_White, "\nSaving session to long-term memory...");
         long_term_memory_->save_session(memory_);
     }
 
@@ -797,7 +797,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
         // If task planning is enabled and the input looks like a complex task, use the advanced pipeline.
         if (task_planning_ && needs_planning(resp)) {
-            TOUT::cout << run_planned(user_input, resp, on_token);
+            TOUT::message(TUI::AnsiColor_White, run_planned(user_input, resp, on_token));
             return resp;
         }
 
@@ -892,7 +892,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             memory_.add(tool_msg);
 
             LOG_INFO(u8"🛠️Tool", "Result: " + std::to_string(result.size()) + " bytes\n");
-            LOG_DEBUG(tc.name.c_str(), result);
+            TOUT::tool_result(tc.name, result);
         }
 
         // Loop again - LLM will see tool results and decide next action

@@ -868,62 +868,78 @@ static void test_diff_edit(UnitReport& parent)
     UnitReport unit("diff_edit");
     LOG_INFO("file_utils", "diff_edit");
 
+    const auto has_diff_line = [](const Diff& diff, Diff::OP_ op,
+                                  const std::string& text) {
+        for (const auto& line : diff.lines) {
+            if (line.op == op && line.line == text) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     // --- Test 1: No diff (same text) ---
     {
         LOG_INFO("file_utils", "diffedit_no_diff");
-        std::string result = DiffEdit("hello\nworld\n", "hello\nworld\n", 1);
-        UNIT_TEST("empty_result", result.empty());
+        auto result = DiffEdit("hello\nworld\n", "hello\nworld\n", 1);
+        UNIT_TEST("empty_result", result.lines.empty());
     }
 
     // --- Test 2: Simple removal ---
     {
         LOG_INFO("file_utils", "diffedit_simple_removal");
-        std::string result = DiffEdit("a\nb\nc\n", "a\nc\n", 1);
-        UNIT_TEST("not_empty", !result.empty());
-        UNIT_TEST("contains_minus_b", result.find("-b") != std::string::npos || result.find("-") != std::string::npos);
+        auto result = DiffEdit("a\nb\nc\n", "a\nc\n", 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
+        UNIT_TEST("contains_removed_b",
+                  has_diff_line(result, Diff::Remove, "b"));
     }
 
     // --- Test 3: Simple addition ---
     {
         LOG_INFO("file_utils", "diffedit_simple_addition");
-        std::string result = DiffEdit("a\nc\n", "a\nb\nc\n", 1);
-        UNIT_TEST("not_empty", !result.empty());
-        UNIT_TEST("contains_plus_b", result.find("+b") != std::string::npos || result.find("+") != std::string::npos);
+        auto result = DiffEdit("a\nc\n", "a\nb\nc\n", 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
+        UNIT_TEST("contains_added_b",
+                  has_diff_line(result, Diff::Add, "b"));
     }
 
     // --- Test 4: Modification (remove + add) ---
     {
         LOG_INFO("file_utils", "diffedit_modification");
-        std::string result = DiffEdit("a\nb\nc\n", "a\nx\nc\n", 1);
-        UNIT_TEST("not_empty", !result.empty());
+        auto result = DiffEdit("a\nb\nc\n", "a\nx\nc\n", 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
+        UNIT_TEST("contains_removed_b",
+                  has_diff_line(result, Diff::Remove, "b"));
+        UNIT_TEST("contains_added_x",
+                  has_diff_line(result, Diff::Add, "x"));
     }
 
     // --- Test 5: Empty old text ---
     {
         LOG_INFO("file_utils", "diffedit_empty_old");
-        std::string result = DiffEdit("", "hello\n", 1);
-        UNIT_TEST("not_empty", !result.empty());
+        auto result = DiffEdit("", "hello\n", 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
     }
 
     // --- Test 6: Empty new text ---
     {
         LOG_INFO("file_utils", "diffedit_empty_new");
-        std::string result = DiffEdit("hello\n", "", 1);
-        UNIT_TEST("not_empty", !result.empty());
+        auto result = DiffEdit("hello\n", "", 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
     }
 
     // --- Test 7: Both empty ---
     {
         LOG_INFO("file_utils", "diffedit_both_empty");
-        std::string result = DiffEdit("", "", 1);
-        UNIT_TEST("empty_result", result.empty());
+        auto result = DiffEdit("", "", 1);
+        UNIT_TEST("empty_result", result.lines.empty());
     }
 
     // --- Test 8: start_line <= 0 (no line numbers) ---
     {
         LOG_INFO("file_utils", "diffedit_no_line_numbers");
-        std::string result = DiffEdit("a\nb\nc\n", "a\nx\nc\n", 0);
-        UNIT_TEST("not_empty", !result.empty());
+        auto result = DiffEdit("a\nb\nc\n", "a\nx\nc\n", 0);
+        UNIT_TEST("not_empty", !result.lines.empty());
     }
 
     // --- Test 9: Large diff with context compression (--- separator) ---
@@ -938,10 +954,17 @@ static void test_diff_edit(UnitReport& parent)
         old_text = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nq\nr\ns\nt\nu\nv\nw\nx\ny\nz\n";
         new_text  = "a\nB\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nQ\nr\ns\nt\nu\nv\nw\nx\ny\nz\n";
 
-        std::string result = DiffEdit(old_text, new_text, 1);
-        UNIT_TEST("not_empty", !result.empty());
-        // Two distant changes should produce a "---" separator
-        UNIT_TEST("has_separator", result.find("---") != std::string::npos);
+        auto result = DiffEdit(old_text, new_text, 1);
+        UNIT_TEST("not_empty", !result.lines.empty());
+        // Two distant changes should produce a separator.
+        bool has_separator = false;
+        for (const auto& line : result.lines) {
+            if (line.op == Diff::Separator) {
+                has_separator = true;
+                break;
+            }
+        }
+        UNIT_TEST("has_separator", has_separator);
     }
 
     parent.report.push_back(unit);

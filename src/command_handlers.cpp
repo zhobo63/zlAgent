@@ -657,7 +657,7 @@ void register_command_handlers(
 
         std::ostringstream out;
         generate_report(path, out);
-        TOUT::cout << out.str();
+        TOUT::markdown(out.str());
         //quick_summary(path);
     });
 

@@ -52,44 +52,43 @@ static void print_status_bar(const agent::Agent& ag, const std::unique_ptr<agent
 
     // Token ratio color: <50% green → <80% yellow → ≥80% red
     double token_ratio = (max_tokens > 0) ? (double)tokens_used / max_tokens : 0;
-    AnsiColor token_fg = token_ratio < 0.5 ? AnsiColor::Green : token_ratio < 0.8 ? AnsiColor::Yellow : AnsiColor::Red;
+    TUI::Color token_fg = token_ratio < 0.5 ? TUI::AnsiColor_Green : token_ratio < 0.8 ? TUI::AnsiColor_Yellow : TUI::AnsiColor_Red;
 
     // Iteration ratio color: ≥80% red, else cyan
     double iter_ratio = (max_iterations > 0) ? (double)current_iteration / max_iterations : 0;
-    AnsiColor iter_fg = iter_ratio >= 0.8 ? AnsiColor::Red : AnsiColor::Cyan;
+    TUI::Color iter_fg = iter_ratio >= 0.8 ? TUI::AnsiColor_Red : TUI::AnsiColor_Cyan;
 
     // Build the bar content (single line)
-    std::ostringstream bar;
-    bar << u8"\n";
-    //bar << TUI::color(u8"🤖 " + s.model_name, AnsiColor::Blue, true) << u8" │ ";
-    //bar << TUI::color(u8"💸 " + std::to_string(tokens_used) + "/" + std::to_string(max_tokens), token_fg) << u8" │ ";
-    bar << TOUT::color(u8"💸 " + std::to_string(tokens_used), token_fg) << u8" │ ";
-    bar << TOUT::color(u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations), iter_fg) << u8" │ ";
-    bar << TOUT::check(u8"Plan", task_planning) << " ";
-    bar << TOUT::check(u8"Reflect", self_reflection) << " ";
-    bar << TOUT::check(u8"MultiAgent", multi_agent) << u8" │ ";
+    TOUT::append("\n");
+    TOUT::append(token_fg, u8"💸 " + std::to_string(tokens_used));
+    TOUT::append(TUI::AnsiColor_Bright_Black, u8"．");
+    TOUT::append(iter_fg, u8"🔁 " + std::to_string(current_iteration) + "/" + std::to_string(max_iterations));
+    TOUT::append(TUI::AnsiColor_Bright_Black, u8"．");
+    TOUT::check(u8"Plan ", task_planning);
+    TOUT::check(u8"Reflect ", self_reflection);
+    TOUT::check(u8"MultiAgent", multi_agent);
+    TOUT::append(TUI::AnsiColor_Bright_Black, u8"．");
 
     // User reply mode display
-    const char* reply_mode_icon = "";
-    AnsiColor reply_fg = AnsiColor::BrightBlack;
+    std::string reply_mode_icon = "";
+    TUI::Color reply_fg = { TUI::AnsiColor_Bright_Black };
     switch (user_reply_mode) {
         case agent::UserReplyMode::Off:     reply_mode_icon = u8"❌ off"; break;
-        case agent::UserReplyMode::Exec:    reply_mode_icon = u8"🔧 exec"; reply_fg = AnsiColor::Yellow; break;
-        case agent::UserReplyMode::Edit:    reply_mode_icon = u8"✏️ edit"; reply_fg = AnsiColor::Cyan; break;
-        case agent::UserReplyMode::Always:  reply_mode_icon = u8"🔄 always"; reply_fg = AnsiColor::Magenta; break;
+        case agent::UserReplyMode::Exec:    reply_mode_icon = u8"🔧 exec"; reply_fg = TUI::AnsiColor_Yellow; break;
+        case agent::UserReplyMode::Edit:    reply_mode_icon = u8"✏️ edit"; reply_fg = TUI::AnsiColor_Cyan; break;
+        case agent::UserReplyMode::Always:  reply_mode_icon = u8"🔄 always"; reply_fg = TUI::AnsiColor_Magenta; break;
     }
-    bar << u8"⛔: " << TOUT::color(reply_mode_icon, reply_fg) << u8" │ ";
-
-    bar << TOUT::color(u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count), AnsiColor::Magenta);
+    TOUT::append(reply_fg, u8"⛔: " + reply_mode_icon);
+    TOUT::append(TUI::AnsiColor_Bright_Black, u8"．");
+    TOUT::append(TUI::AnsiColor_Magenta, u8"💾 Msg:" + std::to_string(memory_count) + " Fact:" + std::to_string(facts_count));
 
     // SafetyGuard status
-    const char* mode_icon = strict_mode ? u8"🔒" : u8"🔓";
-    AnsiColor mode_fg = strict_mode ? AnsiColor::Red : AnsiColor::Green;
-    bar << u8" │ " << TOUT::color(mode_icon, mode_fg) << u8" 📄:" << std::to_string(whitelist_count);
-
-    bar << u8"\n";
-
-    TOUT::cout << bar.str();
+    std::string mode_icon = strict_mode ? u8"🔒" : u8"🔓";
+    TUI::Color mode_fg = strict_mode ? TUI::AnsiColor_Red : TUI::AnsiColor_Green;
+    TOUT::append(TUI::AnsiColor_Bright_Black, u8"．");
+    TOUT::append(mode_fg, mode_icon);
+    TOUT::append(u8" 📄:" + std::to_string(whitelist_count));
+    TOUT::append("\n");
 }
 
 bool run_interactive(
@@ -102,7 +101,7 @@ bool run_interactive(
 
     if (input == "quit" || input == "exit" || input == "/quit" || input == "/exit") {
         // Save session to long-term memory before exiting.
-        TOUT::cout << "\nGoodbye!\n";
+        TOUT::message(TUI::AnsiColor_Bright_Red, "\nGoodbye!\n");
         return false;
     }
 
@@ -128,7 +127,7 @@ bool run_interactive(
     //const char* spinners = u8"⠋⠙⠹⠸⠼⠴⠦⠧";  // ⠋⠙⠹⠸⠼⠴⠦⠧
     const int spinner_len = 8;
 
-    TOUT::cout << "\nAgent: ";
+    TOUT::message(TUI::AnsiColor_Bright_Blue, "\nAgent: ");
 
     // Capture token usage from the LLM response
     agent::ChatResponse usage_info{};
@@ -138,48 +137,49 @@ bool run_interactive(
         // First reasoning token: show thinking indicator (dim)
         if (is_reasoning_flag && !in_reasoning) {
             in_reasoning = true;
-            TOUT::printDim(u8"[🤔 thinking]");
+            TOUT::message({ TUI::AnsiColor_Bright_Yellow }, u8"[🤔thinking]");
+            TOUT::set_style(TUI::AnsiColor_Bright_Black);
         }
         // Transition from reasoning to content: restore normal brightness
         else if (!is_reasoning_flag && in_reasoning) {
             in_reasoning = false;
-            TOUT::reset();
+            TOUT::message({ TUI::AnsiColor_Bright_Cyan }, u8"[💡answer]");
+            TOUT::set_style(TUI::AnsiColor_White);
         }
 
-        TOUT::cout << token;
-        TOUT::cout.flush();
+        TOUT::append(token);
         return true;  // keep streaming
         }, &usage_info);
 
     // Ensure terminal is back to normal even if reasoning was the last output.
     if (in_reasoning) {
         in_reasoning = false;
-        TOUT::reset();
     }
 
     // Display token usage if available
     if (usage_info.total_tokens() > 0) {
-        TOUT::cout << u8"\n\n⏱  Tokens: ";
-        TOUT::cout << "prompt=" << usage_info.prompt_tokens <<
-            ", completion=" << usage_info.completion_tokens;
+        std::string usage = u8"\n\n⏱  Tokens: prompt=" + std::to_string(usage_info.prompt_tokens) +
+            ", completion=" + std::to_string(usage_info.completion_tokens);
         if (usage_info.max_tokens > 0)
-            TOUT::cout << "/" << usage_info.max_tokens;
-        TOUT::cout << ", total=" << usage_info.total_tokens() << "\n";
+            usage += "/" + std::to_string(usage_info.max_tokens);
+        usage += ", total=" + std::to_string(usage_info.total_tokens());
+
+        TOUT::message({ TUI::AnsiColor_White }, usage);
     }
     return true;
 }
 
 void run_key_watcher(agent::Agent& ag)
 {
-    TOUT::cout << u8"╭─────────────────────────────╮\n";
-    TOUT::cout << u8"│  ZL Agent - Code Assistant  │\n";
-    TOUT::cout << u8"╰─────────────────────────────╯\n";
+    std::cout << u8"╭─────────────────────────────╮\n";
+    std::cout << u8"│  ZL Agent - Code Assistant  │\n";
+    std::cout << u8"╰─────────────────────────────╯\n";
 
     // Print initial status bar
-    TOUT::cout << u8"\nReady. Type your request (or '/help' '/h' for commands):\n";
+    std::cout << u8"\nReady. Type your request (or '/help' '/h' for commands):\n";
     auto& cfg = ag.get_config();
     if (cfg.terminal_commands.enabled) {
-        TOUT::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
+        std::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
     }
 
     agent::KeyWatcher::start();
@@ -187,7 +187,7 @@ void run_key_watcher(agent::Agent& ag)
     bool running = true;
     while (running) {
         print_status_bar(ag, ag.get_long_term_memory());
-        TOUT::cout << "\n";
+        std::cout << "\n";
 
         std::string input;
         {
@@ -196,13 +196,13 @@ void run_key_watcher(agent::Agent& ag)
             input = agent::KeyWatcher::readline(prompt.c_str(), [&](const agent::Key& k) {
                 if (k == agent::Key::K_CTRL_C) {
                     running = false;
-                    TOUT::cout << "\n";  // ensure newline after Ctrl-C
+                    std::cout << "\n";  // ensure newline after Ctrl-C
                 }
                 });
             // Stop background Ctrl-C watcher.
             agent::KeyWatcher::close_keyboard();
 
-            TOUT::cout << "\n";  // ensure newline after input
+            std::cout << "\n";  // ensure newline after input
         }
         if (input.empty()) {
             continue;  // just an empty Enter, stay in loop
@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
             if (arg == "-h" || arg == "--help") {
-                TOUT::cout << "Usage: zlagent [options]\n"
+                std::cout << "Usage: zlagent [options]\n"
                          "\nOptions:\n"
                          "  -m <model>    Override LLM model name (does not write to config)\n"
                          "  -p <prompt>   Run a single prompt and exit\n"
@@ -302,7 +302,7 @@ int main(int argc, char* argv[]) {
         });
 
         telegram_client->start();
-        TOUT::cout << u8"\n🤖 Telegram bot connected. Listening for messages...\n";
+        TOUT::message(TUI::AnsiColor_Bright_Cyan, u8"\n🤖 Telegram bot connected. Listening for messages...");
     }
 
     // If -p was provided, use it as the single prompt instead of reading interactively.

@@ -4,6 +4,9 @@
 #include <vector>
 #include <iostream>
 
+static constexpr const char* ANSI_RESET = "\033[0m";  // reset all
+static constexpr const char* ANSI_BRIGHT_BLACK = "\033[90m";  // gray
+
 struct UnitReport {
     std::string name;
     bool result;

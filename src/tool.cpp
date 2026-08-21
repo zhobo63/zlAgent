@@ -15,9 +15,9 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
         for (auto it = args.begin(); it != args.end(); ++it) {
             auto val = it.value();
             {
-                TOUT::cout << indent << it.key() << ": ";
+                TOUT::append(indent + it.key() + ": ");
                 show_json(val, depth + 1);
-                TOUT::cout << "\n";
+                TOUT::append("\n");
             }
         }
     }
@@ -25,42 +25,41 @@ bool Tool::show_json(const nlohmann::json& args, int depth) {
         auto s = args.get<std::string>();
         // Truncate long single-line strings
         //if (s.size() > 80) s = s.substr(0, 77) + "...";
-        TOUT::cout << '"' << s << '"';
+        TOUT::append('"' + s + '"');
     }
     else if (args.is_array()) {
         int size = static_cast<int>(args.size());
         // Large or complex arrays: show count, then items indented
-        TOUT::cout << '[' << size << " items]\n";
+        TOUT::append('[' + std::to_string(size) + " items]\n");
         for (const auto& item : args) {
             if (item.is_object()) {
                 show_json(item, depth + 1);
             }
             else {
-                TOUT::cout << indent << "- ";
+                TOUT::append(indent + "- ");
                 show_json(item, depth + 2);
-                TOUT::cout << "\n";
+                TOUT::append("\n");
             }
-            TOUT::cout << "\n";
+            TOUT::append("\n");
         }
     }
     else if (args.is_number()) {
-        TOUT::cout << args.dump();
+        TOUT::append(args.dump());
     }
     else if (args.is_boolean()) {
-        TOUT::cout << (args.get<bool>() ? "true" : "false");
+        TOUT::append(args.get<bool>() ? "true" : "false");
     }
     else if (args.is_null()) {
-        TOUT::cout << "null";
+        TOUT::append("null");
     }
     return true;
 }
 
 void Tool::show_text(const std::string& args) {
-    TOUT::cout << args << "\n";    
+    TOUT::append(args + "\n");
 }
 
 void Tool::show_json_text(const std::string& json_args) {
-    TOUT::cout << TOUT::ANSI_BRIGHT_BLACK;
     try {
         auto args = nlohmann::json::parse(json_args);
         if (!show_json(args, 0)) {
@@ -69,11 +68,11 @@ void Tool::show_json_text(const std::string& json_args) {
     } catch (...) {
         show_text(json_args);
     }
-    TOUT::cout << TOUT::ANSI_RESET;
 }
 
 void Tool::show_arguments(const std::string& json_args) {
     LOG_INFO(u8"🛠️Tool", name() + " [arguments]");
+    TOUT::set_style(TUI::AnsiColor_Bright_Black);
     show_json_text(json_args);
 }
 void Tool::show_preview(const std::string& json_args) {

@@ -31,33 +31,6 @@ inline void set_log_level(LogLevel level) {
 // ── Internal helpers ───────────────────────────────────────
 namespace detail {
 
-inline const char* level_tag(LogLevel lvl) {
-    switch (lvl) {
-        case LogLevel::Debug: return "DEBUG";
-        case LogLevel::Info:  return "INFO ";
-        case LogLevel::Warn:  return "WARN ";
-        case LogLevel::Error: return "ERROR";
-        default:              return "?????";
-    }
-}
-
-inline const char* level_color(LogLevel lvl) {
-#if defined(_WIN32) && !defined(__MINGW32__)
-    // Windows MSVC supports ANSI escape codes in the new console (Win10+).
-    // If you need legacy support, replace with SetConsoleTextAttribute.
-#endif
-    switch (lvl) {
-        case LogLevel::Debug: return "\033[90m";  // grey
-        case LogLevel::Info:  return "\033[36m";  // cyan
-        case LogLevel::Warn:  return "\033[33m";  // yellow
-        case LogLevel::Error: return "\033[31m";  // red
-        default:              return "";
-    }
-}
-
-inline const char* reset_color() {
-    return "\033[0m";
-}
 
 // Format a timestamp as HH:MM:SS.fff
 inline std::string timestamp() {
@@ -82,18 +55,7 @@ inline std::string timestamp() {
 // Write a formatted log line. Caller must hold g_log_mutex or this is not thread-safe.
 inline void emit(LogLevel lvl, const char* component, const std::string& msg) {
     if (lvl < g_log_level) return;
-
-    bool use_stderr = (lvl >= LogLevel::Warn);
-    auto& stream = use_stderr ? TOUT::cerr : TOUT::cout;
-
-    stream << detail::level_color(lvl)
-           << "[" << detail::level_tag(lvl) << "] "
-           << "[" << component << "] "
-           << msg
-           << detail::reset_color()
-           << "\n";
-
-    if (use_stderr) stream.flush();
+    TOUT::log((int)lvl, component, msg);
 }
 
 } // namespace detail
