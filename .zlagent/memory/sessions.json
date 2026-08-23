@@ -3,7 +3,85 @@
     {
       "message_count": 1,
       "summary": "",
-      "timestamp": "2026-08-21T16:46:02",
+      "timestamp": "2026-08-21T23:35:11",
+      "topic": ""
+    },
+    {
+      "message_count": 1,
+      "summary": "",
+      "timestamp": "2026-08-21T16:45:55",
+      "topic": ""
+    },
+    {
+      "message_count": 1,
+      "summary": "",
+      "timestamp": "2026-08-21T15:12:18",
+      "topic": ""
+    },
+    {
+      "message_count": 37,
+      "summary": "",
+      "timestamp": "2026-08-14T17:58:26",
+      "topic": "doc/tui.md 專案裡面還有很多 std::cout 好像不只文件說的地方 更新 tui.md\n# File outline for doc/tui..."
+    },
+    {
+      "message_count": 10,
+      "summary": "",
+      "timestamp": "2026-07-30T12:40:15",
+      "topic": "unit_test/test_file_tool.cpp 1171 use json parse\n\n# File: unit_test/test_file_tool.cpp (lines 1171-1171)\n1171        ..."
+    },
+    {
+      "message_count": 17,
+      "summary": "",
+      "timestamp": "2026-07-22T13:55:56",
+      "topic": "說明如何使用 edit_files"
+    },
+    {
+      "message_count": 9,
+      "summary": "",
+      "timestamp": "2026-07-15T11:28:24",
+      "topic": "src/agent.cpp 549-711 已經使用行數的 就不要再取摘要了\n--- File Outline: src/agent.cpp ---\n# File outli..."
+    },
+    {
+      "message_count": 11,
+      "summary": "No summary available.",
+      "timestamp": "2026-07-15T09:28:49",
+      "topic": "General conversation"
+    },
+    {
+      "message_count": 1,
+      "summary": "- No transcript or dialogue was provided in your message.\n- Please paste the full conversation you'd like summarized.\n- Once received, I will generate a one-line topic and 3–5 bullet points covering key actions, decisions, and outcomes.",
+      "timestamp": "2026-07-14T23:26:21",
+      "topic": "Awaiting conversation input for summarization"
+    },
+    {
+      "message_count": 3,
+      "summary": "",
+      "timestamp": "2026-07-15T10:10:06",
+      "topic": ""
+    },
+    {
+      "message_count": 3,
+      "summary": "",
+      "timestamp": "2026-07-15T11:32:10",
+      "topic": "src/agent.cpp 201-207\n--- File Outline: src/agent.cpp ---\n# File outline for src/agent.cpp (1080)\n  17 namespace agen..."
+    },
+    {
+      "message_count": 8,
+      "summary": "",
+      "timestamp": "2026-07-22T14:06:25",
+      "topic": "今天有甚麼大事?"
+    },
+    {
+      "message_count": 8,
+      "summary": "",
+      "timestamp": "2026-08-14T17:00:20",
+      "topic": "MTP 影響 decode t/s 的因素是甚麼"
+    },
+    {
+      "message_count": 1,
+      "summary": "",
+      "timestamp": "2026-08-20T15:12:07",
       "topic": ""
     },
     {
@@ -15,79 +93,7 @@
     {
       "message_count": 1,
       "summary": "",
-      "timestamp": "2026-08-20T15:12:07",
-      "topic": ""
-    },
-    {
-      "message_count": 8,
-      "summary": "",
-      "timestamp": "2026-08-14T17:00:20",
-      "topic": "MTP 影響 decode t/s 的因素是甚麼"
-    },
-    {
-      "message_count": 8,
-      "summary": "",
-      "timestamp": "2026-07-22T14:06:25",
-      "topic": "今天有甚麼大事?"
-    },
-    {
-      "message_count": 3,
-      "summary": "",
-      "timestamp": "2026-07-15T11:32:10",
-      "topic": "src/agent.cpp 201-207\n--- File Outline: src/agent.cpp ---\n# File outline for src/agent.cpp (1080)\n  17 namespace agen..."
-    },
-    {
-      "message_count": 3,
-      "summary": "",
-      "timestamp": "2026-07-15T10:10:06",
-      "topic": ""
-    },
-    {
-      "message_count": 1,
-      "summary": "- No transcript or dialogue was provided in your message.\n- Please paste the full conversation you'd like summarized.\n- Once received, I will generate a one-line topic and 3–5 bullet points covering key actions, decisions, and outcomes.",
-      "timestamp": "2026-07-14T23:26:21",
-      "topic": "Awaiting conversation input for summarization"
-    },
-    {
-      "message_count": 11,
-      "summary": "No summary available.",
-      "timestamp": "2026-07-15T09:28:49",
-      "topic": "General conversation"
-    },
-    {
-      "message_count": 9,
-      "summary": "",
-      "timestamp": "2026-07-15T11:28:24",
-      "topic": "src/agent.cpp 549-711 已經使用行數的 就不要再取摘要了\n--- File Outline: src/agent.cpp ---\n# File outli..."
-    },
-    {
-      "message_count": 17,
-      "summary": "",
-      "timestamp": "2026-07-22T13:55:56",
-      "topic": "說明如何使用 edit_files"
-    },
-    {
-      "message_count": 10,
-      "summary": "",
-      "timestamp": "2026-07-30T12:40:15",
-      "topic": "unit_test/test_file_tool.cpp 1171 use json parse\n\n# File: unit_test/test_file_tool.cpp (lines 1171-1171)\n1171        ..."
-    },
-    {
-      "message_count": 37,
-      "summary": "",
-      "timestamp": "2026-08-14T17:58:26",
-      "topic": "doc/tui.md 專案裡面還有很多 std::cout 好像不只文件說的地方 更新 tui.md\n# File outline for doc/tui..."
-    },
-    {
-      "message_count": 1,
-      "summary": "",
-      "timestamp": "2026-08-21T15:12:18",
-      "topic": ""
-    },
-    {
-      "message_count": 1,
-      "summary": "",
-      "timestamp": "2026-08-21T16:45:55",
+      "timestamp": "2026-08-21T16:46:02",
       "topic": ""
     }
   ]

@@ -124,6 +124,7 @@ void tui_main(agent::Agent& ag)
                 "", { 0, 0, chat_area->clip.width() - 1, 0 });
         }
         re->autosize_ = TUI::Autosize_TextHeight;
+        re->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
         re->is_scroll_y = false;
         return re;
     };
@@ -147,6 +148,7 @@ void tui_main(agent::Agent& ag)
             }
             auto lb = chat_area->Create<TUI::Label>(
                 "", { 0, y, chat_area->clip.width() - 1, y });
+            lb->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
             lb->autosize_ = TUI::Autosize_TextHeight;
             lb->fg_color = color;
             lb->setText(msg);
@@ -220,9 +222,13 @@ void tui_main(agent::Agent& ag)
 
     mgr.SetNotify(user_input);
 
-
-
     TOUT::set_output_mode(TOUT::OutputMode_TUI);
+
+    mgr.Update(terminal);
+    TOUT::append(u8"╭─────────────────────────────╮\n");
+    TOUT::append(u8"│  ZL Agent - Code Assistant  │\n");
+    TOUT::append(u8"╰─────────────────────────────╯\n");
+
 
     while (!quit) {
         std::queue<std::function<void()>> pending_tasks;
@@ -244,6 +250,7 @@ void tui_main(agent::Agent& ag)
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    TOUT::set_output_mode(TOUT::OutputMode_cout);
 
     if (interactive_thread.joinable()) {
         interactive_thread.join();
