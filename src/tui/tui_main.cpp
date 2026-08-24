@@ -594,7 +594,7 @@ void tui_main(agent::Agent& ag)
                 u8"  F3        Insert file reference (when file is open)\n"
                 u8"  F4        Quit\n"
                 u8"  Esc       Close file preview\n"
-                u8"  ↑ / ↓   Browse command history\n"
+                u8"  ↑ / ↓     Browse command history\n"
                 u8"  /help     List available commands\n"
                 u8"  /quit     Exit ZL Agent\n"
                 u8"\n");
@@ -606,7 +606,7 @@ void tui_main(agent::Agent& ag)
         else if (ev.vkey == VK_F3) {
             if (filebrowser.file_opened->is_visible &&
                 !filebrowser.filename_opened.empty()) {
-                std::string file_reference = filebrowser.filename_opened;
+                std::string file_reference = filebrowser.filename_opened.substr(filebrowser.rootPath.string().length() + 1);
                 const auto& selection = filebrowser.file_opened->selected;
                 if (selection.has_selection() && selection.start < selection.end) {
                     const int char_count =
@@ -625,7 +625,7 @@ void tui_main(agent::Agent& ag)
                             ++end_line;
                     }
                     file_reference += " " + std::to_string(start_line) +
-                                      "-" + std::to_string(end_line);
+                                      "-" + std::to_string(end_line) + " ";
                 }
 
                 int idx = user_input->cur_idx_of(user_input->cursor);
