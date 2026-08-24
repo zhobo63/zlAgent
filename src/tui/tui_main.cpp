@@ -1,10 +1,13 @@
 #include <zltui.h>
 #include "agent.h"
+#include "file_utils.h"
+#include <safety_guard.h>
 
 #include <atomic>
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <sstream>
 #include <thread>
 
 const char* dsl = u8R"(
@@ -14,7 +17,7 @@ Object Slider
     Name chat_area
     Rect 0 0 100 20
     Dock down|right 0 0 100 100
-    DockOffset 0 0 -26 -5
+    DockOffset 0 0 0 -5
 }
 
 Object Slider
@@ -24,12 +27,131 @@ Object Slider
     Dock down|rightPane 0 0 100 100
     DockOffset 0 0 0 -5
     DrawBorder true
+    Visible false
+}
+Object RichEdit
+{
+    Name file_opened
+    Rect 10 0 25 20
+    Dock down|right 0 0 100 100
+    DockOffset 0 0 -26 -5
+    DrawBorder true
+    FGColor RGB(100,255,100)
+    Visible false
+}
+
+Object Win
+{
+    Name status_bar
+    Rect 0 0 0 0
+    Dock top|down|right 0 100 100 100
+    DockOffset 0 -4 0 -4
+    Arrange content
+
+    Object Label
+    {
+        Name dot
+        Rect 0 0 1 0
+        Text ．
+    }
+    Object Button
+    {
+        Name model
+        Rect 0 0 20 0
+        Text Model
+        AutoSize textWidth
+        BgColor unused
+    }
+    Clone dot
+    {
+    }
+    Object Label
+    {
+        Name token_used
+        Rect 0 0 10 0
+        AutoSize textWidth
+        Text 💸 0
+    }
+    Clone dot
+    {
+    }
+    Clone token_used
+    {
+        Name current_iteration
+        Text 🔁 0
+    }
+    Clone dot
+    {
+    }
+    Object Check
+    {
+        Name plan
+        Rect 0 0 5 0
+        Text 📋
+        BgColor black
+    }
+    Object Check
+    {
+        Name reflect
+        Rect 0 0 5 0
+        Text 🤔
+        BgColor black
+    }
+    Object Check
+    {
+        Name multi_agent
+        Rect 0 0 5 0
+        Text 🤖
+        BgColor black
+    }
+    Clone dot
+    {
+    }
+    Object Combo
+    {
+        Name replymode
+        Rect 0 0 10 0
+        Text ⛔:
+        BgColor unused
+        Item ❌ off
+        Item 🔧 exec
+        Item ✏️ edit
+        Item 🔄 always
+    }
+    Clone dot
+    {
+    }
+    Clone token_used
+    {
+        Name msg_fact
+        Text 💾 Msg:0 Fact:0
+    }
+    Clone dot
+    {
+    }
+    Object Check
+    {
+        Name strict_mode
+        Rect 0 0 6 0
+        TextChecked 🔒
+        TextUnchecked 🔓
+        BgColor unused
+    }
+    Clone dot
+    {
+    }
+    Clone token_used
+    {
+        Name white_list
+        Text 📄:0
+    }
+
 }
 
 Object Label
 {
     Name input_prompt
-    Rect 0 0 0 4
+    Rect 0 0 0 3
     Dock downPane 0 0 100 100
     FgColor RGB(235,190,95)
     Text ┃\n┃\n┃\n┃\n┃
@@ -37,12 +159,20 @@ Object Label
 Object Edit
 {
     Name user_input
-    Rect 1 0 100 4
+    Rect 1 0 100 3
     Dock downPane|right 0 0 100 100
     DrawBorder true
     BorderStyle none
     FgColor RGB(235,190,95)
     BgColor RGB(30,30,30)
+}
+
+Object Label
+{
+    Name user_hint
+    Rect 0 0 100 0
+    Text hint
+    FGColor RGB(80,80,80)
 }
 )";
 
@@ -51,6 +181,263 @@ const TUI::Color kBlue(110, 170, 255);
 const TUI::Color kAmber(235, 190, 95);
 const TUI::Color kGreen(115, 205, 155);
 const TUI::Color kRed(235, 105, 115);
+
+struct StatusBar
+{
+    TUI::ButtonPtr model;
+    TUI::LabelPtr token_used;
+    TUI::LabelPtr current_iteration;
+    TUI::CheckPtr plan;
+    TUI::CheckPtr reflect;
+    TUI::CheckPtr multi_agent;
+    TUI::ComboPtr replymode;
+    TUI::LabelPtr msg_fact;
+    TUI::CheckPtr strict_mode;
+    TUI::LabelPtr white_list;
+
+    void Initialize(TUI::WinPtr status_bar) {
+        model = status_bar->GetUI<TUI::Button>("model");
+        token_used = status_bar->GetUI<TUI::Label>("token_used");
+        current_iteration = status_bar->GetUI<TUI::Label>("current_iteration");
+        plan = status_bar->GetUI<TUI::Check>("plan");
+        reflect = status_bar->GetUI<TUI::Check>("reflect");
+        multi_agent = status_bar->GetUI<TUI::Check>("multi_agent");
+        replymode = status_bar->GetUI<TUI::Combo>("replymode");
+        msg_fact = status_bar->GetUI<TUI::Label>("msg_fact");
+        strict_mode = status_bar->GetUI<TUI::Check>("strict_mode");
+        strict_mode->SetChecked(true);
+        white_list = status_bar->GetUI<TUI::Label>("white_list");
+    }
+
+    void Update(agent::Agent& ag) {
+        const int tokens_used = ag.get_tokens_used();
+        const int max_tokens = ag.get_max_token();
+        const int current = ag.get_current_iteration();
+        const int maximum = ag.get_max_iterations();
+
+        const double token_ratio = max_tokens > 0 ? static_cast<double>(tokens_used) / max_tokens : 0.0;
+        const double iteration_ratio = maximum > 0 ? static_cast<double>(current) / maximum : 0.0;
+
+        const TUI::Color token_color = token_ratio < 0.5 ? TUI::AnsiColor_Green
+            : token_ratio < 0.8 ? TUI::AnsiColor_Yellow : TUI::AnsiColor_Red;
+        const TUI::Color iteration_color = iteration_ratio >= 0.8 ? TUI::AnsiColor_Red : TUI::AnsiColor_Cyan;
+
+        model->setText(ag.get_llm().get_model());
+        model->fg_color = kBlue;
+
+        token_used->setText(u8"💸 " + std::to_string(tokens_used));
+        token_used->fg_color = token_color;
+
+        current_iteration->setText(u8"🔁 " + std::to_string(current) +
+                                    "/" + std::to_string(maximum));
+        current_iteration->fg_color = iteration_color;
+
+        plan->SetChecked(ag.task_planning_enabled());
+        reflect->SetChecked(ag.self_reflection_enabled());
+        multi_agent->SetChecked(ag.multi_agent_enabled());
+
+        replymode->SetValue(static_cast<int>(ag.get_user_reply_mode()));
+
+        const int message_count = static_cast<int>(ag.get_memory().get_messages().size());
+        std::size_t facts_count = 0;
+        const auto& long_term_memory = ag.get_long_term_memory();
+        if (long_term_memory) {
+            facts_count = long_term_memory->get_facts().size();
+        }
+        msg_fact->setText(u8"💾 Msg:" + std::to_string(message_count) +
+                          " Fact:" + std::to_string(facts_count));
+        msg_fact->fg_color = TUI::AnsiColor_Magenta;
+
+        auto& safety_guard = agent::SafetyGuard::get_instance();
+        const bool strict = safety_guard.get_strict_mode();
+        strict_mode->SetChecked(strict);
+        white_list->setText(u8"📄:" + std::to_string(safety_guard.path_whitelist_.size()));
+        white_list->fg_color = strict ? TUI::AnsiColor_Red : TUI::AnsiColor_Green;
+    }
+};
+
+struct AutoCompelete
+{
+    std::vector<std::string> keywords;
+
+    // Completion menu state (only valid when is_completion_active)
+    std::vector<std::string> candidates;
+    int selected = 0;
+    /// Offset of the first candidate to display in the current page.
+    size_t page_offset = 0;
+    /// Full completion text (may be longer than the hint shown in dim color).
+    std::string hint_candidates;
+    bool is_completion_active = false; // whether a completion menu is currently active
+};
+
+struct History
+{
+    std::vector<std::string> entries;  // newest first (index 0 = most recent)
+    int current_idx = -1;              // current position (-1 = not browsing)
+
+
+    /// Add an entry. Removes all existing entries with the same content to avoid duplicates.
+    void add(const std::string& entry) {
+        if (entry.empty()) {
+            reset();
+            return;
+        }
+
+        for (auto it = entries.begin(); it != entries.end();) {
+            if (*it == entry) {
+                it = entries.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+
+        entries.insert(entries.begin(), entry);
+        reset();
+    }
+
+    /// Move to previous (older) entry. Returns true if moved.
+    bool prev() {
+        if (entries.empty()) {
+            return false;
+        }
+
+        if (current_idx < 0) {
+            current_idx = 0;
+            return true;
+        }
+
+        if (current_idx + 1 >= static_cast<int>(entries.size())) {
+            return false;
+        }
+
+        ++current_idx;
+        return true;
+    }
+
+    /// Move to next (newer) entry. Returns true if moved.
+    bool next() {
+        if (current_idx < 0) {
+            return false;
+        }
+
+        if (current_idx == 0) {
+            reset();
+            return true;
+        }
+
+        --current_idx;
+        return true;
+    }
+
+    /// Get current entry or nullptr if not browsing.
+    const std::string* get_current() const {
+        if (current_idx < 0 || current_idx >= static_cast<int>(entries.size()))
+            return nullptr;
+        return &entries[current_idx];
+    }
+
+    /// Check if we are currently browsing history.
+    bool is_browsing() const { return current_idx >= 0; }
+
+    void reset() { current_idx = -1; }
+};
+
+struct FileBrowser
+{
+    TUI::SliderPtr files;
+    std::filesystem::path rootPath;
+    std::filesystem::path currentPath;
+    bool show = false;
+
+    TUI::RichEditPtr file_opened;
+    std::string filename_opened = "";
+
+    void Show(bool _show) {
+        files->SetVisible(_show);
+        if (_show) {
+            PopulateFiles();
+
+            if (!filename_opened.empty()) {
+                OpenFile(filename_opened);
+            }
+        }
+        else {
+            file_opened->SetVisible(false);
+        }
+    }
+
+    FileBrowser(TUI::SliderPtr _files, TUI::RichEditPtr _file) :files(_files), file_opened(_file) {
+        rootPath = std::filesystem::current_path();
+        currentPath = std::filesystem::current_path();
+    }
+
+    bool OpenFile(const std::string& filename) {
+        if (filename.empty()) {
+            file_opened->SetVisible(false);
+            filename_opened = filename;
+            return true;
+        }
+
+        std::vector<std::string> lines;
+        if (!agent::read_file_lines(filename, lines)) {
+            file_opened->setText("Unable to open file: " + filename);
+            file_opened->SetVisible(true);
+            return false;
+        }
+
+        std::ostringstream content;
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            if (i > 0) {
+                content << '\n';
+            }
+            content << lines[i];
+        }
+        file_opened->title = filename;
+        file_opened->setText(content.str());
+        file_opened->SetVisible(true);
+        filename_opened = filename;
+        return true;
+    }
+
+    void AddEntry(const std::string& text, const std::filesystem::path& path, bool directory) {
+        int y = 0;
+        if (files->child.size() > 0) {
+            y = files->child.back()->local.y2 + 1;
+        }
+        auto button = files->Create<TUI::Button>(path.filename().string(), { 0, y, 70, y });
+        button->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
+        button->setText(text);
+        button->text_algn = TUI::Align_Start;
+        button->on_click = [&, path, directory]() {
+            if (directory) {
+                currentPath = path;
+                PopulateFiles();
+            }
+            else {
+                OpenFile(path.string());
+            }
+            };
+    }
+
+    void PopulateFiles() {
+        files->child.clear();
+        files->scroll_value.y = 0;
+        files->title = "." + currentPath.string().substr(rootPath.string().length());
+
+        if (currentPath.has_parent_path() && currentPath != rootPath)
+            AddEntry(u8"📁 ..", currentPath.parent_path(), true);
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(currentPath)) {
+                AddEntry((entry.is_directory() ? u8"📁 " : u8"📄 ") +
+                    entry.path().filename().string(), entry.path(), entry.is_directory());
+            }
+        }
+        catch (const std::filesystem::filesystem_error& error) {
+        }
+        files->mgr->is_dirty = true;
+    }
+};
 
 bool run_interactive(
     const std::string& input,
@@ -65,45 +452,8 @@ void tui_main(agent::Agent& ag)
 	TUI::Mgr mgr;
     mgr.Parse(dsl);
 
-    std::filesystem::path rootPath = std::filesystem::current_path();
-    std::filesystem::path currentPath = std::filesystem::current_path();
-    auto files = mgr.GetUI<TUI::Slider>("files");
-    std::function<void()> populateFiles;
-    populateFiles = [&]() {
-        files->child.clear();
-        files->scroll_value.y = 0;
-        files->title = "." + currentPath.string().substr(rootPath.string().length());
-        int y = 0;
-        auto addEntry = [&](const std::string& text, const std::filesystem::path& path,
-            bool directory) {
-                auto button = files->Create<TUI::Button>(path.filename().string(), { 0, y, 70, y });
-                button->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
-                button->setText(text);
-                button->text_algn = TUI::Align_Start;
-                button->on_click = [&, path, directory]() {
-                    if (directory) {
-                        currentPath = path;
-                        populateFiles();
-                    }
-                    else {
-                        //TODO open file
-                    }
-                    };
-                ++y;
-            };
-        if (currentPath.has_parent_path() && currentPath != rootPath)
-            addEntry(u8"📁 ..", currentPath.parent_path(), true);
-        try {
-            for (const auto& entry : std::filesystem::directory_iterator(currentPath)) {
-                addEntry((entry.is_directory() ? u8"📁 " : u8"📄 ") +
-                    entry.path().filename().string(), entry.path(), entry.is_directory());
-            }
-        }
-        catch (const std::filesystem::filesystem_error& error) {
-        }
-        mgr.is_dirty = true;
-        };
-    populateFiles();
+    FileBrowser filebrowser(mgr.GetUI<TUI::Slider>("files"), mgr.GetUI<TUI::RichEdit>("file_opened"));
+    //filebrowser.PopulateFiles();
 
     auto chat_area = mgr.GetUI<TUI::Slider>("chat_area");
     auto get_chat_edit = [&]() -> TUI::RichEditPtr {
@@ -180,6 +530,16 @@ void tui_main(agent::Agent& ag)
             });
         };
 
+    AutoCompelete autocompelete;
+    History history;
+    StatusBar statusbar;
+    statusbar.Initialize(mgr.GetUI<TUI::Win>("status_bar"));
+    statusbar.Update(ag);
+
+    auto user_hint = mgr.GetUI<TUI::Label>("user_hint");
+    user_hint->SetVisible(false);
+    // TODO auto compelete hint
+
     auto user_input = mgr.GetUI<TUI::Edit>("user_input");
     user_input->on_key = [&](const TUI::Event &ev) -> bool {
         if (!ev.ctrl && ev.key == VK_RETURN) {
@@ -195,40 +555,117 @@ void tui_main(agent::Agent& ag)
             }
 
             const std::string input = user_input->text;
+            history.add(input);
             TOUT::on_message({ 235,190,95 }, u8"\n┃" + input + "\n");
             user_input->setText("");
 
             if (interactive_thread.joinable()) {
                 interactive_thread.join();
             }
+            filebrowser.Show(false);
 
-            interactive_thread = std::thread([
-                &, input = std::move(input)
-            ] {
+            interactive_thread = std::thread([&, input = std::move(input)] {
                 std::string response;
                 run_interactive(input, ag.get_dispatcher(),
                                 ag.get_terminal_detector(), ag, response);
                 interactive_running.store(false);
+                statusbar.Update(ag);
+                filebrowser.Show(filebrowser.show);
             });
             return true;
         }
         return false;
         };
     mgr.on_key = [&](const TUI::Event& ev) -> bool {
-        if (ev.vkey == VK_F4)
+        if (ev.vkey == VK_F4) {
             quit = true;
+            return true;
+        }
+        else if (ev.vkey == VK_ESCAPE) {
+            filebrowser.OpenFile("");
+        }
+        else if (ev.vkey == VK_F1) {
+            TOUT::on_message(kTeal, u8"\n"
+                u8"╭───────────────────────────────────╮\n"
+                u8"│  ZL Agent - Shortcuts & Commands  │\n"
+                u8"╰───────────────────────────────────╯\n"
+                u8"  F1        Show this help\n"
+                u8"  F2        Toggle file browser\n"
+                u8"  F3        Insert file reference (when file is open)\n"
+                u8"  F4        Quit\n"
+                u8"  Esc       Close file preview\n"
+                u8"  ↑ / ↓   Browse command history\n"
+                u8"  /help     List available commands\n"
+                u8"  /quit     Exit ZL Agent\n"
+                u8"\n");
+        }
+        else if (ev.vkey == VK_F2) {
+            filebrowser.show = !filebrowser.show;
+            filebrowser.Show(filebrowser.show);
+        }
+        else if (ev.vkey == VK_F3) {
+            if (filebrowser.file_opened->is_visible &&
+                !filebrowser.filename_opened.empty()) {
+                std::string file_reference = filebrowser.filename_opened;
+                const auto& selection = filebrowser.file_opened->selected;
+                if (selection.has_selection() && selection.start < selection.end) {
+                    const int char_count =
+                        static_cast<int>(filebrowser.file_opened->chars.size());
+                    const int start = std::min(char_count, std::max(0, selection.start));
+                    const int end = std::min(char_count, std::max(start, selection.end));
+                    int start_line = 1;
+                    int end_line = 1;
+                    for (int i = 0; i < start; ++i) {
+                        if (filebrowser.file_opened->chars[i].ch == '\n')
+                            ++start_line;
+                    }
+                    end_line = start_line;
+                    for (int i = start; i < end; ++i) {
+                        if (filebrowser.file_opened->chars[i].ch == '\n')
+                            ++end_line;
+                    }
+                    file_reference += " " + std::to_string(start_line) +
+                                      "-" + std::to_string(end_line);
+                }
+
+                int idx = user_input->cur_idx_of(user_input->cursor);
+                idx = user_input->delete_selected(idx);
+                idx = user_input->insert(idx, file_reference);
+                user_input->selected.unselect();
+                user_input->cursor = user_input->pos_of(idx);
+                user_input->mgr->is_dirty = true;
+                return true;
+            }
+        }
+        else if (ev.vkey == VK_UP) {
+            if (history.prev()) {
+                const auto* entry = history.get_current();
+                user_input->setText(entry != nullptr ? *entry : "");
+                return true;
+            }
+        }
+        else if (ev.vkey == VK_DOWN) {
+            if (history.next()) {
+                const auto* entry = history.get_current();
+                user_input->setText(entry != nullptr ? *entry : "");
+                return true;
+            }
+        }
         return false;
-        };
+    };
 
     mgr.SetNotify(user_input);
 
     TOUT::set_output_mode(TOUT::OutputMode_TUI);
 
     mgr.Update(terminal);
+    TOUT::set_style({ 100,255,255 });   //RGB
     TOUT::append(u8"╭─────────────────────────────╮\n");
     TOUT::append(u8"│  ZL Agent - Code Assistant  │\n");
     TOUT::append(u8"╰─────────────────────────────╯\n");
-
+    TOUT::set_style(TUI::AnsiColor_White);
+    TOUT::append(u8"F1:Help F2:File Browser F4:Quit\n");
+    TOUT::append(u8"Ready. Type your request (or '/help' '/h' for commands):\n");
 
     while (!quit) {
         std::queue<std::function<void()>> pending_tasks;
