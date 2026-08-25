@@ -481,14 +481,12 @@ ChatResponse chat_stream_impl(
 
     char read_buf[4096] = {0};
     std::atomic<bool> was_interrupted{false};
-    KeyWatcher::on_key([&](int k) {
-        if (k == 27) { //ESC
-            LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
-            if(handle)
-                handle->close();
-            was_interrupted.store(true);
-        }
-    });
+    TOUT::set_interrupted([&]() {
+        LOG_WARN("LLMClient", u8"\n⚠  Interrupted by user.");
+        if (handle)
+            handle->close();
+        was_interrupted.store(true);
+        });
 
     while (handle && handle->is_valid()) {
         ssize_t n = 0;

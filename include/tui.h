@@ -26,9 +26,13 @@ public:
     using fn_message = std::function<void(const TUI::Color color, const std::string& msg)>;
     using fn_append = std::function<void(const std::string& msg)>;
     using fn_token = std::function<void(bool reasoning, const std::string& msg)>;
+    using fn_confirm = std::function<bool(const std::string& msg)>;
+    using fn_interrupted = std::function<void()>;
     static fn_message on_message;
     static fn_append on_append;
     static fn_token on_token;
+    static fn_confirm on_confirm;
+    static fn_interrupted on_interrupted;
 
     static void log(int lv, const char* component, const std::string& msg);
     static void message(const TUI::Color color, const std::string& msg);
@@ -44,7 +48,8 @@ public:
     static void markdown(const std::string& msg);
     static void tool_result(const std::string& name, const std::string& result);
 
-    static bool confirm();
+    static bool confirm(const std::string& msg);
+    static void set_interrupted(fn_interrupted func);
 
     // ── Unified output entry point ────────────────
 

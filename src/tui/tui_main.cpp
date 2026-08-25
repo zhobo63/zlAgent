@@ -171,9 +171,21 @@ Object Label
 {
     Name user_hint
     Rect 0 0 100 0
+    Autosize textWidth
     Text hint
     FGColor RGB(80,80,80)
+    Visible false
 }
+Object Slider
+{
+    Name autocompelete_menu
+    Rect 10 0 40 12
+    Dock top|down 0 100 100 100
+    DockOffset 0 -15 0 -5
+    DrawBorder true
+    Visible false
+}
+
 )";
 
 const TUI::Color kTeal(76, 201, 190);
@@ -258,6 +270,10 @@ struct StatusBar
 
 struct AutoCompelete
 {
+    TUI::SliderPtr autocompelete_menu;
+    TUI::LabelPtr user_hint;
+    TUI::EditPtr user_input;
+
     std::vector<std::string> keywords;
 
     // Completion menu state (only valid when is_completion_active)
@@ -268,6 +284,322 @@ struct AutoCompelete
     /// Full completion text (may be longer than the hint shown in dim color).
     std::string hint_candidates;
     bool is_completion_active = false; // whether a completion menu is currently active
+
+    AutoCompelete(TUI::SliderPtr menu, TUI::LabelPtr hint) : autocompelete_menu(menu), user_hint(hint) {}
+
+    // Return the path/command token immediately before the cursor.
+    // `idx` is a Unicode character index, while `text` is UTF-8 encoded.
+    static std::string get_prefix(const std::string& text, int idx) {
+        if (idx <= 0 || text.empty())
+            return {};
+
+        size_t byte_idx = 0;
+        int char_idx = 0;
+        while (byte_idx < text.size() && char_idx < idx) {
+            const unsigned char c = static_cast<unsigned char>(text[byte_idx]);
+            if (c < 0x80) {
+                byte_idx += 1;
+            }
+            else if ((c & 0xE0) == 0xC0 && byte_idx + 1 < text.size()) {
+                byte_idx += 2;
+            }
+            else if ((c & 0xF0) == 0xE0 && byte_idx + 2 < text.size()) {
+                byte_idx += 3;
+            }
+            else if ((c & 0xF8) == 0xF0 && byte_idx + 3 < text.size()) {
+                byte_idx += 4;
+            }
+            else {
+                // Treat an invalid byte as one character and keep the
+                // cursor position usable for completion.
+                byte_idx += 1;
+            }
+            ++char_idx;
+        }
+
+        size_t begin = byte_idx;
+        while (begin > 0) {
+            const unsigned char c = static_cast<unsigned char>(text[begin - 1]);
+            if (std::isspace(c))
+                break;
+            --begin;
+        }
+        return text.substr(begin, byte_idx - begin);
+    }
+
+    static bool ci_starts_with(const std::string& str, const std::string& prefix) {
+        if (str.size() < prefix.size()) return false;
+        for (size_t i = 0; i < prefix.size(); ++i)
+            if (std::tolower(static_cast<unsigned char>(str[i])) !=
+                std::tolower(static_cast<unsigned char>(prefix[i])))
+                return false;
+        return true;
+    }
+
+    static std::string normalize_path(const std::string& path) {
+        std::string result = path;
+        for (auto& c : result)
+            if (c == '\\')
+                c = '/';
+        return result;
+    }
+
+
+    static void scan_directory(const std::filesystem::path& dir, std::vector<std::string>& entries) {
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+                if (entry.is_directory()) {
+                    entries.push_back(entry.path().filename().string() + "/");
+                }
+                else if (entry.is_regular_file()) {
+                    entries.push_back(entry.path().filename().string());
+                }
+            }
+        }
+        catch (const std::filesystem::filesystem_error&) {
+            // silently skip
+        }
+    }
+
+    void build_candidates(const std::string &prefix) {
+        // Normalize all separators to '/' so we can use a single rfind
+        std::string norm = normalize_path(prefix);
+        size_t last_sep = norm.rfind('/');
+
+        if (last_sep == 0 && prefix.size() > 0) {
+            // Command completion: starts with / and no path separator after it
+            // e.g., "/h", "/help", "/status" -> match against keywords only
+            for (const auto& kw : keywords) {
+                if (ci_starts_with(kw, prefix)) {
+                    candidates.push_back(kw);
+                }
+            }
+        }
+        else if (last_sep != std::string::npos) {
+            // Path-aware: scan the directory before the separator
+            std::filesystem::path dir_path(norm.substr(0, last_sep));
+            if (!dir_path.is_absolute()) {
+                dir_path = std::filesystem::current_path() / dir_path;
+            }
+            std::string after_sep = norm.substr(last_sep + 1);
+
+            scan_directory(dir_path, candidates);
+
+            if (!after_sep.empty()) {
+                auto it = std::remove_if(candidates.begin(), candidates.end(),
+                    [&after_sep](const std::string& e) {
+                        return !ci_starts_with(e, after_sep);
+                    });
+                candidates.erase(it, candidates.end());
+            }
+        }
+        else {
+            // No path separator: merge keywords + current directory entries
+            for (const auto& kw : keywords) {
+                if (ci_starts_with(kw, prefix)) {
+                    candidates.push_back(kw);
+                }
+            }
+
+            std::vector<std::string> dir_entries;
+            scan_directory(std::filesystem::current_path(), dir_entries);
+            for (const auto& de : dir_entries) {
+                if (ci_starts_with(de, prefix)) {
+                    candidates.push_back(de);
+                }
+            }
+        }
+
+        // Remove duplicates and sort alphabetically (case-insensitive)
+        std::set<std::string> seen;
+        auto it = std::remove_if(candidates.begin(), candidates.end(),
+            [&seen](const std::string& c) { return !seen.insert(c).second; });
+        candidates.erase(it, candidates.end());
+
+        std::sort(candidates.begin(), candidates.end(),
+            [](const std::string& a, const std::string& b) {
+                for (size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
+                    char ca = std::tolower(static_cast<unsigned char>(a[i]));
+                    char cb = std::tolower(static_cast<unsigned char>(b[i]));
+                    if (ca != cb) return ca < cb;
+                }
+                return a.size() < b.size();
+            });
+    }
+
+    static int utf8_char_count(const std::string& text) {
+        int count = 0;
+        for (unsigned char c : text) {
+            if ((c & 0xC0) != 0x80)
+                ++count;
+        }
+        return count;
+    }
+
+    void show_hint(const std::string &prefix, int hint_x, int hint_y) {
+        const std::string normalized_prefix = AutoCompelete::normalize_path(prefix);
+        const size_t last_sep = normalized_prefix.rfind('/');
+        const std::string partial = last_sep == std::string::npos
+            ? normalized_prefix : normalized_prefix.substr(last_sep + 1);
+        const int selected_index = std::max(0, std::min(
+            selected, static_cast<int>(candidates.size()) - 1));
+        const std::string& candidate = candidates[selected_index];
+        const std::string completion = last_sep == std::string::npos
+            ? candidate : prefix.substr(0, last_sep + 1) + candidate;
+
+        hint_candidates = completion;
+        const std::string hint = candidate.substr(partial.size());
+        if (!hint.empty()) {
+            user_hint->setText(hint);
+            const int hint_width = std::max(1, user_hint->GetTextSize().x);
+            user_hint->local.set(hint_x, hint_y,
+                hint_x + hint_width - 1, hint_y);
+            user_hint->SetVisible(true);
+            is_completion_active = true;
+        }
+        else {
+            hide_hint();
+        }
+    }
+    void hide_hint() {
+        user_hint->setText("");
+        user_hint->SetVisible(false);
+    }
+
+    void insert_compelete(int prefix_start, int idx) {
+        if (idx < 0 || idx >= static_cast<int>(candidates.size()))
+            return;
+        is_completion_active = false;
+
+        const std::string& candidate = candidates[idx];
+        const int cursor_idx = user_input->cur_idx_of(user_input->cursor);
+        const std::string prefix = get_prefix(user_input->text, cursor_idx);
+        const std::string normalized_prefix = normalize_path(prefix);
+        const size_t last_sep = normalized_prefix.rfind('/');
+        const std::string completion = last_sep == std::string::npos
+            ? candidate : prefix.substr(0, last_sep + 1) + candidate;
+        const int start = std::max(0, prefix_start);
+        const int end = std::min(static_cast<int>(user_input->chars.size()), std::max(start, cursor_idx));
+        const size_t start_byte = user_input->byte_offset_of(start);
+        const size_t end_byte = user_input->byte_offset_of(end);
+        user_input->text.replace(start_byte, end_byte - start_byte, completion);
+        user_input->reparse();
+
+        const int new_idx = start + utf8_char_count(completion);
+        user_input->cursor = user_input->pos_of(new_idx);
+        user_input->selected.unselect();
+        user_input->mgr->is_dirty = true;
+
+        autocompelete_menu->SetVisible(false);
+        candidates.clear();
+        hint_candidates.clear();
+        if (user_input->on_edit)
+            user_input->on_edit(user_input.get(), user_input->text);
+    }
+
+    void show_menu(int prefix_start, int idx) {
+        constexpr size_t page_size = 9;
+        autocompelete_menu->child.clear();
+        if (candidates.empty()) {
+            autocompelete_menu->SetVisible(false);
+            return;
+        }
+
+        selected = std::max(0, std::min(selected,
+            static_cast<int>(candidates.size()) - 1));
+        page_offset = std::min(page_offset, candidates.size() - 1);
+        if (selected < static_cast<int>(page_offset))
+            page_offset = static_cast<size_t>(selected);
+        else if (selected >= static_cast<int>(page_offset + page_size))
+            page_offset = static_cast<size_t>(selected) - page_size + 1;
+
+        const int width = std::max(1, autocompelete_menu->local.width() - 1);
+        const size_t page_end = std::min(candidates.size(),
+                                         page_offset + page_size);
+        for (size_t i = page_offset; i < page_end; ++i) {
+            const int y = static_cast<int>(i - page_offset);
+            auto button = autocompelete_menu->Create<TUI::Button>(
+                candidates[i], { 0, y, width, y });
+            button->setText(std::to_string(i + 1 - page_offset) + " " + candidates[i]);
+            button->text_algn = TUI::Align_Start;
+            button->fg_color = i == static_cast<size_t>(selected) 
+                ? TUI::AnsiColor_Bright_White : TUI::AnsiColor_Bright_Black;
+            button->bg_color = i == static_cast<size_t>(selected)
+                ? TUI::AnsiColor_Blue : TUI::AnsiColor_Unused;
+            button->on_click = [this, prefix_start, idx, i]() {
+                selected = static_cast<int>(i);
+                insert_compelete(prefix_start, static_cast<int>(i));
+            };
+        }
+        autocompelete_menu->SetVisible(true);
+        autocompelete_menu->mgr->is_dirty = true;
+    }
+
+    bool OnEvent(const TUI::Event& ev) {
+        if (!is_completion_active || candidates.empty())
+            return false;
+
+        constexpr size_t page_size = 9;
+        const int cursor_idx = user_input->cur_idx_of(user_input->cursor);
+        const std::string prefix = get_prefix(user_input->text, cursor_idx);
+        const int prefix_start = cursor_idx - utf8_char_count(prefix);
+
+        auto redraw = [&]() {
+            show_menu(prefix_start, cursor_idx);
+            const int hint_x = user_input->clip.x + user_input->cursor.x -
+                               user_input->scroll_value.x;
+            const int hint_y = user_input->clip.y + user_input->cursor.y -
+                               user_input->scroll_value.y;
+            show_hint(prefix, hint_x, hint_y);
+            user_input->mgr->is_dirty = true;
+        };
+
+        if (ev.vkey == VK_PRIOR) {
+            page_offset = page_offset >= page_size
+                ? page_offset - page_size : 0;
+            selected = static_cast<int>(page_offset);
+            redraw();
+            return true;
+        }
+        if (ev.vkey == VK_NEXT) {
+            const size_t last_page =
+                ((candidates.size() - 1) / page_size) * page_size;
+            page_offset = std::min(last_page, page_offset + page_size);
+            selected = static_cast<int>(page_offset);
+            redraw();
+            return true;
+        }
+
+        if (ev.vkey == VK_UP) {
+            if (selected > 0)
+                --selected;
+        }
+        else if (ev.vkey == VK_DOWN) {
+            if (selected + 1 < static_cast<int>(candidates.size()))
+                ++selected;
+        }
+        else if (ev.key >= '1' && ev.key <= '9') {
+            const size_t visible_index = page_offset +
+                static_cast<size_t>(ev.key - '1');
+            if (visible_index >= candidates.size() ||
+                visible_index >= page_offset + page_size)
+                return true;
+            selected = static_cast<int>(visible_index);
+            insert_compelete(prefix_start, selected);
+            return true;
+        }
+        else if (ev.key == VK_RETURN || ev.vkey == VK_TAB) {
+            insert_compelete(prefix_start, selected);
+            return true;
+        }
+        else {
+            return false;
+        }
+
+        page_offset = static_cast<size_t>(selected) / page_size * page_size;
+        redraw();
+        return true;
+    }
 };
 
 struct History
@@ -352,6 +684,10 @@ struct FileBrowser
 
     TUI::RichEditPtr file_opened;
     std::string filename_opened = "";
+
+    bool is_file_opened() const {
+        return file_opened->is_visible;
+    }
 
     void Show(bool _show) {
         files->SetVisible(_show);
@@ -465,13 +801,11 @@ void tui_main(agent::Agent& ag)
             }
 
             int y = chat_area->child.back()->local.y2 + 1;
-            re = chat_area->Create<TUI::RichEdit>(
-                "", { 0, y, chat_area->clip.width() - 1, y });
+            re = chat_area->Create<TUI::RichEdit>("", { 0, y, chat_area->clip.width() - 1, y });
             chat_area->ScrollTo(100);
         }
         else {
-            re = chat_area->Create<TUI::RichEdit>(
-                "", { 0, 0, chat_area->clip.width() - 1, 0 });
+            re = chat_area->Create<TUI::RichEdit>("", { 0, 0, chat_area->clip.width() - 1, 0 });
         }
         re->autosize_ = TUI::Autosize_TextHeight;
         re->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
@@ -530,18 +864,64 @@ void tui_main(agent::Agent& ag)
             });
         };
 
-    AutoCompelete autocompelete;
+    TOUT::on_confirm = [&](const std::string& msg) ->bool {
+        //TODO 
+        // from: 
+        //   multi_agent confirm_request
+        //   SafetyGuard::ask_user_confirm
+
+        return false;
+        };
+
+    AutoCompelete autocompelete(mgr.GetUI<TUI::Slider>("autocompelete_menu"), 
+        mgr.GetUI<TUI::Label>("user_hint"));
     History history;
     StatusBar statusbar;
     statusbar.Initialize(mgr.GetUI<TUI::Win>("status_bar"));
     statusbar.Update(ag);
 
-    auto user_hint = mgr.GetUI<TUI::Label>("user_hint");
-    user_hint->SetVisible(false);
-    // TODO auto compelete hint
-
     auto user_input = mgr.GetUI<TUI::Edit>("user_input");
+    autocompelete.user_input = user_input;
+
+    user_input->on_edit = [&](TUI::Edit* edit, const std::string& text) {
+        autocompelete.candidates.clear();
+        autocompelete.selected = 0;
+        autocompelete.page_offset = 0;
+        autocompelete.hint_candidates.clear();
+        autocompelete.is_completion_active = false;
+        autocompelete.hide_hint();
+
+        if (text.length() < 2)
+            return;
+
+        const int idx = edit->cur_idx_of(edit->cursor);
+        const std::string prefix = AutoCompelete::get_prefix(text, idx);
+        if (prefix.empty())
+            return;
+
+        autocompelete.build_candidates(prefix);
+        if (autocompelete.candidates.empty())
+            return;
+        autocompelete.is_completion_active = true;
+        int hint_x = user_input->clip.x + user_input->cursor.x - user_input->scroll_value.x;
+        int hint_y = user_input->clip.y + user_input->cursor.y - user_input->scroll_value.y;        
+        autocompelete.show_hint(prefix, hint_x, hint_y);
+        };
+
     user_input->on_key = [&](const TUI::Event &ev) -> bool {
+        if (!ev.ctrl && ev.key == VK_TAB && autocompelete.is_completion_active) {
+            const int idx = user_input->cur_idx_of(user_input->cursor);
+            const std::string prefix = AutoCompelete::get_prefix(user_input->text, idx);
+            const int prefix_start = idx - AutoCompelete::utf8_char_count(prefix);
+            if (autocompelete.candidates.size() == 1) {
+                autocompelete.insert_compelete(prefix_start, 0);
+            }
+            else {
+                autocompelete.show_menu(prefix_start, idx);
+            }
+            return true;
+        }
+
         if (!ev.ctrl && ev.key == VK_RETURN) {
             if (user_input->text.empty())
                 return true;
@@ -556,7 +936,7 @@ void tui_main(agent::Agent& ag)
 
             const std::string input = user_input->text;
             history.add(input);
-            TOUT::on_message({ 235,190,95 }, u8"\n┃" + input + "\n");
+            TOUT::on_message({ 235,190,95 }, u8"\n┃\n┃" + input + "\n┃\n");
             user_input->setText("");
 
             if (interactive_thread.joinable()) {
@@ -576,28 +956,40 @@ void tui_main(agent::Agent& ag)
         }
         return false;
         };
+
+    static const char* help_msg = 
+        u8"  F1        Show this help\n"
+        u8"  F2        Toggle file browser\n"
+        u8"  F3        Insert file reference (when file is open)\n"
+        u8"  F4        Quit\n"
+        u8"  Esc       Close file preview\n"
+        u8"  ↑ / ↓     Browse command history\n"
+        u8"  /help     List available commands\n"
+        u8"  /quit     Exit ZL Agent\n";
+
     mgr.on_key = [&](const TUI::Event& ev) -> bool {
         if (ev.vkey == VK_F4) {
             quit = true;
             return true;
         }
         else if (ev.vkey == VK_ESCAPE) {
-            filebrowser.OpenFile("");
+            if (filebrowser.is_file_opened()) {
+                filebrowser.OpenFile("");
+            }
+            else {
+                TOUT::on_interrupted();
+            }
+            return true;
         }
         else if (ev.vkey == VK_F1) {
-            TOUT::on_message(kTeal, u8"\n"
+            TOUT::set_style({ 100,255,255 });   //RGB
+            TOUT::on_append(
+                u8"\n"
                 u8"╭───────────────────────────────────╮\n"
                 u8"│  ZL Agent - Shortcuts & Commands  │\n"
-                u8"╰───────────────────────────────────╯\n"
-                u8"  F1        Show this help\n"
-                u8"  F2        Toggle file browser\n"
-                u8"  F3        Insert file reference (when file is open)\n"
-                u8"  F4        Quit\n"
-                u8"  Esc       Close file preview\n"
-                u8"  ↑ / ↓     Browse command history\n"
-                u8"  /help     List available commands\n"
-                u8"  /quit     Exit ZL Agent\n"
-                u8"\n");
+                u8"╰───────────────────────────────────╯\n");
+            TOUT::set_style(TUI::AnsiColor_White);
+            TOUT::on_append(help_msg);
         }
         else if (ev.vkey == VK_F2) {
             filebrowser.show = !filebrowser.show;
@@ -637,6 +1029,10 @@ void tui_main(agent::Agent& ag)
                 return true;
             }
         }
+        else if (autocompelete.is_completion_active && autocompelete.OnEvent(ev)) {
+            //used by autocompelete
+            return true;
+        }
         else if (ev.vkey == VK_UP) {
             if (history.prev()) {
                 const auto* entry = history.get_current();
@@ -664,8 +1060,12 @@ void tui_main(agent::Agent& ag)
     TOUT::append(u8"│  ZL Agent - Code Assistant  │\n");
     TOUT::append(u8"╰─────────────────────────────╯\n");
     TOUT::set_style(TUI::AnsiColor_White);
-    TOUT::append(u8"F1:Help F2:File Browser F4:Quit\n");
+    TOUT::append(help_msg);
     TOUT::append(u8"Ready. Type your request (or '/help' '/h' for commands):\n");
+    auto& cfg = ag.get_config();
+    if (cfg.terminal_commands.enabled) {
+        std::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
+    }
 
     while (!quit) {
         std::queue<std::function<void()>> pending_tasks;

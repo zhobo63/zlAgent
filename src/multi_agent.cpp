@@ -469,11 +469,13 @@ void MultiAgent::start(int listen_port) {
 
                         // Handle in a separate thread so we don't block the WebSocket read loop.
                         std::thread([this, &ws, chat_id, request_id, message, timeout_seconds]() {
-                            TOUT::append(TUI::AnsiColor_Bright_Red, u8"\n⏸  [Remote Confirm] Client: " + chat_id + "\n");
-                            TOUT::append("   " + message + "\n");
-                            TOUT::append("   Type 'y' to confirm, anything else to cancel: ");
+                            TOUT::set_style(TUI::AnsiColor_Bright_Red);
+                            std::string msg=
+                                u8"\n⏸  [Remote Confirm] Client: " + chat_id + "\n" +
+                                "   " + message + "\n" +
+                                "   Type 'y' to confirm, anything else to cancel: ";
 
-                            char answer = (TOUT::confirm()) ? 'y' : 'n';
+                            char answer = (TOUT::confirm(msg)) ? 'y' : 'n';
 
                             nlohmann::json resp;
                             resp["type"] = "confirm_response";

@@ -61,6 +61,8 @@ TOUT::OStream TOUT::cerr;
 TOUT::fn_message TOUT::on_message;
 TOUT::fn_append TOUT::on_append;
 TOUT::fn_token TOUT::on_token;
+TOUT::fn_confirm TOUT::on_confirm;
+TOUT::fn_interrupted TOUT::on_interrupted;
 
 std::mutex& TOUT::s_mutex() {
     static std::mutex mtx;
@@ -113,10 +115,7 @@ void TOUT::log(int lv, const char* component, const std::string& msg)
             << component << " " << msg << TUI::ANSI_RESET << "\n";
         break;
     case OutputMode_TUI:
-        if (on_message) {
-            on_message(level_tui_color(lv),
-                       level_tag(lv) + std::string(component) + " " + msg);
-        }
+        message(level_tui_color(lv), level_tag(lv) + std::string(component) + " " + msg);
         break;
     }
 }
@@ -129,6 +128,7 @@ void TOUT::message(const TUI::Color color, const std::string& msg)
         break;
     case OutputMode_TUI:
         if (on_message) {
+            std::lock_guard<std::mutex> lock(s_mutex());
             on_message(color, msg);
         }
         break;
@@ -152,6 +152,7 @@ void TOUT::append(const std::string& msg)
         break;
     case OutputMode_TUI:
         if (on_append) {
+            std::lock_guard<std::mutex> lock(s_mutex());
             on_append(msg);
         }
         break;
@@ -160,7 +161,7 @@ void TOUT::append(const std::string& msg)
 
 void TOUT::append(const TUI::Color& fgcolor, const std::string& msg)
 {
-    set_style(fgcolor);
+    current_style.fg_color = fgcolor;
     append(msg);
 }
 
@@ -172,6 +173,7 @@ void TOUT::token(bool reasoning, const std::string& msg)
         break;
     case OutputMode_TUI:
         if (on_token) {
+            std::lock_guard<std::mutex> lock(s_mutex());
             on_token(reasoning, msg);
         }
         break;
@@ -189,16 +191,12 @@ void TOUT::check(const std::string& text, bool checked) {
 
 void TOUT::diff(const std::string& path, const agent::Diff& diff)
 {
+    const std::size_t line_width = std::max<std::size_t>(1, std::to_string(diff.max_line).size());
     switch (output_mode) {
-    case OutputMode_cout: {
+    case OutputMode_cout:
         cout << "\n" << TUI::ANSI_FG_WHITE << path << TUI::ANSI_RESET << "\n";
-        const std::size_t line_width = std::max<std::size_t>(
-            1, std::to_string(diff.max_line).size());
-
         for (const auto& l : diff.lines) {
-            const std::string line_number =
-                format_diff_line_number(l.number, line_width);
-
+            const std::string line_number = format_diff_line_number(l.number, line_width);
             switch (l.op) {
             case agent::Diff::Context:
                 cout << TUI::ANSI_BRIGHT_BLACK << line_number << TUI::ANSI_FG_WHITE << "  " << l.line << "\n";
@@ -212,12 +210,42 @@ void TOUT::diff(const std::string& path, const agent::Diff& diff)
             case agent::Diff::Separator:
                 cout << TUI::ANSI_FG_WHITE << u8"\u2500\u2500\u2500\n";
                 break;
-            }        
+            }
         }
         break;
-    }
     case OutputMode_TUI:
-
+        if (on_append) {
+            std::lock_guard<std::mutex> lock(s_mutex());
+            current_style.fg_color = TUI::AnsiColor_White;
+            on_append("\n" + path + "\n");
+            for (const auto& l : diff.lines) {
+                const std::string line_number = format_diff_line_number(l.number, line_width);
+                switch (l.op) {
+                case agent::Diff::Context:
+                    current_style.fg_color = TUI::AnsiColor_Bright_Black;
+                    on_append(line_number);
+                    current_style.fg_color = TUI::AnsiColor_White;
+                    on_append("  " + l.line + "\n");
+                    break;
+                case agent::Diff::Remove:
+                    current_style.fg_color = TUI::AnsiColor_Bright_Black;
+                    on_append(line_number);
+                    current_style.fg_color = TUI::AnsiColor_Red;
+                    on_append(" -" + l.line + "\n");
+                    break;
+                case agent::Diff::Add:
+                    current_style.fg_color = TUI::AnsiColor_Bright_Black;
+                    on_append(line_number);
+                    current_style.fg_color = TUI::AnsiColor_Green;
+                    on_append(" +" + l.line + "\n");
+                    break;
+                case agent::Diff::Separator:
+                    current_style.fg_color = TUI::AnsiColor_White;
+                    on_append(u8"\u2500\u2500\u2500\n");
+                    break;
+                }
+            }
+        }
         break;
     }
 }
@@ -233,11 +261,9 @@ void TOUT::markdown(const std::string& msg)
         while (std::getline(stream, line)) {
             const auto first = line.find_first_not_of(" \t");
             const std::string leading = first == std::string::npos
-                ? line
-                : line.substr(0, first);
+                ? line : line.substr(0, first);
             const std::string content = first == std::string::npos
-                ? std::string()
-                : line.substr(first);
+                ? std::string() : line.substr(first);
 
             if (content.rfind("```", 0) == 0) {
                 in_code_block = !in_code_block;
@@ -295,6 +321,7 @@ void TOUT::markdown(const std::string& msg)
         break;
     }
     case OutputMode_TUI:
+        append(msg);
         break;
     }
 }
@@ -302,20 +329,27 @@ void TOUT::markdown(const std::string& msg)
 void TOUT::tool_result(const std::string& name, const std::string& result)
 {
     switch (output_mode) {
-    case OutputMode_cout: 
+    case OutputMode_cout:
         cout << TUI::ANSI_FG_CYAN << name << TUI::ANSI_RESET << "\n";
         cout << TUI::ANSI_DIM << result << TUI::ANSI_RESET << "\n";
         break;
     case OutputMode_TUI:
+        if (on_message) {
+            std::lock_guard<std::mutex> lock(s_mutex());
+            on_message(TUI::AnsiColor_Cyan, name);
+            on_message(TUI::AnsiColor_Bright_Black, result);
+        }
         break;
     }
 }
 
-bool TOUT::confirm()
+bool TOUT::confirm(const std::string& msg)
 {
     switch (output_mode) {
     case OutputMode_cout:
     {
+        cout << current_style.fg_color.toAnsi(true);
+        cout << msg;
         auto k = KeyWatcher::read_key();
         char ch = 0;
         if (k.size > 0) ch = static_cast<char>(k.code[0]);
@@ -324,9 +358,29 @@ bool TOUT::confirm()
     }
         break;
     case OutputMode_TUI:
+        if (on_confirm) {
+            return on_confirm(msg);
+        }
         break;
     }
     return false;
+}
+
+void TOUT::set_interrupted(fn_interrupted func)
+{
+    on_interrupted = func;
+    switch (output_mode) {
+    case OutputMode_cout:
+        KeyWatcher::on_key([](int k) {
+            if (k == 27) { //ESC
+                on_interrupted();
+            }
+            });
+        break;
+    case OutputMode_TUI:
+        //do nothing
+        break;
+    }
 }
 
 void TOUT::set_output_enabled(bool enabled) {

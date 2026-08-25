@@ -68,10 +68,10 @@ bool SafetyGuard::ask_user_confirm(const std::string& message, int timeout_secon
     }
 
     // Local confirmation via KeyWatcher.
-    TOUT::append(TUI::AnsiColor_Bright_Red, "   " + message + "\n");
-    TOUT::append("   Type 'y' to confirm, anything else to cancel: ");
-
-    return TOUT::confirm();
+    TOUT::set_style(TUI::AnsiColor_Bright_Red);
+    std::string msg = "   " + message + "\n" +
+        "   Type 'y' to confirm, anything else to cancel: ";
+    return TOUT::confirm(msg);
 }
 
 // ============================================================================
