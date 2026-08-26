@@ -26,10 +26,8 @@ public:
     // Execute the tool with JSON arguments string, return result as string
     virtual std::string execute(const std::string& json_args) = 0;
 
-    static bool show_json(const nlohmann::json& args, int depth = 0);
-
-    static void show_text(const std::string& args);
-    static void show_json_text(const std::string& json_args);
+    static bool show_json(std::string &out, const nlohmann::json& args, int depth = 0);
+    static std::string show_json_text(const std::string& json_args);
 
     // Show user friendly arguments
     // Default: parse json_args and display key-value pairs in a readable format.

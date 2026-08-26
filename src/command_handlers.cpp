@@ -23,7 +23,7 @@ void register_command_handlers(
     RAGManager* rag_manager,
     LongTermMemory* long_term_memory) {
 
-    KeyWatcher::add_keywords({
+    TOUT::add_keywords({
         "/h", "/help", "/status", "/config",
         "/skills", "/tools", "/tool",
         "/agent",
@@ -323,58 +323,62 @@ void register_command_handlers(
             return std::to_string(ctx);
         };
 
-        LOG_INFO("Command", "\n--- Available Models ---");
+        TOUT::append(TUI::AnsiColor_Cyan, "\n--- Available Models ---\n");
         for (size_t i = 0; i < models.size(); ++i) {
             const auto& m = models[i];
-            std::string marker = (m.id == current_model) ? " <-- CURRENT" : "";
-            LOG_INFO("Command", "  [" + std::to_string(i + 1) + "] " + m.id +
-                      " (ctx: " + fmt_ctx(m.context_length) +
-                      ", owned_by: " + m.owned_by + ")"
-                      + marker);
+            bool is_current = (m.id == current_model);
+            std::string marker = (is_current) ? " <-- CURRENT\n" : "\n";
+            TOUT::append(is_current ? TUI::AnsiColor_Bright_Green : TUI::AnsiColor_White,
+                "  [" + std::to_string(i + 1) + "] " + m.id +
+                " (ctx: " + fmt_ctx(m.context_length) +
+                ", owned_by: " + m.owned_by + ")" + marker);
         }
-        LOG_INFO("Command", "\nEnter model number to switch, or press Enter to keep current (" + current_model + "): ");
+        TOUT::append(TUI::AnsiColor_Yellow,
+            "\nEnter model number to switch, or press Enter to keep current (" + current_model + "):\n");
 
-        std::string input = KeyWatcher::readline("Select Model>", nullptr);
-        if (input.empty())
-            return;
+        TOUT::select_model([&](std::string input) {
+            if (input.empty())
+                return;
 
-        // Trim.
-        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());
-        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
+            // Trim.
+            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());
+            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
 
-        if (input.empty()) {
-            LOG_INFO("Command", "  Kept current model: " + current_model);
-            return;
-        }
+            if (input.empty()) {
+                LOG_INFO("Command", "  Kept current model: " + current_model);
+                return;
+            }
 
-        // Parse number.
-        int num = -1;
-        try { num = std::stoi(input); } catch (...) {
-            LOG_ERROR("Command", "Failed to parse model number from input: '" + input + "'");
-        }
+            // Parse number.
+            int num = -1;
+            try { num = std::stoi(input); }
+            catch (...) {
+                LOG_ERROR("Command", "Failed to parse model number from input: '" + input + "'");
+            }
 
-        if (num < 1 || static_cast<size_t>(num) > models.size()) {
-            LOG_INFO("Command", "  Invalid selection. Kept current model: " + current_model);
-            return;
-        }
+            if (num < 1 || static_cast<size_t>(num) > models.size()) {
+                LOG_INFO("Command", "  Invalid selection. Kept current model: " + current_model);
+                return;
+            }
 
-        const auto& selected = models[num - 1];
-        ag->set_llm_model(selected.id);
+            const auto& selected = models[num - 1];
+            ag->set_llm_model(selected.id);
 
-        // Auto-adjust max_tokens based on context length.
-        // Use ~25% of context as a sensible default for output, capped at 8192.
-        int new_max_tokens = 4096;  // fallback
-        if (selected.context_length > 0) {
-            new_max_tokens = std::min(selected.context_length / 4, 8192);
-        }
+            // Auto-adjust max_tokens based on context length.
+            // Use ~25% of context as a sensible default for output, capped at 8192.
+            int new_max_tokens = 4096;  // fallback
+            if (selected.context_length > 0) {
+                new_max_tokens = std::min(selected.context_length / 4, 8192);
+            }
 
-        // Persist both model and max_tokens to zlagent.ini.
-        agent::IniParser::update_key("zlagent.ini", "llm", "model", selected.id);
-        agent::IniParser::update_key("zlagent.ini", "llm", "max_tokens", std::to_string(new_max_tokens));
+            // Persist both model and max_tokens to zlagent.ini.
+            agent::IniParser::update_key("zlagent.ini", "llm", "model", selected.id);
+            agent::IniParser::update_key("zlagent.ini", "llm", "max_tokens", std::to_string(new_max_tokens));
 
-        LOG_INFO("Command", "  Model switched to: " + selected.id + "\n" +
-            "  Context length:    " + fmt_ctx(selected.context_length) + " tokens\n" +
-            "  max_tokens set to: " + std::to_string(new_max_tokens) + " (auto-adjusted)");
+            LOG_INFO("Command", "  Model switched to: " + selected.id + "\n" +
+                "  Context length:    " + fmt_ctx(selected.context_length) + " tokens\n" +
+                "  max_tokens set to: " + std::to_string(new_max_tokens) + " (auto-adjusted)");
+            });
     });
 
     // ── /facts [prefix] ────────────────────────────────

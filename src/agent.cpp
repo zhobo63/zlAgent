@@ -838,7 +838,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
 
             auto tool_ptr = registry_.find_tool(tc.name);
             if (tool_ptr) {
-                LOG_INFO(u8"🛠️Tool", "Executing: " + tc.name + " with args: " + std::to_string(tc.arguments.size()) + " bytes");
+                LOG_INFO(u8"🔧Tool", "Executing: " + tc.name + " with args: " + std::to_string(tc.arguments.size()) + " bytes");
 
                 // Show preview before execution
                 try {
@@ -863,7 +863,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
                 }
             }
             else {
-                LOG_ERROR(u8"🛠️Tool", "\nNot found: " + tc.name + " with args: " + tc.arguments);
+                LOG_ERROR(u8"🔧Tool", "\nNot found: " + tc.name + " with args: " + tc.arguments);
             }
 
             // Validate arguments are well-formed JSON before executing
@@ -891,7 +891,7 @@ ChatResponse Agent::reasoning_loop_stream(const std::string& user_input, TokenCa
             }
             memory_.add(tool_msg);
 
-            LOG_INFO(u8"🛠️Tool", "Result: " + std::to_string(result.size()) + " bytes\n");
+            LOG_INFO(u8"🔧Tool", "Result: " + std::to_string(result.size()) + " bytes\n");
             TOUT::tool_result(tc.name, result);
         }
 

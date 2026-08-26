@@ -64,6 +64,8 @@ TOUT::fn_token TOUT::on_token;
 TOUT::fn_confirm TOUT::on_confirm;
 TOUT::fn_interrupted TOUT::on_interrupted;
 
+std::vector<std::string> TOUT::s_keywords;
+
 std::mutex& TOUT::s_mutex() {
     static std::mutex mtx;
     return mtx;
@@ -343,6 +345,12 @@ void TOUT::tool_result(const std::string& name, const std::string& result)
     }
 }
 
+void TOUT::add_keywords(const std::vector<std::string>&keywords)
+{
+    for (const auto& key : keywords)
+        s_keywords.push_back(key);
+}
+
 bool TOUT::confirm(const std::string& msg)
 {
     switch (output_mode) {
@@ -379,6 +387,18 @@ void TOUT::set_interrupted(fn_interrupted func)
         break;
     case OutputMode_TUI:
         //do nothing
+        break;
+    }
+}
+
+void TOUT::select_model(fn_input cb)
+{
+    switch (output_mode) {
+    case OutputMode_cout: 
+        cb(KeyWatcher::readline("Select Model>", nullptr));    
+        break;
+    case OutputMode_TUI:
+
         break;
     }
 }

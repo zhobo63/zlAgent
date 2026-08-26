@@ -28,11 +28,14 @@ public:
     using fn_token = std::function<void(bool reasoning, const std::string& msg)>;
     using fn_confirm = std::function<bool(const std::string& msg)>;
     using fn_interrupted = std::function<void()>;
+    using fn_input = std::function<void(std::string input)>;
     static fn_message on_message;
     static fn_append on_append;
     static fn_token on_token;
     static fn_confirm on_confirm;
     static fn_interrupted on_interrupted;
+
+    static std::vector<std::string> s_keywords;
 
     static void log(int lv, const char* component, const std::string& msg);
     static void message(const TUI::Color color, const std::string& msg);
@@ -48,8 +51,10 @@ public:
     static void markdown(const std::string& msg);
     static void tool_result(const std::string& name, const std::string& result);
 
+    static void add_keywords(const std::vector<std::string>& keywords);
     static bool confirm(const std::string& msg);
     static void set_interrupted(fn_interrupted func);
+    static void select_model(fn_input cb);
 
     // ── Unified output entry point ────────────────
 

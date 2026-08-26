@@ -1098,7 +1098,7 @@ Operations per file are atomic (failure rolls back that file); files are indepen
     }
 
     void show_preview(const std::string& json_args) override {
-        LOG_INFO(u8"🛠️Tool", name() + " [preview]");
+        LOG_INFO(u8"🔧Tool", name() + " [preview]");
         try {
             auto args = json::parse(json_args);
             if (args.is_discarded()) return;

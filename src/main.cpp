@@ -181,6 +181,7 @@ void run_key_watcher(agent::Agent& ag)
     if (cfg.terminal_commands.enabled) {
         std::cout << u8"  💡 Shell commands are auto-detected and executed directly.\n";
     }
+    agent::KeyWatcher::add_keywords(TOUT::s_keywords);
 
     agent::KeyWatcher::start();
     // Interactive loop with streaming output.

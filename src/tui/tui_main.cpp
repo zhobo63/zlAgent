@@ -439,16 +439,18 @@ struct AutoCompelete
     void show_hint(const std::string &prefix, int hint_x, int hint_y) {
         const std::string normalized_prefix = AutoCompelete::normalize_path(prefix);
         const size_t last_sep = normalized_prefix.rfind('/');
-        const std::string partial = last_sep == std::string::npos
-            ? normalized_prefix : normalized_prefix.substr(last_sep + 1);
         const int selected_index = std::max(0, std::min(
             selected, static_cast<int>(candidates.size()) - 1));
         const std::string& candidate = candidates[selected_index];
-        const std::string completion = last_sep == std::string::npos
+        const std::string normalized_candidate =
+            AutoCompelete::normalize_path(candidate);
+        const std::string completion = last_sep == std::string::npos ||
+            normalized_candidate.compare(0, last_sep + 1,
+                normalized_prefix, 0, last_sep + 1) == 0
             ? candidate : prefix.substr(0, last_sep + 1) + candidate;
 
         hint_candidates = completion;
-        const std::string hint = candidate.substr(partial.size());
+        const std::string hint = completion.substr(prefix.size());
         if (!hint.empty()) {
             user_hint->setText(hint);
             const int hint_width = std::max(1, user_hint->GetTextSize().x);
@@ -476,7 +478,10 @@ struct AutoCompelete
         const std::string prefix = get_prefix(user_input->text, cursor_idx);
         const std::string normalized_prefix = normalize_path(prefix);
         const size_t last_sep = normalized_prefix.rfind('/');
-        const std::string completion = last_sep == std::string::npos
+        const std::string normalized_candidate = normalize_path(candidate);
+        const std::string completion = last_sep == std::string::npos ||
+            normalized_candidate.compare(0, last_sep + 1,
+                normalized_prefix, 0, last_sep + 1) == 0
             ? candidate : prefix.substr(0, last_sep + 1) + candidate;
         const int start = std::max(0, prefix_start);
         const int end = std::min(static_cast<int>(user_input->chars.size()), std::max(start, cursor_idx));
@@ -536,7 +541,7 @@ struct AutoCompelete
     }
 
     bool OnEvent(const TUI::Event& ev) {
-        if (!is_completion_active || candidates.empty())
+        if (!autocompelete_menu->is_visible || candidates.empty())
             return false;
 
         constexpr size_t page_size = 9;
@@ -877,6 +882,8 @@ void tui_main(agent::Agent& ag)
 
     AutoCompelete autocompelete(mgr.GetUI<TUI::Slider>("autocompelete_menu"), 
         mgr.GetUI<TUI::Label>("user_hint"));
+    for (auto& key : TOUT::s_keywords)
+        autocompelete.keywords.push_back(key);
     History history;
     StatusBar statusbar;
     statusbar.Initialize(mgr.GetUI<TUI::Win>("status_bar"));
@@ -893,7 +900,7 @@ void tui_main(agent::Agent& ag)
         autocompelete.is_completion_active = false;
         autocompelete.hide_hint();
 
-        if (text.length() < 2)
+        if (text.length() < 1)
             return;
 
         const int idx = edit->cur_idx_of(edit->cursor);
@@ -930,6 +937,9 @@ void tui_main(agent::Agent& ag)
             if (user_input->text == "/quit" || user_input->text == "/exit") {
                 quit = true;
                 return true;
+            }
+            if (user_input->text == "/new") {
+                chat_area->child.clear();            
             }
 
             if (interactive_running.exchange(true)) {
