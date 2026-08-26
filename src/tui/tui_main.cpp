@@ -730,7 +730,9 @@ struct FileBrowser
             content << lines[i];
         }
         file_opened->title = filename;
-        file_opened->setText(content.str());
+        file_opened->scroll_value = { 0,0 };
+        file_opened->setText("");
+        TUI::SyntaxText(file_opened.get(), content.str(), filename);
         file_opened->SetVisible(true);
         filename_opened = filename;
         return true;
@@ -976,7 +978,7 @@ void tui_main(agent::Agent& ag)
             if (filebrowser.is_file_opened()) {
                 filebrowser.OpenFile("");
             }
-            else {
+            else if(TOUT::on_interrupted) {
                 TOUT::on_interrupted();
             }
             return true;
