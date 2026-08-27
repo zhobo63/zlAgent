@@ -313,6 +313,9 @@ void register_command_handlers(
             return a.id < b.id;
         });
 
+        std::vector<TOUT::Model> model_list;
+        int current = -1;
+
         // Helper: format context length for display.
         auto fmt_ctx = [](int ctx) -> std::string {
             if (ctx == 0) return "?";
@@ -323,45 +326,22 @@ void register_command_handlers(
             return std::to_string(ctx);
         };
 
-        TOUT::append(TUI::AnsiColor_Cyan, "\n--- Available Models ---\n");
         for (size_t i = 0; i < models.size(); ++i) {
             const auto& m = models[i];
-            bool is_current = (m.id == current_model);
-            std::string marker = (is_current) ? " <-- CURRENT\n" : "\n";
-            TOUT::append(is_current ? TUI::AnsiColor_Bright_Green : TUI::AnsiColor_White,
-                "  [" + std::to_string(i + 1) + "] " + m.id +
-                " (ctx: " + fmt_ctx(m.context_length) +
-                ", owned_by: " + m.owned_by + ")" + marker);
+            if (m.id == current_model) {
+                current = i;
+            }
+            model_list.push_back({ m.id , " (ctx: " + fmt_ctx(m.context_length) + ")" });
         }
-        TOUT::append(TUI::AnsiColor_Yellow,
-            "\nEnter model number to switch, or press Enter to keep current (" + current_model + "):\n");
 
-        TOUT::select_model([&](std::string input) {
-            if (input.empty())
-                return;
-
-            // Trim.
-            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());
-            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
-
-            if (input.empty()) {
-                LOG_INFO("Command", "  Kept current model: " + current_model);
-                return;
-            }
-
-            // Parse number.
-            int num = -1;
-            try { num = std::stoi(input); }
-            catch (...) {
-                LOG_ERROR("Command", "Failed to parse model number from input: '" + input + "'");
-            }
-
-            if (num < 1 || static_cast<size_t>(num) > models.size()) {
+        TOUT::select_model(model_list, current, [ag, fmt_ctx, models](int sel) {
+            std::string current_model = ag->get_llm().get_model();
+            if (sel < 0 || static_cast<size_t>(sel) >= models.size()) {
                 LOG_INFO("Command", "  Invalid selection. Kept current model: " + current_model);
                 return;
             }
 
-            const auto& selected = models[num - 1];
+            const auto& selected = models[sel];
             ag->set_llm_model(selected.id);
 
             // Auto-adjust max_tokens based on context length.

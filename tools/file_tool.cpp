@@ -708,7 +708,7 @@ All line numbers are based on the original file before any edits — DO NOT over
                 apply_single_edit(ef, edit);
             std::string error;
             if (!ef.validate_blocks(error)) {
-                std::cerr << "show_preview validation failed: " << path << " - " << error << "\n";
+                LOG_ERROR("edit_file", "show_preview validation failed: " + path + " - " + error);
                 return;
             }
             agent::EditLines result;
@@ -1091,9 +1091,9 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                          std::to_string(file_op_count.size()));
             TOUT::append(TUI::AnsiColor_White, "\n");
         } catch (const std::exception& e) {
-            TOUT::cerr << "show_arguments error: " << e.what() << "\n";
+            LOG_ERROR("edit_files", "show_arguments error: " + std::string(e.what()));
         } catch (...) {
-            TOUT::cerr << "unknown error in show_arguments\n";
+            LOG_ERROR("edit_files", "unknown error in show_arguments");
         }
     }
 
@@ -1111,7 +1111,7 @@ Operations per file are atomic (failure rolls back that file); files are indepen
 
                 std::string error;
                 if (!ef.validate_blocks(error)) {
-                    std::cerr << "show_preview validation failed: " << path << " - " << error << "\n";
+                    LOG_ERROR("edit_files", "show_preview validation failed: " + path + " - " + error);
                     continue;
                 }
 
@@ -1122,9 +1122,9 @@ Operations per file are atomic (failure rolls back that file); files are indepen
                 TOUT::diff(path, DiffEdit(old_content, new_content, 1));
             }
         } catch (const std::exception& e) {
-            TOUT::cerr << "show_preview error: " << e.what() << "\n";
+            LOG_ERROR("edit_files", "show_preview error: " + std::string(e.what()));
         } catch (...) {
-            TOUT::cerr << "unknown error in show_preview\n";
+            LOG_ERROR("edit_files", "unknown error in show_preview");
         }
     }
 

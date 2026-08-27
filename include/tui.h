@@ -28,7 +28,7 @@ public:
     using fn_token = std::function<void(bool reasoning, const std::string& msg)>;
     using fn_confirm = std::function<bool(const std::string& msg)>;
     using fn_interrupted = std::function<void()>;
-    using fn_input = std::function<void(std::string input)>;
+    using fn_select = std::function<void(int sel)>;
     static fn_message on_message;
     static fn_append on_append;
     static fn_token on_token;
@@ -54,7 +54,15 @@ public:
     static void add_keywords(const std::vector<std::string>& keywords);
     static bool confirm(const std::string& msg);
     static void set_interrupted(fn_interrupted func);
-    static void select_model(fn_input cb);
+
+    struct Model {
+        std::string id;
+        std::string info;
+    };
+    static void select_model(const std::vector<Model>& models, int current, fn_select cb);
+
+    using fn_select_model = std::function<void(const std::vector<Model>& models, int current, fn_select cb)>;
+    static fn_select_model on_select_model;
 
     // ── Unified output entry point ────────────────
 

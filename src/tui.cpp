@@ -63,7 +63,7 @@ TOUT::fn_append TOUT::on_append;
 TOUT::fn_token TOUT::on_token;
 TOUT::fn_confirm TOUT::on_confirm;
 TOUT::fn_interrupted TOUT::on_interrupted;
-
+TOUT::fn_select_model TOUT::on_select_model;
 std::vector<std::string> TOUT::s_keywords;
 
 std::mutex& TOUT::s_mutex() {
@@ -391,14 +391,46 @@ void TOUT::set_interrupted(fn_interrupted func)
     }
 }
 
-void TOUT::select_model(fn_input cb)
+void TOUT::select_model(const std::vector<Model>& models, int current, fn_select cb)
 {
+    std::string current_model = "";
+    std::string input = "";
+    int sel = -1;
     switch (output_mode) {
     case OutputMode_cout: 
-        cb(KeyWatcher::readline("Select Model>", nullptr));    
+        append(TUI::AnsiColor_Cyan, "\n--- Available Models ---\n");
+        for (int i = 0; i < models.size(); i++) {
+            const auto& model = models[i];
+            TUI::Color col = TUI::AnsiColor_White;
+            if (i == current) {
+                col = TUI::AnsiColor_Bright_Green;
+                current_model = model.id;
+            }
+            append(col, "  [" + std::to_string(i + 1) + "] " + model.id + model.info + "\n");
+        }
+        append(TUI::AnsiColor_Yellow,
+            "\nEnter model number to switch, or press Enter to keep current (" + current_model + "):\n");
+        input = KeyWatcher::readline("Select Model>", nullptr);
+        if (input.empty())
+            return;
+
+        // Trim.
+        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front()))) input.erase(input.begin());
+        while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))  input.pop_back();
+        if (input.empty()) {
+            return;
+        }
+        // Parse number.
+        try { sel = std::stoi(input); }
+        catch (...) {
+            LOG_ERROR("Command", "Failed to parse model number from input: '" + input + "'");
+        }
+        cb(sel - 1);
         break;
     case OutputMode_TUI:
-
+        if (on_select_model) {
+            on_select_model(models, current, cb);
+        }
         break;
     }
 }

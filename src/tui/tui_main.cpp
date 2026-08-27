@@ -186,6 +186,49 @@ Object Slider
     Visible false
 }
 
+Object Slider
+{
+    Name select_model
+    Rect 0 0 100 100
+    Dock all 20 0 80 100
+    DockOffset 0 2 0 -5
+    DrawBorder  true
+    FgColor RGB(235,190,95)
+    Title Available Models
+    Visible false
+}
+
+Object Win
+{
+    Name confirm
+    Rect 0 12 100 19
+    Dock left|right 20 0 80 100
+    DrawBorder  true
+    FgColor RGB(235,190,95)    
+    Title Confirm
+
+    Object Label
+    {
+        Name msg
+        Rect 0 0 100 4
+        Dock right 0 0 100 100
+    }
+
+    Object Button
+    {
+        Name btn_yes
+        Rect 2 5 12 5
+        Text Yes
+    }
+    Object Button
+    {
+        Name btn_no
+        Rect 14 5 24 5
+        Text No
+    }
+    Visible false
+}
+
 )";
 
 const TUI::Color kTeal(76, 201, 190);
@@ -782,6 +825,19 @@ struct FileBrowser
     }
 };
 
+struct Confirm {
+    TUI::WinPtr confirm;
+    TUI::LabelPtr msg;
+    TUI::ButtonPtr btn_yes;
+    TUI::ButtonPtr btn_no;
+
+    Confirm(TUI::WinPtr confirm) :confirm(confirm) {
+        msg = confirm->GetUI<TUI::Label>("msg");
+        btn_yes = confirm->GetUI<TUI::Button>("btn_yes");
+        btn_no = confirm->GetUI<TUI::Button>("btn_no");
+    }
+};
+
 bool run_interactive(
     const std::string& input,
     agent::CommandDispatcher& dispatcher,
@@ -851,6 +907,8 @@ void tui_main(agent::Agent& ag)
         post_ui_task([&, msg, style] {
             auto re = get_chat_edit();
             re->appendText(msg, style);
+            chat_area->UpdateScrollMax();
+            chat_area->ScrollTo(100);
             });
         };
     std::string markdown;
@@ -871,14 +929,31 @@ void tui_main(agent::Agent& ag)
             });
         };
 
+    Confirm confirm(mgr.GetUI<TUI::Win>("confirm"));
+
     TOUT::on_confirm = [&](const std::string& msg) ->bool {
-        //TODO 
         // from: 
         //   multi_agent confirm_request
         //   SafetyGuard::ask_user_confirm
-
-        return false;
+        confirm.confirm->SetVisible(true);
+        confirm.msg->setText(msg);
+        bool wait = true;
+        bool ret = false;
+        confirm.btn_yes->on_click = [&ret, &wait]() {
+            wait = false;
+            ret = true;
+            };
+        confirm.btn_no->on_click = [&ret, &wait]() {
+            wait = false;
+            ret = false;
+            };
+        while (wait) {            
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        confirm.confirm->SetVisible(false);
+        return ret;
         };
+
 
     AutoCompelete autocompelete(mgr.GetUI<TUI::Slider>("autocompelete_menu"), 
         mgr.GetUI<TUI::Label>("user_hint"));
@@ -891,6 +966,27 @@ void tui_main(agent::Agent& ag)
 
     auto user_input = mgr.GetUI<TUI::Edit>("user_input");
     autocompelete.user_input = user_input;
+
+    TUI::SliderPtr select_model = mgr.GetUI<TUI::Slider>("select_model");
+    TOUT::on_select_model = [&](const std::vector<TOUT::Model>& models, int current, TOUT::fn_select cb) {
+        auto sdr = select_model;
+        sdr->child.clear();
+        int w = sdr->local.width() - 1;
+        for (int i = 0; i < models.size(); i++) {
+            const auto& model = models[i];
+            TUI::ButtonPtr btn = sdr->Create<TUI::Button>("", { 0, i, w, i });
+            btn->setText("[" + std::to_string(i + 1) + "] " + model.id + model.info);
+            btn->fg_color = i == current ? TUI::AnsiColor_Bright_Green : TUI::AnsiColor_White;
+            btn->text_algn = TUI::Align_Start;
+            btn->on_click = [&, i, cb, sdr]() {
+                sdr->SetVisible(false);
+                cb(i);
+                statusbar.Update(ag);
+                mgr.SetNotify(user_input);
+                };
+        }
+        sdr->SetVisible(true);
+        };
 
     user_input->on_edit = [&](TUI::Edit* edit, const std::string& text) {
         autocompelete.candidates.clear();
