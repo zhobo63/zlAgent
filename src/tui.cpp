@@ -145,6 +145,11 @@ void TOUT::set_style(const TUI::Color& fgcolor)
 {
     current_style.fg_color = fgcolor;
 }
+void TOUT::set_style(const TUI::Color& fgcolor, const TUI::Color& bgcolor)
+{
+    current_style.fg_color = fgcolor;
+    current_style.bg_color = bgcolor;
+}
 void TOUT::append(const std::string& msg)
 {
     switch (output_mode) {
@@ -332,15 +337,15 @@ void TOUT::tool_result(const std::string& name, const std::string& result)
 {
     switch (output_mode) {
     case OutputMode_cout:
-        cout << TUI::ANSI_FG_CYAN << name << TUI::ANSI_RESET << "\n";
-        cout << TUI::ANSI_DIM << result << TUI::ANSI_RESET << "\n";
+        //cout << TUI::ANSI_FG_CYAN << name << TUI::ANSI_RESET << "\n";
+        //cout << TUI::ANSI_DIM << result << TUI::ANSI_RESET << "\n";
         break;
     case OutputMode_TUI:
-        if (on_message) {
-            std::lock_guard<std::mutex> lock(s_mutex());
-            on_message(TUI::AnsiColor_Cyan, name);
-            on_message(TUI::AnsiColor_Bright_Black, result);
-        }
+        //if (on_message) {
+        //    std::lock_guard<std::mutex> lock(s_mutex());
+        //    on_message(TUI::AnsiColor_Cyan, name);
+        //    on_message(TUI::AnsiColor_Bright_Black, result);
+        //}
         break;
     }
 }

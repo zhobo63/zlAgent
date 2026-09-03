@@ -179,8 +179,8 @@ Object Label
 Object Slider
 {
     Name autocompelete_menu
-    Rect 10 0 40 12
-    Dock top|down 0 100 100 100
+    Rect 10 0 80 12
+    Dock top|down 0 100 80 100
     DockOffset 0 -15 0 -5
     DrawBorder true
     Visible false
@@ -236,6 +236,94 @@ const TUI::Color kBlue(110, 170, 255);
 const TUI::Color kAmber(235, 190, 95);
 const TUI::Color kGreen(115, 205, 155);
 const TUI::Color kRed(235, 105, 115);
+
+struct ChatArea
+{
+    TUI::SliderPtr chat_area;
+
+    std::mutex ui_task_mutex;
+    std::queue<std::function<void()>> ui_tasks;
+
+    std::string markdown;
+
+    ChatArea(TUI::SliderPtr _chat_area) :chat_area(_chat_area) {}
+
+    void PostTask(std::function<void()> task) {
+        std::lock_guard<std::mutex> lock(ui_task_mutex);
+        ui_tasks.push(std::move(task));
+    }
+    void GetTask(std::queue<std::function<void()>>& task) {
+        std::lock_guard<std::mutex> lock(ui_task_mutex);
+        task.swap(ui_tasks);
+    }
+
+    TUI::RichEditPtr GetChatEdit() {
+        TUI::RichEditPtr re;
+        if (!chat_area->child.empty()) {
+            re = std::dynamic_pointer_cast<TUI::RichEdit>(chat_area->child.back());
+            if (re) {
+                return re;
+            }
+
+            int y = chat_area->child.back()->local.y2 + 1;
+            re = chat_area->Create<TUI::RichEdit>("", { 0, y, chat_area->clip.width() - 1, y });
+            chat_area->ScrollTo(100);
+        }
+        else {
+            re = chat_area->Create<TUI::RichEdit>("", { 0, 0, chat_area->clip.width() - 1, 0 });
+        }
+        re->wrap_width = chat_area->clip.width() - 1;
+        re->autosize_ = TUI::Autosize_TextHeight;
+        re->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
+        re->is_scroll_y = false;
+        return re;
+    }
+    void Message(const TUI::Color color, const std::string& msg, const TUI::Color bgcolor = TUI::AnsiColor_Unused) {
+        PostTask([&, color, msg, bgcolor] {
+            int y = 0;
+            if (!chat_area->child.empty()) {
+                y = chat_area->child.back()->local.y2 + 1;
+            }
+            auto lb = chat_area->Create<TUI::Label>(
+                "", { 0, y, chat_area->clip.width() - 1, y });
+            lb->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
+            lb->autosize_ = TUI::Autosize_TextHeight;
+            lb->fg_color = color;
+            lb->bg_color = bgcolor;
+            if (bgcolor != TUI::AnsiColor_Unused) {
+                lb->draw_border = true;
+                lb->border_style = TUI::BorderStyle_None;
+            }
+            lb->setText(msg);
+            chat_area->ScrollTo(100);
+            });
+    }
+    void Append(const std::string& msg) {
+        const auto style = TOUT::current_style;
+        PostTask([&, msg, style] {
+            auto re = GetChatEdit();
+            re->appendText(msg, style);
+            chat_area->UpdateScrollMax();
+            chat_area->ScrollTo(100);
+        });
+    }
+    void Token(bool reasoning, const std::string& msg) {
+        const auto style = TOUT::current_style;
+        PostTask([&, reasoning, msg, style] {
+            auto re = GetChatEdit();
+            if (reasoning) {
+                markdown.clear();
+                re->appendText(msg, style);
+            }
+            else {
+                markdown += msg;
+                re->setText("");
+                TUI::Markdown(re.get(), markdown);
+            }
+            chat_area->ScrollTo(100);
+        });
+    }
+};
 
 struct StatusBar
 {
@@ -636,7 +724,7 @@ struct AutoCompelete
             insert_compelete(prefix_start, selected);
             return true;
         }
-        else if (ev.key == VK_RETURN || ev.vkey == VK_TAB) {
+        else if (ev.key == VK_RETURN || ev.key == VK_TAB) {
             insert_compelete(prefix_start, selected);
             return true;
         }
@@ -836,6 +924,29 @@ struct Confirm {
         btn_yes = confirm->GetUI<TUI::Button>("btn_yes");
         btn_no = confirm->GetUI<TUI::Button>("btn_no");
     }
+
+    // from: 
+    //   multi_agent confirm_request
+    //   SafetyGuard::ask_user_confirm
+    bool OnConfirm(const std::string& _msg) {
+        confirm->SetVisible(true);
+        msg->setText(_msg);
+        bool wait = true;
+        bool ret = false;
+        btn_yes->on_click = [&ret, &wait]() {
+            wait = false;
+            ret = true;
+            };
+        btn_no->on_click = [&ret, &wait]() {
+            wait = false;
+            ret = false;
+            };
+        while (wait) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        confirm->SetVisible(false);
+        return ret;
+    }
 };
 
 bool run_interactive(
@@ -855,105 +966,18 @@ void tui_main(agent::Agent& ag)
     //filebrowser.PopulateFiles();
 
     auto chat_area = mgr.GetUI<TUI::Slider>("chat_area");
-    auto get_chat_edit = [&]() -> TUI::RichEditPtr {
-        TUI::RichEditPtr re;
-        if (!chat_area->child.empty()) {
-            re = std::dynamic_pointer_cast<TUI::RichEdit>(chat_area->child.back());
-            if (re) {
-                return re;
-            }
-
-            int y = chat_area->child.back()->local.y2 + 1;
-            re = chat_area->Create<TUI::RichEdit>("", { 0, y, chat_area->clip.width() - 1, y });
-            chat_area->ScrollTo(100);
-        }
-        else {
-            re = chat_area->Create<TUI::RichEdit>("", { 0, 0, chat_area->clip.width() - 1, 0 });
-        }
-        re->autosize_ = TUI::Autosize_TextHeight;
-        re->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
-        re->is_scroll_y = false;
-        return re;
-    };
-
-    std::mutex ui_task_mutex;
-    std::queue<std::function<void()>> ui_tasks;
-    auto post_ui_task = [&](std::function<void()> task) {
-        std::lock_guard<std::mutex> lock(ui_task_mutex);
-        ui_tasks.push(std::move(task));
-    };
+    ChatArea chatarea(chat_area);
 
     std::atomic<bool> interactive_running{false};
     std::thread interactive_thread;
     bool quit = false;
 
-    TOUT::on_message = [&](const TUI::Color color, const std::string& msg) {
-        post_ui_task([&, color, msg] {
-            int y = 0;
-            if (!chat_area->child.empty()) {
-                y = chat_area->child.back()->local.y2 + 1;
-            }
-            auto lb = chat_area->Create<TUI::Label>(
-                "", { 0, y, chat_area->clip.width() - 1, y });
-            lb->dock_ = { TUI::Dock_Right, {0,0,100,100}, {0,0,0,0} };
-            lb->autosize_ = TUI::Autosize_TextHeight;
-            lb->fg_color = color;
-            lb->setText(msg);
-            chat_area->ScrollTo(100);
-            });
-        };
-    TOUT::on_append = [&](const std::string& msg) {
-        const auto style = TOUT::current_style;
-        post_ui_task([&, msg, style] {
-            auto re = get_chat_edit();
-            re->appendText(msg, style);
-            chat_area->UpdateScrollMax();
-            chat_area->ScrollTo(100);
-            });
-        };
-    std::string markdown;
-    TOUT::on_token = [&](bool reasoning, const std::string& msg) {
-        const auto style = TOUT::current_style;
-        post_ui_task([&, reasoning, msg, style] {
-            auto re = get_chat_edit();
-            if (reasoning) {
-                markdown.clear();
-                re->appendText(msg, style);
-            }
-            else {
-                markdown += msg;
-                re->setText("");
-                TUI::Markdown(re.get(), markdown);
-            }
-            chat_area->ScrollTo(100);
-            });
-        };
+    TOUT::on_message = [&](const TUI::Color color, const std::string& msg) { chatarea.Message(color, msg); };
+    TOUT::on_append = [&](const std::string& msg) { chatarea.Append(msg); };
+    TOUT::on_token = [&](bool reasoning, const std::string& msg) { chatarea.Token(reasoning, msg); };
 
     Confirm confirm(mgr.GetUI<TUI::Win>("confirm"));
-
-    TOUT::on_confirm = [&](const std::string& msg) ->bool {
-        // from: 
-        //   multi_agent confirm_request
-        //   SafetyGuard::ask_user_confirm
-        confirm.confirm->SetVisible(true);
-        confirm.msg->setText(msg);
-        bool wait = true;
-        bool ret = false;
-        confirm.btn_yes->on_click = [&ret, &wait]() {
-            wait = false;
-            ret = true;
-            };
-        confirm.btn_no->on_click = [&ret, &wait]() {
-            wait = false;
-            ret = false;
-            };
-        while (wait) {            
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        confirm.confirm->SetVisible(false);
-        return ret;
-        };
-
+    TOUT::on_confirm = [&](const std::string& msg) ->bool { return confirm.OnConfirm(msg); };
 
     AutoCompelete autocompelete(mgr.GetUI<TUI::Slider>("autocompelete_menu"), 
         mgr.GetUI<TUI::Label>("user_hint"));
@@ -986,6 +1010,9 @@ void tui_main(agent::Agent& ag)
                 };
         }
         sdr->SetVisible(true);
+        if (sdr->child.size()) {
+            mgr.SetNotify(sdr->child.front());
+        }
         };
 
     user_input->on_edit = [&](TUI::Edit* edit, const std::string& text) {
@@ -1011,6 +1038,10 @@ void tui_main(agent::Agent& ag)
         int hint_x = user_input->clip.x + user_input->cursor.x - user_input->scroll_value.x;
         int hint_y = user_input->clip.y + user_input->cursor.y - user_input->scroll_value.y;        
         autocompelete.show_hint(prefix, hint_x, hint_y);
+        if (autocompelete.autocompelete_menu->is_visible) {
+            const int prefix_start = idx - AutoCompelete::utf8_char_count(prefix);
+            autocompelete.show_menu(prefix_start, idx);
+        }
         };
 
     user_input->on_key = [&](const TUI::Event &ev) -> bool {
@@ -1020,11 +1051,12 @@ void tui_main(agent::Agent& ag)
             const int prefix_start = idx - AutoCompelete::utf8_char_count(prefix);
             if (autocompelete.candidates.size() == 1) {
                 autocompelete.insert_compelete(prefix_start, 0);
+                return true;
             }
-            else {
+            else if (!autocompelete.autocompelete_menu->is_visible) {
                 autocompelete.show_menu(prefix_start, idx);
+                return true;
             }
-            return true;
         }
 
         if (!ev.ctrl && ev.key == VK_RETURN) {
@@ -1044,7 +1076,8 @@ void tui_main(agent::Agent& ag)
 
             const std::string input = user_input->text;
             history.add(input);
-            TOUT::on_message({ 235,190,95 }, u8"\n┃\n┃" + input + "\n┃\n");
+            chatarea.Append("\n");
+            chatarea.Message({ 235,190,95 }, u8"┃\n┃" + input + "\n┃", { 50,50,50 });
             user_input->setText("");
 
             if (interactive_thread.joinable()) {
@@ -1059,6 +1092,7 @@ void tui_main(agent::Agent& ag)
                 interactive_running.store(false);
                 statusbar.Update(ag);
                 filebrowser.Show(filebrowser.show);
+                terminal.EnableRawMode();
             });
             return true;
         }
@@ -1142,18 +1176,36 @@ void tui_main(agent::Agent& ag)
             return true;
         }
         else if (ev.vkey == VK_UP) {
-            if (history.prev()) {
+            if (select_model->is_visible) {
+                mgr.hover_slider_ = select_model;
+                return false;
+            }
+            else if (mgr.notify_ == user_input && history.prev()) {
                 const auto* entry = history.get_current();
                 user_input->setText(entry != nullptr ? *entry : "");
                 return true;
             }
         }
         else if (ev.vkey == VK_DOWN) {
-            if (history.next()) {
+            if (select_model->is_visible) {
+                mgr.hover_slider_ = select_model;
+                return false;
+            }
+            else if (mgr.notify_ == user_input && history.next()) {
                 const auto* entry = history.get_current();
                 user_input->setText(entry != nullptr ? *entry : "");
                 return true;
             }
+        }
+        else if (ev.vkey == VK_PRIOR) {
+            chat_area->scroll_value.y -= chat_area->clip.height();
+            chat_area->scroll_value.y = std::max(0, chat_area->scroll_value.y);
+            mgr.is_dirty = true;
+        }
+        else if (ev.vkey == VK_NEXT) {
+            chat_area->scroll_value.y += chat_area->clip.height();
+            chat_area->scroll_value.y = std::min(chat_area->scroll_value.y, chat_area->scroll_max.y);
+            mgr.is_dirty = true;
         }
         return false;
     };
@@ -1162,7 +1214,7 @@ void tui_main(agent::Agent& ag)
 
     TOUT::set_output_mode(TOUT::OutputMode_TUI);
 
-    mgr.Update(terminal);
+    //mgr.Update(terminal);
     TOUT::set_style({ 100,255,255 });   //RGB
     TOUT::append(u8"╭─────────────────────────────╮\n");
     TOUT::append(u8"│  ZL Agent - Code Assistant  │\n");
@@ -1176,22 +1228,18 @@ void tui_main(agent::Agent& ag)
     }
 
     while (!quit) {
-        std::queue<std::function<void()>> pending_tasks;
-        {
-            std::lock_guard<std::mutex> lock(ui_task_mutex);
-            pending_tasks.swap(ui_tasks);
-        }
-        while (!pending_tasks.empty()) {
-            auto task = std::move(pending_tasks.front());
-            pending_tasks.pop();
-            task();
-        }
-
         if (mgr.Update(terminal)) {
             auto& buffer = terminal.GetDrawBuffer();
             buffer.clear();
             mgr.Paint(buffer);
             terminal.Render();
+        }
+        std::queue<std::function<void()>> pending_tasks;
+        chatarea.GetTask(pending_tasks);
+        while (!pending_tasks.empty()) {
+            auto task = std::move(pending_tasks.front());
+            pending_tasks.pop();
+            task();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

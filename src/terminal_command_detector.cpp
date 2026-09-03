@@ -6,6 +6,25 @@
 #include "safety_guard.h"
 #include <iostream>
 
+#ifdef _WIN32
+static void log_console_input_mode(const char* where)
+{
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+
+    if (GetConsoleMode(hIn, &mode)) {
+        LOG_INFO(
+            "Terminal",
+            std::string(where) + " input mode=" +
+            std::to_string(mode) +
+            " vt=" +
+            std::to_string((mode & ENABLE_VIRTUAL_TERMINAL_INPUT) != 0) +
+            " mouse=" +
+            std::to_string((mode & ENABLE_MOUSE_INPUT) != 0));
+    }
+}
+#endif
+
 namespace agent {
 
 // ── Default command lists (used when config provides none) ───────────────
@@ -226,6 +245,7 @@ std::string TerminalCommandDetector::to_lower(const std::string& s) {
 bool TerminalCommandDetector::execute_directly(const std::string& command, std::string& response) {
     LOG_INFO("Terminal", "Executing directly: " + command);
 
+    //log_console_input_mode("before popen");
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe) {
         auto err_msg = "Failed to execute command:" + command;
@@ -233,6 +253,7 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
         response = err_msg;
         return false;
     }
+    //log_console_input_mode("after popen");
     TOUT::set_style(TUI::AnsiColor_White);
 
     char buffer[4096] = { 0 };
@@ -248,7 +269,7 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
         response += "\n" + warn_msg;
         return false;
     }
-
+    //log_console_input_mode("after pclose");
     return true;
 }
 

@@ -43,6 +43,7 @@ public:
     static TUI::RichText::Style current_style;
     static void set_style(const TUI::RichText::Style& style);
     static void set_style(const TUI::Color& fgcolor);
+    static void set_style(const TUI::Color& fgcolor, const TUI::Color& bgcolor);
     static void append(const std::string& msg);
     static void append(const TUI::Color& fgcolor, const std::string& msg);
     static void token(bool reasoning, const std::string& msg);
