@@ -263,6 +263,7 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
     }
 
     int status = pclose(pipe);
+    TOUT::after_pclose();
     if (status != 0) {
         auto warn_msg = "Command failed with exit code " + std::to_string(status);
         LOG_WARN("Terminal", warn_msg);

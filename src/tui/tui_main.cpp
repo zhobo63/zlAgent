@@ -975,6 +975,7 @@ void tui_main(agent::Agent& ag)
     TOUT::on_message = [&](const TUI::Color color, const std::string& msg) { chatarea.Message(color, msg); };
     TOUT::on_append = [&](const std::string& msg) { chatarea.Append(msg); };
     TOUT::on_token = [&](bool reasoning, const std::string& msg) { chatarea.Token(reasoning, msg); };
+    TOUT::on_pclose = [&]() {terminal.EnableRawMode(); };
 
     Confirm confirm(mgr.GetUI<TUI::Win>("confirm"));
     TOUT::on_confirm = [&](const std::string& msg) ->bool { return confirm.OnConfirm(msg); };

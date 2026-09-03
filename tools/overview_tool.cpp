@@ -426,6 +426,7 @@ private:
             result.push_back(line);
         }
         pclose(pipe);
+        TOUT::after_pclose();
         std::ostringstream result_log;
         for (size_t i = 0; i < result.size(); ++i) {
             if (i > 0) result_log << "\n";

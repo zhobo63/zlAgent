@@ -131,10 +131,12 @@ std::string LocalToolDiscovery::resolve_path(const std::string& exe_name) {
         size_t nl = path.find('\n');
         if (nl != std::string::npos) path.erase(nl);
         pclose(pipe);
+        TOUT::after_pclose();
         return path;
     }
 
     pclose(pipe);
+    TOUT::after_pclose();
     return "";
 #endif
 }
@@ -151,10 +153,12 @@ std::string LocalToolDiscovery::get_version(const std::string& full_path) {
         size_t nl = ver.find('\n');
         if (nl != std::string::npos) ver.erase(nl);
         pclose(pipe);
+        TOUT::after_pclose();
         return ver;
     }
 
     pclose(pipe);
+    TOUT::after_pclose();
     return "unknown";
 }
 
@@ -432,6 +436,7 @@ std::string LocalExecutableTool::run_command(const std::string& full_cmd, const 
     }
 
     int status = pclose(pipe);
+    TOUT::after_pclose();
     if (status != 0 && output.empty()) {
         return "Error: Command exited with code " + std::to_string(status);
     }

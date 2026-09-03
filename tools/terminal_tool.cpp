@@ -75,6 +75,7 @@ public:
             }
 
             int status = pclose(pipe);
+            TOUT::after_pclose();
             if (status != 0) {
                 // Command exited with error, but we still return whatever output exists
                 if (output.empty()) {

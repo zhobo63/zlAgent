@@ -63,6 +63,7 @@ TOUT::fn_append TOUT::on_append;
 TOUT::fn_token TOUT::on_token;
 TOUT::fn_confirm TOUT::on_confirm;
 TOUT::fn_interrupted TOUT::on_interrupted;
+TOUT::fn_interrupted TOUT::on_pclose;
 TOUT::fn_select_model TOUT::on_select_model;
 std::vector<std::string> TOUT::s_keywords;
 
@@ -393,6 +394,13 @@ void TOUT::set_interrupted(fn_interrupted func)
     case OutputMode_TUI:
         //do nothing
         break;
+    }
+}
+
+void TOUT::after_pclose()
+{
+    if (on_pclose) {
+        on_pclose();
     }
 }
 

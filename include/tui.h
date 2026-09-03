@@ -34,6 +34,7 @@ public:
     static fn_token on_token;
     static fn_confirm on_confirm;
     static fn_interrupted on_interrupted;
+    static fn_interrupted on_pclose;
 
     static std::vector<std::string> s_keywords;
 
@@ -55,6 +56,7 @@ public:
     static void add_keywords(const std::vector<std::string>& keywords);
     static bool confirm(const std::string& msg);
     static void set_interrupted(fn_interrupted func);
+    static void after_pclose();
 
     struct Model {
         std::string id;

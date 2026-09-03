@@ -35,6 +35,7 @@ std::string execute_shell_command(const std::string& cmd, const std::string& cwd
     }
 
     pclose(pipe);
+    TOUT::after_pclose();
     return output;
 }
 
