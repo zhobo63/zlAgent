@@ -253,15 +253,16 @@ bool TerminalCommandDetector::execute_directly(const std::string& command, std::
         response = err_msg;
         return false;
     }
-    //log_console_input_mode("after popen");
     TOUT::set_style(TUI::AnsiColor_White);
 
+    //log_console_input_mode("after popen");
     char buffer[4096] = { 0 };
     while (fgets(buffer, sizeof(buffer), pipe)) {
+        //log_console_input_mode(buffer);
         TOUT::append(buffer);
         response += buffer;
     }
-
+    //log_console_input_mode("before pclose");
     int status = pclose(pipe);
     TOUT::after_pclose();
     if (status != 0) {
