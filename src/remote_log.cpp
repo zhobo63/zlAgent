@@ -15,15 +15,15 @@
 
 // ── Color definitions ────────────────────────────────────────────────
 
-Color Color::RED     = {255,   0,   0,   255};
-Color Color::GREEN   = {  0, 255,   0,   255};
-Color Color::YELLOW  = {255, 255,   0,   255};
-Color Color::BLUE    = {  0,   0, 255, 255};
-Color Color::CYAN    = {  0, 255, 255, 255};
-Color Color::MAGENTA = {255,   0, 255, 255};
-Color Color::ORANGE  = {255, 165,   0,   255};
-Color Color::GRAY    = {128, 128, 128, 255};
-Color Color::WHITE   = {255, 255, 255, 255};
+RemoteLog::Color RemoteLog::Color::RED     = {255,   0,   0,   255};
+RemoteLog::Color RemoteLog::Color::GREEN   = {  0, 255,   0,   255};
+RemoteLog::Color RemoteLog::Color::YELLOW  = {255, 255,   0,   255};
+RemoteLog::Color RemoteLog::Color::BLUE    = {  0,   0, 255, 255};
+RemoteLog::Color RemoteLog::Color::CYAN    = {  0, 255, 255, 255};
+RemoteLog::Color RemoteLog::Color::MAGENTA = {255,   0, 255, 255};
+RemoteLog::Color RemoteLog::Color::ORANGE  = {255, 165,   0,   255};
+RemoteLog::Color RemoteLog::Color::GRAY    = {128, 128, 128, 255};
+RemoteLog::Color RemoteLog::Color::WHITE   = {255, 255, 255, 255};
 
 // ── Windows socket init/cleanup (Meyers' Singleton — thread-safe) ────
 

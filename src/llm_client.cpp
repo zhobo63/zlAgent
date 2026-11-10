@@ -2,7 +2,6 @@
 #include "llm_client.h"
 #include "key_watcher.h"
 #include "logger.h"
-#include "logger.h"
 #include "token_counter.h"
 #include <mutex>
 
@@ -461,8 +460,8 @@ ChatResponse chat_stream_impl(
         LOG_ERROR("LLMClient", "Chat request build failed, aborting");
         return resp;
     }
-    LOG(Color::WHITE, "JSON_BODY:%s", json_body->c_str());
-    LOG(Color::CYAN, "JSON_BODY SIZE:%llu", json_body->size());
+    LOG(RemoteLog::Color::WHITE, "JSON_BODY:%s", json_body->c_str());
+    LOG(RemoteLog::Color::CYAN, "JSON_BODY SIZE:%llu", json_body->size());
 
     httplib::Headers headers;
     headers.insert({"Content-Type", "application/json"});
@@ -535,8 +534,8 @@ ChatResponse chat_stream_impl(
         resp.tool_calls.clear();
     }
     TOUT::append("\n");  // ensure prompt is on a new line after streaming output
-    LOG(Color::CYAN, "RESPONSE:%s", resp.content);
-    LOG(Color::CYAN, "RESPONSE SIZE:%llu", resp.content.size());
+    LOG(RemoteLog::Color::CYAN, "RESPONSE:%s", resp.content);
+    LOG(RemoteLog::Color::CYAN, "RESPONSE SIZE:%llu", resp.content.size());
 
     LOG_DEBUG("LLMClient", "Stream complete: has_tool_calls=" + std::to_string(resp.has_tool_calls) +
              ", tool_calls.size()=" + std::to_string(resp.tool_calls.size()));
