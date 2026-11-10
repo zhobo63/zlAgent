@@ -49,7 +49,7 @@ static void CleanupWinsock() {
 
 // ── RemoteLog implementation ─────────────────────────────────────────
 
-RemoteLog::RemoteLog() {
+RemoteLog::RemoteLog(int port) : _port(port) {
 #if defined(_WIN32) || defined(_WIN64)
     InitWinsock();
 #endif
