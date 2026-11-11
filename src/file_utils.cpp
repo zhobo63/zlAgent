@@ -729,7 +729,7 @@ static void parse_cpp_outline(const std::vector<std::string>& lines,
                 // extract func_name: scan backwards from '(' skipping whitespace
                 {
                     int pos = l - 1;
-                    while (pos >= 0 && std::isspace(line[pos])) pos--;
+                    while (pos >= 0 && std::isspace(static_cast<unsigned char>(line[pos]))) pos--;
                     int end = pos + 1;
                     //while (pos >= 0 && (
                     //    std::isalnum(line[pos]) ||
@@ -998,12 +998,12 @@ static void parse_js_outline(const std::vector<std::string>& lines,
             auto paren_open = line.find('(');
             if (paren_open != std::string::npos) {
                 int pos = static_cast<int>(paren_open) - 1;
-                while (pos >= 0 && std::isspace(line[pos])) pos--;
+                while (pos >= 0 && std::isspace(static_cast<unsigned char>(line[pos]))) pos--;
                 int end = pos + 1;
-                while (pos >= 0 && (std::isalnum(line[pos]) || line[pos] == '_' || line[pos] == '$')) pos--;
+                while (pos >= 0 && (std::isalnum(static_cast<unsigned char>(line[pos])) || line[pos] == '_' || line[pos] == '$')) pos--;
                 std::string fname = line.substr(pos + 1, end - pos - 1);
                 if (!fname.empty()) {
-                    out.push_back({ i + 1, "function", fname, js_stack.size() > 0 ? cur.depth + 1 : 0 });
+                    out.push_back({ i + 1, "function", fname, js_stack.size() > 0 ? cur.depth : 0 });
                 }
             }
         }
@@ -1014,9 +1014,9 @@ static void parse_js_outline(const std::vector<std::string>& lines,
             if (paren_open != std::string::npos && brace_depth<=js_stack.size()+1) {
                 // scan backwards from '(' to extract the identifier before it
                 int pos = static_cast<int>(paren_open) - 1;
-                while (pos >= 0 && std::isspace(line[pos])) pos--;
+                while (pos >= 0 && std::isspace(static_cast<unsigned char>(line[pos]))) pos--;
                 int end = pos + 1;
-                while (pos >= 0 && (std::isalnum(line[pos]) || line[pos] == '_' || line[pos] == '$')) pos--;
+                while (pos >= 0 && (std::isalnum(static_cast<unsigned char>(line[pos])) || line[pos] == '_' || line[pos] == '$')) pos--;
                 std::string fname = line.substr(pos + 1, end - pos - 1);
 
                 if (!fname.empty()) {

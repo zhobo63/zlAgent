@@ -46,7 +46,7 @@ Object Win
     Rect 0 0 0 0
     Dock top|down|right 0 100 100 100
     DockOffset 0 -4 0 -4
-    Arrange content
+    Arrange content true
 
     Object Label
     {

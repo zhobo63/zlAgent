@@ -104,10 +104,10 @@ std::vector<std::string> SkillLoader::parse_tool_list(const std::string& section
     while (std::getline(iss, line)) {
         // Trim.
         auto ltrim = [](std::string& s) {
-            s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
+            s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c){ return !std::isspace(c); }));
         };
         auto rtrim = [](std::string& s) {
-            s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
+            s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c){ return !std::isspace(c); }).base(), s.end());
         };
         ltrim(line);
         rtrim(line);
@@ -133,10 +133,10 @@ std::map<std::string, std::string> SkillLoader::parse_config(const std::string& 
 
     while (std::getline(iss, line)) {
         auto ltrim = [](std::string& s) {
-            s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c){ return !std::isspace(c); }));
+            s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c){ return !std::isspace(c); }));
         };
         auto rtrim = [](std::string& s) {
-            s.erase(std::find_if(s.rbegin(), s.rend(), [](char c){ return !std::isspace(c); }).base(), s.end());
+            s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c){ return !std::isspace(c); }).base(), s.end());
         };
         ltrim(line);
         rtrim(line);
@@ -166,10 +166,10 @@ std::map<std::string, std::string> SkillLoader::parse_config(const std::string& 
 // Trim whitespace from both ends of a string.
 static std::string trim(const std::string& s) {
     auto ltrim = [](std::string& str) {
-        str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](char c){ return !std::isspace(c); }));
+        str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char c){ return !std::isspace(c); }));
     };
     auto rtrim = [](std::string& str) {
-        str.erase(std::find_if(str.rbegin(), str.rend(), [](char c){ return !std::isspace(c); }).base(), str.end());
+        str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char c){ return !std::isspace(c); }).base(), str.end());
     };
     std::string result = s;
     ltrim(result);
@@ -182,7 +182,7 @@ static std::string trim(const std::string& s) {
 static bool extract_frontmatter(const std::string& content, std::map<std::string, std::string>& kv) {
     // Must start with "---" on the first line.
     size_t pos = 0;
-    while (pos < content.size() && std::isspace(content[pos])) ++pos;
+    while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos]))) ++pos;
     if (content.compare(pos, 3, "---") != 0) return false;
 
     // Find closing "---".
